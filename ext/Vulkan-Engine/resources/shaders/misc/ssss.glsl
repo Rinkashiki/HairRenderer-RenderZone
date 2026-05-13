@@ -96,7 +96,18 @@ void main() {
     float depth   = texture(depthTex, v_uv).r;
     vec2  aoThick = texture(aoThickTex, v_uv).rg;
     float ao      = aoThick.r;
-    float thick   = aoThick.g;
+
+    // 3x3 box blur on thickness only. The G channel from SSAO is low-frequency
+    // and noticeably quantized — blurring it removes the chunked stepping in
+    // the spectral transmittance without affecting the physical formulation.
+    vec2  texelSize = 1.0 / sss.screenSize;
+    float thick = 0.0;
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            thick += texture(aoThickTex, v_uv + vec2(dx, dy) * texelSize).g;
+        }
+    }
+    thick /= 9.0;
 
 	if (sss.sampleCount == 0) {
         outColor  = texture(hdrTex, v_uv) * ao;
@@ -168,10 +179,66 @@ void main() {
     scatteredIrr *= ao;
 
     // -------------------------------------------------------------------------
-    // Single scattering (translucency via Beer-Lambert)
+    // Single scattering (translucency)
+    //
+    //   S_s = F_t(ωi) · F_t(ωo) · p(cosθ, g) · exp(-σ_t · s) · L_back
+    //
+    // (A) Per-channel σ_t derived from the scatter-distance LUT (1/d) — gives
+    //     the characteristic spectral falloff (red transmits deeper than green/blue).
+    // (C) Henyey-Greenstein phase with g = 0.8 (forward-scattering skin).
+    //     Cheap approximation: cosθ ≈ N·V (light assumed roughly opposite view
+    //     through the surface, hitting the back face along its normal).
+    // (D) Fresnel entry × exit at η = 1.4 via Schlick. Supersedes the artist
+    //     `sss.Fdr` uniform, which is now unused (directional Fresnel covers it).
     // -------------------------------------------------------------------------
-    float transmittance = exp(-thick * sss.extinctionCoeff);
-    vec3  singleScatter = pow(blendedScatterDist, vec3(2.2)) * transmittance * backIrr;
+
+    // Reconstruct view-space normal from depth. Sample 4 neighbours and pick
+    // the side with the smaller view-space-z jump along each axis: this keeps
+    // the cross product on the same surface at silhouettes / depth jumps,
+    // killing the chunky banding the naive dFdx/dFdy version produced.
+    vec4 nL = sss.invProjection * vec4((v_uv - vec2(texelSize.x, 0.0)) * 2.0 - 1.0,
+                                       texture(depthTex, v_uv - vec2(texelSize.x, 0.0)).r, 1.0);
+    vec4 nR = sss.invProjection * vec4((v_uv + vec2(texelSize.x, 0.0)) * 2.0 - 1.0,
+                                       texture(depthTex, v_uv + vec2(texelSize.x, 0.0)).r, 1.0);
+    vec4 nU = sss.invProjection * vec4((v_uv + vec2(0.0, texelSize.y)) * 2.0 - 1.0,
+                                       texture(depthTex, v_uv + vec2(0.0, texelSize.y)).r, 1.0);
+    vec4 nD = sss.invProjection * vec4((v_uv - vec2(0.0, texelSize.y)) * 2.0 - 1.0,
+                                       texture(depthTex, v_uv - vec2(0.0, texelSize.y)).r, 1.0);
+    vec3 vpL = nL.xyz / nL.w;
+    vec3 vpR = nR.xyz / nR.w;
+    vec3 vpU = nU.xyz / nU.w;
+    vec3 vpD = nD.xyz / nD.w;
+
+    vec3 hDeriv = abs(vpR.z - fragViewPos.z) < abs(fragViewPos.z - vpL.z)
+                  ? (vpR - fragViewPos) : (fragViewPos - vpL);
+    vec3 vDeriv = abs(vpU.z - fragViewPos.z) < abs(fragViewPos.z - vpD.z)
+                  ? (vpU - fragViewPos) : (fragViewPos - vpD);
+
+    vec3 viewNormal = normalize(cross(hDeriv, vDeriv));
+    if (viewNormal.z < 0.0) viewNormal = -viewNormal;
+
+    vec3  viewDir = normalize(-fragViewPos);
+    float NoV     = max(dot(viewNormal, viewDir), 0.0);
+
+    // Henyey-Greenstein phase
+    const float g       = 0.8;
+    float       hgDenom = 1.0 + g * g - 2.0 * g * NoV;
+    float       phase   = (1.0 - g * g) / (4.0 * PI * pow(max(hgDenom, EPS), 1.5));
+
+    // Fresnel transmission at entry and exit (symmetric under the N·V approx)
+    const float eta = 1.4;
+    const float F0  = ((1.0 - eta) * (1.0 - eta)) / ((1.0 + eta) * (1.0 + eta));
+    float       Fc  = F0 + (1.0 - F0) * pow(1.0 - NoV, 5.0);
+    float       Ft  = 1.0 - Fc;
+    float       fresnelTransmission = Ft * Ft;
+
+    // Per-channel extinction. `extinctionCoeff` now acts as a thickness-scale
+    // (converts the 0–1 `thick` proxy into path-length units); spectral shape
+    // comes from σ_t = 1 / d_rgb.
+    vec3 sigmaT       = 1.0 / max(blendedScatterDist, vec3(EPS));
+    vec3 transmittance = exp(-thick * sss.extinctionCoeff * sigmaT);
+
+    vec3 singleScatter = fresnelTransmission * phase * transmittance * backIrr;
 
     // -------------------------------------------------------------------------
     // Combine and output

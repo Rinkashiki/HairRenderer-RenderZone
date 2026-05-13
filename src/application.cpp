@@ -337,15 +337,15 @@ void HairViewer::setup() {
 #endif
 
     m_scene->set_ambient_color({0.05, 0.05, 0.05});
-    m_scene->set_ambient_intensity(0.0f);
+    m_scene->set_ambient_intensity(0.1f);
 
     TextureHDR* envMap = new TextureHDR();
     Tools::Loaders::load_HDRi(envMap, TEXTURE_PATH + "studio_demo.hdr");
     Skybox* sky = new Skybox(envMap);
-    sky->set_color_intensity(0.1);
+    sky->set_color_intensity(1.0);
     m_scene->set_skybox(sky);
     // sky->set_active(false);
-    m_scene->set_use_IBL(false);
+    m_scene->set_use_IBL(true);
 
     m_scene->enable_fog(false);
 
