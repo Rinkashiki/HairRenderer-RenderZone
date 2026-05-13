@@ -340,7 +340,7 @@ void HairViewer::setup() {
     m_scene->set_ambient_intensity(0.0f);
 
     TextureHDR* envMap = new TextureHDR();
-    Tools::Loaders::load_HDRi(envMap, TEXTURE_PATH + "room.hdr");
+    Tools::Loaders::load_HDRi(envMap, TEXTURE_PATH + "studio_demo.hdr");
     Skybox* sky = new Skybox(envMap);
     sky->set_color_intensity(0.1);
     m_scene->set_skybox(sky);
