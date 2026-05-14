@@ -202,3 +202,45 @@ This renders 10 frames, captures validation layer messages to `build/debug_trace
 - Severity filter wiring: `ext/Vulkan-Engine/src/graphics/utilities/utils.cpp`
 - Logger: `ext/Vulkan-Engine/thirdparty/logger/include/logger.h`
 - CLI parsing + frame limit: `src/main.cpp`, `src/application.h/cpp`
+
+## SLViewer — Headless Video Export
+
+`SLViewer` renders the Alex scene from a JSON animation file and encodes the result as an MP4 using system ffmpeg.
+
+### Prerequisites
+
+- `ffmpeg` must be on `PATH` (`sudo apt install ffmpeg` on Ubuntu).
+- A Vulkan-capable GPU (no display required — window is created hidden).
+
+### Usage
+
+```bash
+# From build/
+./SLViewer <animation.json> [options]
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `<animation.json>` | (required) | Path to the timeline JSON |
+| `--output <file.mp4>` | `output.mp4` | Output video path |
+| `--width N` | 1920 | Render width in pixels |
+| `--height N` | 1080 | Render height in pixels |
+| `--keep-frames` | off | Retain the per-frame PNG dump in the temp dir after encoding |
+| `--log-level error\|warn\|verbose` | `warn` | Vulkan validation message severity filter |
+
+### Example
+
+```bash
+./SLViewer ../resources/animations/test_anim.json \
+           --output test_output.mp4 \
+           --width 1280 --height 720 \
+           --log-level warn
+```
+
+This renders 120 frames (4 s × 30 fps) headlessly, writes PNGs to a temp dir (`/tmp/slviewer_<pid>/`), encodes them with ffmpeg (`libx264`, `yuv420p`, `crf 18`), and deletes the temp dir on success.
+
+### Notes
+
+- If ffmpeg fails, the temp PNG dump is retained automatically for diagnosis.
+- Validation layer errors shown in the log from the IBL/scatter pass are pre-existing and not caused by the capture path.
+- The resources path (models, textures, HDR) is auto-discovered relative to the executable via `discover_resources_path()` — no extra flags needed.

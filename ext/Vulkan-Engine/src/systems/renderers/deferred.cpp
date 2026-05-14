@@ -72,7 +72,7 @@ void DeferredRenderer::create_passes() {
                                                           m_window->get_extent(),
                                                           m_settings.colorFormat,
                                                           Core::ResourceManager::VIGNETTE,
-                                                          ENGINE_RESOURCES_PATH "shaders/misc/tonemapping.glsl",
+                                                          get_engine_resources_path() + "shaders/misc/tonemapping.glsl",
                                                           "TONEMAPPING",
                                                           m_settings.softwareAA ? false : true);
     m_passes[TONEMAPPIN_PASS]->set_image_dependace_table({{iVec2(BLOOM_PASS, 0), {0}}});
@@ -82,7 +82,7 @@ void DeferredRenderer::create_passes() {
                                                     m_window->get_extent(),
                                                     m_settings.colorFormat,
                                                     Core::ResourceManager::VIGNETTE,
-                                                    ENGINE_RESOURCES_PATH "shaders/aa/fxaa.glsl",
+                                                    get_engine_resources_path() + "shaders/aa/fxaa.glsl",
                                                     "FXAA",
                                                     m_settings.softwareAA);
     m_passes[FXAA_PASS]->set_image_dependace_table({{iVec2(TONEMAPPIN_PASS, 0), {0}}});

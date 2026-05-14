@@ -135,7 +135,7 @@ void PreCompositionPass::setup_shader_passes() {
     GraphicShaderPass* compPass               = new GraphicShaderPass(m_device->get_handle(),
                                                         m_renderpass,
                                                         m_imageExtent,
-                                                        ENGINE_RESOURCES_PATH "shaders/deferred/pre_composition.glsl");
+                                                        get_engine_resources_path() + "shaders/deferred/pre_composition.glsl");
     compPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}};
     compPass->graphicSettings.attributes      = {{POSITION_ATTRIBUTE, true},
                                                  {NORMAL_ATTRIBUTE, false},
@@ -150,7 +150,7 @@ void PreCompositionPass::setup_shader_passes() {
     m_shaderPasses[0] = compPass;
 
     GraphicShaderPass* blurPass = new GraphicShaderPass(
-        m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/box_filter.glsl");
+        m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/misc/box_filter.glsl");
     blurPass->settings.descriptorSetLayoutIDs = {{0, true}, {1, true}};
     blurPass->graphicSettings.attributes      = {{POSITION_ATTRIBUTE, true},
                                                  {NORMAL_ATTRIBUTE, false},

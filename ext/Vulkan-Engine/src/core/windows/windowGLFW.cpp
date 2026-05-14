@@ -6,8 +6,8 @@ void WindowGLFW::init() {
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Set for vulkan context
-
     glfwWindowHint(GLFW_RESIZABLE, m_resizeable);
+    glfwWindowHint(GLFW_VISIBLE, m_visibleHint ? GLFW_TRUE : GLFW_FALSE);
 
     m_handle = glfwCreateWindow(m_extent.width, m_extent.height, m_title.c_str(), nullptr, nullptr);
 

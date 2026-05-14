@@ -39,7 +39,7 @@ void IrrandianceComputePass::setup_uniforms(std::vector<Graphics::Frame>& frames
 void IrrandianceComputePass::setup_shader_passes() {
 
     GraphicShaderPass* converterPass = new GraphicShaderPass(
-        m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/irradiance_compute.glsl");
+        m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/misc/irradiance_compute.glsl");
     converterPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}};
     converterPass->graphicSettings.attributes      = {{POSITION_ATTRIBUTE, true},
                                                       {NORMAL_ATTRIBUTE, false},

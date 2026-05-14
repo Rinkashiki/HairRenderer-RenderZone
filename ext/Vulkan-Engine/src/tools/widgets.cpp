@@ -78,7 +78,7 @@ void SceneExplorerWidget::render() {
             if (ImGui::MenuItem("Cube"))
             {
                 Mesh* cube = new Mesh();
-                Loaders::load_3D_file(cube, ENGINE_RESOURCES_PATH "meshes/cube.obj", false);
+                Loaders::load_3D_file(cube, get_engine_resources_path() + "meshes/cube.obj", false);
                 auto mat = new PhysicallyBasedMaterial();
                 cube->push_material(mat);
                 cube->set_name("Box");
@@ -87,7 +87,7 @@ void SceneExplorerWidget::render() {
             if (ImGui::MenuItem("Sphere"))
             {
                 Mesh* sph = new Mesh();
-                Loaders::load_3D_file(sph, ENGINE_RESOURCES_PATH "meshes/sphere.obj", false);
+                Loaders::load_3D_file(sph, get_engine_resources_path() + "meshes/sphere.obj", false);
                 auto mat = new PhysicallyBasedMaterial();
                 sph->push_material(mat);
                 sph->set_name("Sphere");

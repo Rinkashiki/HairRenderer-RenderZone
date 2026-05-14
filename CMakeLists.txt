@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
- 
-project(HairViewer VERSION 1.0.0)
+
+project(HairRenderer VERSION 1.0.0)
  
 # -----------------------------------------------------------------------------
 # 1. Standard C++ Setup
@@ -38,38 +38,60 @@ set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(ext/Vulkan-Engine)
  
 # -----------------------------------------------------------------------------
-# 4. App Target Setup
+# 4. HairViewer Target
 # -----------------------------------------------------------------------------
 file(GLOB APP_SOURCES "src/*.cpp")
 file(GLOB APP_HEADERS "src/*.h")
- 
+
 add_executable(HairViewer ${APP_SOURCES} ${APP_HEADERS})
- 
-# -----------------------------------------------------------------------------
-# 5. Cross-Platform Linking
-# -----------------------------------------------------------------------------
-target_link_libraries(HairViewer PRIVATE 
-    VulkanEngine          # The sub-project engine
-    Vulkan::Vulkan        # Modern CMake target for Vulkan
-    Threads::Threads      # Maps to -pthread on Linux, no-op on Windows
+
+target_link_libraries(HairViewer PRIVATE
+    VulkanEngine
+    Vulkan::Vulkan
+    Threads::Threads
 )
- 
-# Linux-specific: Dynamic Loading library
+
 if(UNIX AND NOT APPLE)
     target_link_libraries(HairViewer PRIVATE dl)
 endif()
- 
-# -----------------------------------------------------------------------------
-# 6. Definitions & Compiler Flags
-# -----------------------------------------------------------------------------
-target_compile_definitions(HairViewer PUBLIC 
+
+target_compile_definitions(HairViewer PUBLIC
     RESOURCES_PATH="${CMAKE_CURRENT_SOURCE_DIR}/resources/"
 )
- 
+
 if(MSVC)
-    # Windows-specific MSVC flags
     target_compile_options(HairViewer PRIVATE /W4 /MP)
 else()
-    # Linux/Unix-specific GCC/Clang flags
     target_compile_options(HairViewer PRIVATE -Wall -Wextra -O3)
+endif()
+
+# -----------------------------------------------------------------------------
+# 5. SLViewer Target (standalone deployment binary)
+# -----------------------------------------------------------------------------
+file(GLOB_RECURSE SLVIEWER_SOURCES "src/slviewer/*.cpp")
+file(GLOB_RECURSE SLVIEWER_HEADERS "src/slviewer/*.h")
+
+add_executable(SLViewer ${SLVIEWER_SOURCES} ${SLVIEWER_HEADERS})
+
+target_link_libraries(SLViewer PRIVATE
+    VulkanEngine
+    Vulkan::Vulkan
+    Threads::Threads
+)
+
+if(UNIX AND NOT APPLE)
+    target_link_libraries(SLViewer PRIVATE dl)
+endif()
+
+# RESOURCES_PATH is resolved at runtime from the exe directory (resource_paths.cpp).
+# Define an empty string so any accidental macro use fails loudly at compile time.
+target_compile_definitions(SLViewer PUBLIC
+    RESOURCES_PATH=""
+    SLVIEWER_BUILD=1
+)
+
+if(MSVC)
+    target_compile_options(SLViewer PRIVATE /W4 /MP)
+else()
+    target_compile_options(SLViewer PRIVATE -Wall -Wextra -O3)
 endif()

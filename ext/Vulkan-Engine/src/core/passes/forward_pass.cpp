@@ -263,7 +263,7 @@ void ForwardPass::setup_shader_passes() {
 
     // Setup shaderpasses
     GraphicShaderPass* unlitPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/unlit.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/unlit.glsl");
     unlitPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, false}};
     unlitPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, false}, {COLOR_ATTRIBUTE, false}};
@@ -273,7 +273,7 @@ void ForwardPass::setup_shader_passes() {
     m_shaderPasses[IMaterial::Type::UNLIT_TYPE] = unlitPass;
 
     GraphicShaderPass* phongPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/phong.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/phong.glsl");
     phongPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     phongPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, true}, {UV_ATTRIBUTE, true}, {TANGENT_ATTRIBUTE, false}, {COLOR_ATTRIBUTE, false}};
@@ -283,7 +283,7 @@ void ForwardPass::setup_shader_passes() {
     m_shaderPasses[IMaterial::Type::PHONG_TYPE] = phongPass;
 
     GraphicShaderPass* PBRPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/physically_based.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/physically_based.glsl");
     PBRPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     PBRPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, true}, {UV_ATTRIBUTE, true}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, false}};
@@ -293,7 +293,7 @@ void ForwardPass::setup_shader_passes() {
     m_shaderPasses[IMaterial::Type::PBR_TYPE] = PBRPass;
 
     GraphicShaderPass* hairStrandPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/hair_strand.glsl");
     hairStrandPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, false}};
     hairStrandPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
@@ -305,7 +305,7 @@ void ForwardPass::setup_shader_passes() {
     m_shaderPasses[IMaterial::Type::HAIR_STR_TYPE]   = hairStrandPass;
 #if FAST_HAIR_GEOMETRY == 1
     GraphicShaderPass* hairStrandPass2 =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/fast_hair_strand_epic.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/fast_hair_strand_epic.glsl");
     hairStrandPass2->settings.descriptorSetLayoutIDs    = {{0, true}, {1, true}, {2, true}, {3, true}};
     hairStrandPass2->settings.pushConstants             = {Graphics::PushConstant(SHADER_STAGE_VERTEX | SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
     hairStrandPass2->graphicSettings.dynamicStates      = dynamicStates;
@@ -316,7 +316,7 @@ void ForwardPass::setup_shader_passes() {
     m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
 #else
     GraphicShaderPass* hairStrandPass2 =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_epic.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/hair_strand_epic.glsl");
     hairStrandPass2->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     hairStrandPass2->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
     hairStrandPass2->graphicSettings.attributes      = {
@@ -332,7 +332,7 @@ void ForwardPass::setup_shader_passes() {
 
 #endif
     GraphicShaderPass* hairCardPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_card.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/hair_card.glsl");
     hairCardPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     hairCardPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, true}, {UV_ATTRIBUTE, true}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, false}};
@@ -342,7 +342,7 @@ void ForwardPass::setup_shader_passes() {
     m_shaderPasses[IMaterial::Type::HAIR_CARD_TYPE] = hairCardPass;
 
     GraphicShaderPass* hairStrandPassDisney =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/hair_strand_disney.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/hair_strand_disney.glsl");
     hairStrandPassDisney->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     hairStrandPassDisney->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
@@ -354,7 +354,7 @@ void ForwardPass::setup_shader_passes() {
     m_shaderPasses[IMaterial::Type::HAIR_STR_DISNEY_TYPE]  = hairStrandPassDisney;
 
     GraphicShaderPass* skyboxPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/forward/skybox.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/skybox.glsl");
     skyboxPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, false}, {OBJECT_TEXTURE_LAYOUT, false}};
     skyboxPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, false}, {COLOR_ATTRIBUTE, false}};

@@ -180,7 +180,7 @@ void HairVoxelizationPass::setup_uniforms(std::vector<Graphics::Frame>& frames) 
 void HairVoxelizationPass::setup_shader_passes() {
 
 #if OPTICAL_DENSITY == 1
-    ComputeShaderPass* voxelPass = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/DDA_fiber_optical_density.glsl");
+    ComputeShaderPass* voxelPass = new ComputeShaderPass(m_device->get_handle(), get_engine_resources_path() + "shaders/misc/DDA_fiber_optical_density.glsl");
     voxelPass->settings.descriptorSetLayoutIDs = {{0, true}, {1, true}, {2, true}};
     voxelPass->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_COMPUTE, sizeof(Vec4))};
     voxelPass->build_shader_stages();
@@ -190,7 +190,7 @@ void HairVoxelizationPass::setup_shader_passes() {
 
 #endif
 #if DDA_VOXELIZATION == 1
-    ComputeShaderPass* voxelPass = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/DDA_density_voxelization.glsl");
+    ComputeShaderPass* voxelPass = new ComputeShaderPass(m_device->get_handle(), get_engine_resources_path() + "shaders/misc/DDA_density_voxelization.glsl");
     voxelPass->settings.descriptorSetLayoutIDs = {{0, true}, {1, true}, {2, true}};
     voxelPass->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_COMPUTE, sizeof(Vec4))};
     voxelPass->build_shader_stages();
@@ -200,7 +200,7 @@ void HairVoxelizationPass::setup_shader_passes() {
 #elif RASTER_VOXELIZATION == 1
 
     GraphicShaderPass* voxelPass = new GraphicShaderPass(
-        m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/CLASSIC_fiber_density_voxelization.glsl");
+        m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/misc/CLASSIC_fiber_density_voxelization.glsl");
     voxelPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, false}};
     voxelPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, false}, {COLOR_ATTRIBUTE, false}};
@@ -216,7 +216,7 @@ void HairVoxelizationPass::setup_shader_passes() {
     m_shaderPasses[0] = voxelPass;
 #endif
 
-    ComputeShaderPass* shPass               = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/encode_density_SH.glsl");
+    ComputeShaderPass* shPass               = new ComputeShaderPass(m_device->get_handle(), get_engine_resources_path() + "shaders/misc/encode_density_SH.glsl");
     shPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, false}};
 
     shPass->build_shader_stages();
@@ -224,7 +224,7 @@ void HairVoxelizationPass::setup_shader_passes() {
 
     m_shaderPasses[1] = shPass;
 
-    ComputeShaderPass* mipPass = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/density_conserving_mipmaps.glsl");
+    ComputeShaderPass* mipPass = new ComputeShaderPass(m_device->get_handle(), get_engine_resources_path() + "shaders/misc/density_conserving_mipmaps.glsl");
     mipPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, false}, {OBJECT_TEXTURE_LAYOUT, false}};
     mipPass->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_COMPUTE, sizeof(Vec4))};
     mipPass->build_shader_stages();
@@ -233,7 +233,7 @@ void HairVoxelizationPass::setup_shader_passes() {
     m_shaderPasses[3] = mipPass;
 
     GraphicShaderPass* skullVoxelPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/CLASSIC_density_voxelization.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/misc/CLASSIC_density_voxelization.glsl");
     skullVoxelPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, false}, {OBJECT_TEXTURE_LAYOUT, false}};
     skullVoxelPass->graphicSettings.attributes      = {
         {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, false}, {TANGENT_ATTRIBUTE, false}, {COLOR_ATTRIBUTE, false}};

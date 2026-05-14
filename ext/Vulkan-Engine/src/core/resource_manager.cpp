@@ -55,7 +55,7 @@ void ResourceManager::init_basic_resources(Graphics::Device* const device) {
     if (!BLUE_NOISE_TEXTURE) // If not user set
     {
         BLUE_NOISE_TEXTURE = new Core::Texture();
-        Tools::Loaders::load_PNG(BLUE_NOISE_TEXTURE, ENGINE_RESOURCES_PATH "textures/blueNoise.png", TEXTURE_FORMAT_TYPE_NORMAL);
+        Tools::Loaders::load_PNG(BLUE_NOISE_TEXTURE, get_engine_resources_path() + "textures/blueNoise.png", TEXTURE_FORMAT_TYPE_NORMAL);
         BLUE_NOISE_TEXTURE->set_use_mipmaps(false);
     }
     upload_texture_data(device, BLUE_NOISE_TEXTURE);
@@ -68,8 +68,8 @@ void ResourceManager::init_basic_resources(Graphics::Device* const device) {
         settings.adressMode = ADDRESS_MODE_CLAMP_TO_BORDER;
         HAIR_FAR_FIELD_DIST = new TextureHDR(settings);
 
-        Tools::Loaders::load_3D_texture(HAIR_FAR_FIELD_DIST, ENGINE_RESOURCES_PATH "textures/Dp.hdr");
-        // Tools::Loaders::load_HDRi(HAIR_FAR_FIELD_DIST, ENGINE_RESOURCES_PATH "textures/DpNorm.hdr");
+        Tools::Loaders::load_3D_texture(HAIR_FAR_FIELD_DIST, get_engine_resources_path() + "textures/Dp.hdr");
+        // Tools::Loaders::load_HDRi(HAIR_FAR_FIELD_DIST, get_engine_resources_path() + "textures/DpNorm.hdr");
     }
     upload_texture_data(device, HAIR_FAR_FIELD_DIST);
 
@@ -81,7 +81,7 @@ void ResourceManager::init_basic_resources(Graphics::Device* const device) {
         settings.adressMode = ADDRESS_MODE_CLAMP_TO_BORDER;
         HAIR_GI_FALLBACK    = new Texture(settings);
 
-        Tools::Loaders::load_3D_texture(HAIR_GI_FALLBACK, ENGINE_RESOURCES_PATH "textures/LUTs/blonde/GI.png");
+        Tools::Loaders::load_3D_texture(HAIR_GI_FALLBACK, get_engine_resources_path() + "textures/LUTs/blonde/GI.png");
         HAIR_GI_FALLBACK->set_format(RGBA_8U);
         HAIR_GI_FALLBACK->set_type(TEXTURE_3D);
     }

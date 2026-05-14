@@ -125,7 +125,7 @@ void SSAOPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
 
 void SSAOPass::setup_shader_passes() {
     GraphicShaderPass* ssaoPass = new GraphicShaderPass(
-        m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/ssao_thickness.glsl");
+        m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/misc/ssao_thickness.glsl");
     ssaoPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}};
     ssaoPass->graphicSettings.attributes      = {{POSITION_ATTRIBUTE, true},
                                                  {NORMAL_ATTRIBUTE, false},

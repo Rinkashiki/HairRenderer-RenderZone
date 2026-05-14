@@ -164,6 +164,9 @@ void BaseRenderer::render(Core::Scene* const scene) {
             pass->render(m_frames[m_currentFrame], scene, imageIndex);
     }
 
+    if (m_preSubmitCallback)
+        m_preSubmitCallback(m_frames[m_currentFrame], imageIndex);
+
     RenderResult renderResult = m_device->submit_frame(m_frames[m_currentFrame], imageIndex);
 
     on_after_render(renderResult, scene);

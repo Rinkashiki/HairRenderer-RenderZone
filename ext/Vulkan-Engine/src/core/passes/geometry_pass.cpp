@@ -164,7 +164,7 @@ void GeometryPass::setup_shader_passes() {
 
     // Geometry
     GraphicShaderPass* geomPass = new GraphicShaderPass(
-        m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/deferred/geometry.glsl");
+        m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/deferred/geometry.glsl");
     geomPass->settings.descriptorSetLayoutIDs = {
         {GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     geomPass->graphicSettings.attributes       = {{POSITION_ATTRIBUTE, true},
@@ -189,7 +189,7 @@ void GeometryPass::setup_shader_passes() {
     m_shaderPasses[hash_string("geometry")] = geomPass;
 
     GraphicShaderPass* skyboxPass = new GraphicShaderPass(
-        m_device->get_handle(), m_renderpass, m_imageExtent,  ENGINE_RESOURCES_PATH "shaders/deferred/skybox.glsl");
+        m_device->get_handle(), m_renderpass, m_imageExtent,  get_engine_resources_path() + "shaders/deferred/skybox.glsl");
     skyboxPass->settings.descriptorSetLayoutIDs = {
         {GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, false}, {OBJECT_TEXTURE_LAYOUT, false}};
     skyboxPass->graphicSettings.attributes       = {{POSITION_ATTRIBUTE, true},

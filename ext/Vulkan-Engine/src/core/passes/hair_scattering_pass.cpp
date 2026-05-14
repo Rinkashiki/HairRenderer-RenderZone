@@ -152,7 +152,7 @@ void HairScatteringPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
 void HairScatteringPass::setup_shader_passes() {
 
 
-    ComputeShaderPass* NPass               = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/compute_hair_NGI.glsl");
+    ComputeShaderPass* NPass               = new ComputeShaderPass(m_device->get_handle(), get_engine_resources_path() + "shaders/misc/compute_hair_NGI.glsl");
     NPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, false}};
 
     NPass->build_shader_stages();
@@ -160,7 +160,7 @@ void HairScatteringPass::setup_shader_passes() {
 
     m_shaderPasses[1] = NPass;
 
-    // ComputeShaderPass* GIPass               = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/compute_hair_GI.glsl");
+    // ComputeShaderPass* GIPass               = new ComputeShaderPass(m_device->get_handle(), get_engine_resources_path() + "shaders/misc/compute_hair_GI.glsl");
     // GIPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, TRUE}, {OBJECT_LAYOUT, false}, {OBJECT_TEXTURE_LAYOUT, false}};
 
     // GIPass->build_shader_stages();
@@ -168,7 +168,7 @@ void HairScatteringPass::setup_shader_passes() {
 
     // m_shaderPasses[2] = GIPass;
 
-    ComputeShaderPass* LUTPass               = new ComputeShaderPass(m_device->get_handle(), ENGINE_RESOURCES_PATH "shaders/misc/compute_hair_LUT.glsl");
+    ComputeShaderPass* LUTPass               = new ComputeShaderPass(m_device->get_handle(), get_engine_resources_path() + "shaders/misc/compute_hair_LUT.glsl");
     LUTPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, false}, {OBJECT_TEXTURE_LAYOUT, false}};
     LUTPass->build_shader_stages();
     LUTPass->build(m_descriptorPool);

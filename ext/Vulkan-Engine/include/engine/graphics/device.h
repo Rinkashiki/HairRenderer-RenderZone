@@ -71,7 +71,7 @@ class Device
         return m_handle;
     };
 
-    inline Swapchain get_swapchain() const {
+    inline Swapchain& get_swapchain() {
         return m_swapchain;
     }
 

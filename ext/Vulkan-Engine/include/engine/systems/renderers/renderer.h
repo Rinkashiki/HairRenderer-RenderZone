@@ -12,6 +12,8 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include <functional>
+
 #include <engine/common.h>
 #include <engine/core/resource_manager.h>
 
@@ -61,6 +63,9 @@ class BaseRenderer
     bool     m_initialized        = false;
     bool     m_updateFramebuffers = false;
 
+    // Called after all passes have recorded into the command buffer and before submit.
+    std::function<void(Graphics::Frame&, uint32_t)> m_preSubmitCallback;
+
 #pragma endregion
   public:
     BaseRenderer(Core::IWindow* window)
@@ -101,6 +106,12 @@ class BaseRenderer
     }
     inline std::vector<Core::BasePass*> get_render_passes() const {
         return m_passes;
+    }
+    inline Graphics::Device* get_device() {
+        return m_device;
+    }
+    inline void set_pre_submit_callback(std::function<void(Graphics::Frame&, uint32_t)> cb) {
+        m_preSubmitCallback = std::move(cb);
     }
     inline void enable_gui_overlay(bool op) {
         m_settings.enableUI;

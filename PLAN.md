@@ -688,3 +688,261 @@ CMake picks up new files via `GLOB_RECURSE`. nlohmann/json is already in `thirdp
 - **Memory.** 100 morph targets × ~40K verts × 12 bytes ≈ 48 MB per character for deltas as a dense SSBO. Acceptable for 1–4 characters; if we scale up, compress or store only non-zero deltas (sparse).
 
 ---
+
+## Executable Deployment — `SLViewer`
+
+### Goal
+
+Ship a standalone, distributable executable (`SLViewer`, named for *sign language*) that another machine can run with no IDE, no Vulkan SDK, no source tree — just the binary, its bundled resources, and a single JSON animation file. The program loads the **Alex** GLB scene (current `USE_GLB_MODELS` configuration: GLB character + strand hair + hair cards), plays the animation described by the JSON exactly once, writes each rendered frame to disk as a PNG, then invokes a bundled `ffmpeg` binary to encode the sequence into an MP4 video, and exits.
+
+Two native builds: one Windows `.exe`, one Linux ELF. Each ships as its own self-contained folder.
+
+### Distribution Layout
+
+```
+SLViewer-windows/
+├── SLViewer.exe
+├── ffmpeg.exe                   # bundled encoder
+├── vulkan-1.dll                 # Vulkan loader (Windows)
+└── resources/
+    ├── shaders/                 # full shader tree (compiled on the fly via Shaderc)
+    ├── models/
+    │   ├── alex.glb
+    │   └── hair_fauxmohawk.obj
+    ├── textures/
+    │   ├── hair_fauxmohawk.PNG
+    │   └── <HDR / IBL maps used by the Alex scene>
+    └── strands/
+        └── straight.hair        # if used by the Alex setup
+
+SLViewer-linux/
+├── SLViewer                     # ELF binary
+├── ffmpeg                       # bundled encoder
+└── resources/                   # same tree
+```
+
+Invocation:
+
+```
+SLViewer <animation.json> [--output out.mp4] [--width W] [--height H]
+```
+
+The user only needs to ship the folder and one JSON. Output defaults to `<animation_basename>.mp4` next to the JSON.
+
+### CLI Surface
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `<animation.json>` | (required positional) | Path to the timeline JSON (consumed by `DefaultAnimationJsonAdapter`) |
+| `--output <file.mp4>` | `<json_basename>.mp4` | Final video path |
+| `--width N` | 1920 | Render width |
+| `--height N` | 1080 | Render height |
+| `--keep-frames` | off | Skip cleanup of the temp PNG dir (debugging) |
+| `--log-level` | `warn` | Reuse existing Vulkan validation filter |
+
+Frame count is derived: `totalFrames = round(animation.duration * animation.fps)`. The animation plays exactly once, no loop.
+
+### Task 1: New CMake target `SLViewer`
+
+**Modify** the root `CMakeLists.txt` to add an `add_executable(SLViewer ...)` target alongside `HairViewer`. It links against the same `VulkanEngine` static library so the renderer is shared between the two binaries.
+
+**Create** a new source folder `src/slviewer/` containing the SLViewer-specific lifecycle code. Files in `src/` that are HairViewer-only (`gui.h/cpp`, `application.h/cpp`) are not added to this target. Both targets should be built by default (`cmake --build .` produces `HairViewer` and `SLViewer`).
+
+Status: [x] — `SLViewer` CMake target added to root `CMakeLists.txt`. Links `VulkanEngine` + `Vulkan::Vulkan` + `Threads::Threads`. Defines `SLVIEWER_BUILD=1` and empty `RESOURCES_PATH` (runtime-resolved in Task 3). Stub `src/slviewer/main.cpp` added; target builds cleanly.
+
+### Task 2: Headless application class `SLApplication`
+
+**Create** `src/slviewer/application_sl.h` + `src/slviewer/application_sl.cpp`.
+
+`SLApplication` mirrors `HairViewer`'s lifecycle (`init → setup → tick → shutdown`) but stripped of everything interactive:
+
+- **Hardcoded Alex scene**: copy the body of `application.cpp`'s `USE_GLB_MODELS` block (alex.glb + strand hair + hair cards + materials + lights + HDR/IBL). No `#ifdef` switching, no neural avatar path.
+- **Fixed camera**: a single forward-facing transform with no input handlers (`GLFW` keyboard/mouse callbacks not registered).
+- **No GUI**: do not include `gui.h`. ImGui is not initialized.
+- **Animation-driven**: the constructor takes the parsed `Animation` and the resolved render config (`width`, `height`, `outputPath`, `keepFrames`). After scene setup, the animation is attached to the GLB mesh via `Mesh::set_animation()` (already implemented in the existing animation system).
+- **Bounded tick**: the main loop counts down `totalFrames = round(animation.duration * animation.fps)` and exits cleanly when zero. Looping is disabled at the `Animation` level (or the loop simply terminates before the timeline wraps).
+
+**Create** `src/slviewer/main.cpp`. Responsibilities: argument parsing (see Task 7 for the surface), JSON load via `Tools::Loaders::load_animation_json()`, instantiate `SLApplication`, run, encode video, clean up.
+
+Status: [x] — `application_sl.h` + `application_sl.cpp` created. Hardcoded Alex scene (alex.glb + hair_fauxmohawk.obj + materials + lights + HDR/IBL + SSS LUT). Hidden GLFW window via new `WindowGLFW::set_visible_hint(false)`. Fixed-timestep loop (`dt = 1/fps`) counting `round(duration * fps)` frames. `m_onFrameReady` callback stub for Task 4. `main.cpp` updated with full CLI parsing; `resourcesPath` left empty (Task 3 hook). Builds cleanly.
+
+### Task 3: Resource-path discovery
+
+**Create** `src/slviewer/resource_paths.h` + `src/slviewer/resource_paths.cpp`.
+
+The engine currently bakes `ENGINE_RESOURCES_PATH`, `MESH_PATH`, `TEXTURE_PATH` as compile-time macros pointing into the source tree. For a distributable binary these must resolve to `<exe_dir>/resources/` at runtime.
+
+**Approach**:
+1. Look up the executable's directory:
+   - Windows: `GetModuleFileNameW(NULL, ...)` → strip filename.
+   - Linux: `readlink("/proc/self/exe", ...)` → strip filename.
+2. Compose `<exe_dir>/resources/` and verify it exists. Abort with a clear error if it doesn't.
+3. Expose the resolved path to the engine. Since the engine reads compile-time macros today, introduce a small runtime override:
+   - Add a `Engine::set_runtime_resources_path(const std::string&)` accessor (engine side) that, when set, supersedes the macro inside `loaders.cpp` and any other path-consuming sites.
+   - SLViewer calls this once on startup. HairViewer does not call it; its macro-based path keeps working unchanged.
+
+Status: [x] — `src/slviewer/resource_paths.h/cpp` created with `get_exe_dir()` (Linux: `readlink /proc/self/exe`, Windows: `GetModuleFileNameW`) and `discover_resources_path()` probing `<exe_dir>/resources/` (deployed) then `<exe_dir>/../resources/` (dev build). Added `engine/engine_config.h` + `src/core/engine_config.cpp` to the engine with `get_engine_resources_path()` / `set_engine_resources_path()`; global defaults to compile-time `ENGINE_RESOURCES_PATH` so HairViewer is unchanged. Replaced all `ENGINE_RESOURCES_PATH "..."` string concatenations in 18 engine source files with `get_engine_resources_path() + "..."`. In the deployed layout, `discover_resources_path()` also calls `VKFW::set_engine_resources_path()` so shaders/meshes resolve from the same root. `main.cpp` now calls `discover_resources_path()` and passes the result to `SLApplication::run()`. Builds cleanly.
+
+### Task 4: Offscreen framebuffer capture
+
+The renderer currently presents into a `VkSwapchainKHR` bound to a visible GLFW window. For SLViewer we want frames on disk, not on screen.
+
+**Approach (v1)**: create a **hidden GLFW window** (`glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE)`) sized to the requested resolution and keep the existing swapchain. After the FXAA/Tonemap final pass writes into the swapchain image:
+
+1. Insert a pipeline barrier transitioning the acquired swapchain image to `VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL`.
+2. `vkCmdCopyImageToBuffer` into a host-visible staging buffer (`VMA_MEMORY_USAGE_GPU_TO_CPU`) sized `width * height * 4`.
+3. Transition back to `PRESENT_SRC_KHR`, present (or skip present — the window is hidden).
+4. Wait on the frame fence, map the staging buffer, hand the bytes off to the PNG writer (Task 5).
+
+This keeps the entire existing renderer (passes, MRT, MSAA, post-process chain) untouched. A pure-offscreen path (render directly into a `VkImage` with no swapchain) is a future optimization.
+
+**Create** `src/slviewer/frame_capture.h` + `src/slviewer/frame_capture.cpp` to encapsulate the staging buffer, the barriers, and the readback. `SLApplication::tick()` calls `m_capture.read_back(currentFrame)` once per rendered frame.
+
+Status: [x] — Implemented together with Tasks 5 and 6.
+- Added `VK_IMAGE_USAGE_TRANSFER_SRC_BIT` to swapchain creation (`swapchain.cpp`).
+- Added `set_pre_submit_callback()` + `get_device()` to `BaseRenderer`; callback fires between last pass and `submit_frame`.
+- `FrameCapture::get_callback()` records barrier (PRESENT→TRANSFER_SRC) + `vkCmdCopyImageToBuffer` + barrier-back (TRANSFER_SRC→PRESENT) into the live command buffer.
+- `FrameCapture::wait_and_write()` calls `wait_queue(GRAPHIC_QUEUE)` then maps, BGRA→RGBA-swaps, and writes PNG.
+
+### Task 5: PNG writer
+
+**Add** `thirdparty/stb/stb_image_write.h` (single-header public-domain library) if it isn't already vendored. Define `STB_IMAGE_WRITE_IMPLEMENTATION` in exactly one translation unit (`frame_capture.cpp`).
+
+In `FrameCapture::write_png(uint32_t frameIndex)`, after the staging buffer is mapped, call:
+
+```cpp
+char name[64];
+std::snprintf(name, sizeof(name), "frame_%05d.png", frameIndex);
+auto path = m_tempDir / name;
+stbi_write_png(path.string().c_str(), m_width, m_height, 4, m_mapped, m_width * 4);
+```
+
+Zero-padded filenames match ffmpeg's `-i frame_%05d.png` pattern.
+
+Status: [x] — Vendored `stb_image_write.h` (v1.16) at `src/slviewer/stb_image_write.h`. `STB_IMAGE_WRITE_IMPLEMENTATION` defined in `frame_capture.cpp`. `wait_and_write()` writes zero-padded `frame_%05u.png` files into the temp dir.
+
+### Task 6: Temp directory lifecycle
+
+On `SLApplication::init()`, create `<os_tempdir>/slviewer_<pid>/` using `std::filesystem::temp_directory_path()` and `std::filesystem::create_directories()`. Store the resulting path on `SLApplication`.
+
+On `shutdown()` (after ffmpeg has succeeded), recursively delete it via `std::filesystem::remove_all()`. If `--keep-frames` was passed, skip the delete and log the path to stdout so the user can inspect the dump.
+
+If ffmpeg fails, also retain the directory automatically — it's the user's only clue for diagnosing the failure.
+
+Status: [x] — Temp dir created in `run()` before `init()` as `<tmpdir>/slviewer_<pid>/`. Deleted after renderer shutdown unless `--keep-frames`. `m_tempDir` stored on `SLApplication` and passed to `m_capture.wait_and_write()` each tick. ffmpeg failure retention deferred to Task 7 (it needs the ffmpeg result code).
+
+### Task 7: FFmpeg invocation
+
+**Create** `src/slviewer/video_encoder.h` + `src/slviewer/video_encoder.cpp`.
+
+After the render loop completes and `vkDeviceWaitIdle` returns, locate the bundled ffmpeg binary relative to the executable (`<exe_dir>/ffmpeg.exe` on Windows, `<exe_dir>/ffmpeg` on Linux) and invoke it as a subprocess:
+
+```
+ffmpeg -y -framerate <fps> -i <tempDir>/frame_%05d.png \
+       -c:v libx264 -pix_fmt yuv420p -crf 18 <output>.mp4
+```
+
+Use `std::system` for v1 — quoting is acceptable since the paths are constructed by us, not user-supplied. If quoting becomes fragile later, switch to `CreateProcessW` (Windows) / `posix_spawn` (Linux). Block on exit. Non-zero return codes are surfaced to the user with the ffmpeg stderr passed through.
+
+CLI surface for `SLViewer`:
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `<animation.json>` | (required positional) | Path to the timeline JSON (consumed by `DefaultAnimationJsonAdapter`) |
+| `--output <file.mp4>` | `<json_basename>.mp4` next to the JSON | Final video path |
+| `--width N` | 1920 | Render width |
+| `--height N` | 1080 | Render height |
+| `--keep-frames` | off | Retain the temp PNG dump |
+| `--log-level` | `warn` | Reuse the existing Vulkan validation filter |
+
+Status: [x] — `VideoEncoder::encode()` created in `src/slviewer/video_encoder.h/.cpp`. Uses `std::system` to invoke system ffmpeg with `-framerate <fps> -i frame_%05d.png -c:v libx264 -pix_fmt yuv420p -crf 18`. Called from `SLApplication::run()` after `renderer->shutdown()`. On failure: throws `std::runtime_error`, `run()` catches it, logs the error, sets `m_keepFrames = true` so the PNG dump is retained for diagnosis. fps stored as `m_fps` member, set from `anim.fps` in `setup()`. Build clean.
+
+### Task 8: Bundle ffmpeg into the install tree
+
+Vendor an ffmpeg binary per target platform — either checked into `thirdparty/ffmpeg/{windows,linux}/` or downloaded by a CMake `FetchContent` / `file(DOWNLOAD ...)` step at configure time. Add CMake `install()` rules that copy the matching platform's binary next to `SLViewer` in the install directory.
+
+Create `THIRD_PARTY_NOTICES.txt` listing the ffmpeg version, build configuration, and license (LGPL vs GPL build — pick the LGPL build with attribution to avoid GPL propagation).
+
+Status: [ ]
+
+### Task 9: Resource-tree install rules
+
+Add CMake `install()` rules that copy **only the assets the Alex scene actually uses** into `<install>/resources/`:
+
+- Shader subtrees: `forward/`, `shadows/`, `compute/`, `misc/`, `postprocess/`, `scripts/` (full trees — the on-the-fly Shaderc compiler walks `#include` chains across them).
+- Models: `alex.glb`, `hair_fauxmohawk.obj`, `straight.hair`.
+- Textures: every file actually referenced by Alex's materials + the HDR used for IBL.
+
+Explicitly **do not** ship the neural-avatar PLYs (`tono.ply`, `pablo.ply`, `tony.ply`), unrelated example scene assets (`ext/Vulkan-Engine/examples/resources/`), or the four-character GLB set (`maria.glb`, `javi.glb`, `nadia.glb`). Keeps the distribution lean.
+
+Status: [ ]
+
+### Task 10: Windows packaging
+
+CMake `install()` rule to copy `vulkan-1.dll` from the Vulkan SDK runtime redistributable next to `SLViewer.exe`. Either statically link the MSVC C++ runtime (`/MT`) or document a dependency on the VC++ redistributable (preferred: `/MT` for one-folder portability).
+
+Smoke test: copy the install folder to a clean Windows machine with no Vulkan SDK, no Visual Studio, no IDE installed. Confirm `SLViewer.exe test_anim.json` produces a video.
+
+Status: [ ]
+
+### Task 11: Linux packaging
+
+Either statically link what's feasible or ship a launcher shell script that sets `LD_LIBRARY_PATH=<exe_dir>/lib/` before exec-ing the real binary. Bundle `libvulkan.so.1` so the binary doesn't depend on a Vulkan loader being installed on the host. Mark the ffmpeg and SLViewer binaries executable in the install rules.
+
+Smoke test: copy the install folder to a clean Ubuntu LTS without the Vulkan SDK and confirm `./SLViewer test_anim.json` produces a video.
+
+Status: [ ]
+
+### Task 12: End-to-end smoke test
+
+On each platform:
+
+1. `cmake --install build --prefix SLViewer-<platform>/` produces the distribution folder.
+2. Copy it to a clean directory (no source tree, no Vulkan SDK, no IDE).
+3. Drop `test_anim.json` (the existing combined morph + skeletal animation) next to the binary.
+4. Run `./SLViewer test_anim.json`.
+
+Expected: `test_anim.mp4` appears next to the JSON, ~4 s long at 30 fps and 1080p, showing the Alex character playing the morph + skeletal animation. Process exits 0. Temp dir is gone.
+
+Status: [ ]
+
+### Files Summary
+
+| Action | File | Purpose |
+|--------|------|---------|
+| Create | `src/slviewer/main.cpp` | Argument parsing, animation load, top-level orchestration |
+| Create | `src/slviewer/application_sl.h` + `.cpp` | Headless Alex scene + animation playback + frame capture |
+| Create | `src/slviewer/frame_capture.h` + `.cpp` | Swapchain readback + PNG writer wrapper |
+| Create | `src/slviewer/video_encoder.h` + `.cpp` | ffmpeg subprocess invocation |
+| Create | `src/slviewer/resource_paths.h` + `.cpp` | Exe-dir lookup, runtime resources-path override |
+| Modify | `CMakeLists.txt` (root) | New `SLViewer` target + `install()` rules for resources, ffmpeg, runtime DLLs |
+| Modify | `ext/Vulkan-Engine/` (loaders / globals) | Runtime override for the compile-time `ENGINE_RESOURCES_PATH` macro |
+| Add | `thirdparty/stb/stb_image_write.h` (if absent) | PNG encoding |
+| Add | `thirdparty/ffmpeg/{windows,linux}/ffmpeg[.exe]` (or CMake fetch script) | Bundled encoder |
+| Add | `THIRD_PARTY_NOTICES.txt` | ffmpeg license attribution |
+
+### Files Summary
+
+| Action | File | Purpose |
+|--------|------|---------|
+| Create | `src/slviewer/main.cpp` | Argument parsing, animation-driven main loop |
+| Create | `src/slviewer/application_sl.h` + `.cpp` | Headless Alex scene + animation playback + frame capture |
+| Create | `src/slviewer/frame_capture.h` + `.cpp` | Swapchain readback + PNG writer wrapper |
+| Create | `src/slviewer/video_encoder.h` + `.cpp` | ffmpeg subprocess invocation |
+| Create | `src/slviewer/resource_paths.h` + `.cpp` | Exe-dir lookup, resource path resolution |
+| Modify | `CMakeLists.txt` (root) | New `SLViewer` target + `install()` rules for resources, ffmpeg, runtime DLLs |
+| Add | `thirdparty/stb/stb_image_write.h` (if absent) | PNG encoding |
+| Add | `thirdparty/ffmpeg/{windows,linux}/ffmpeg[.exe]` (or CMake fetch script) | Bundled encoder |
+| Add | `THIRD_PARTY_NOTICES.txt` | ffmpeg license attribution |
+
+### Risks & Notes
+
+- **Engine resource paths are compile-time macros.** `ENGINE_RESOURCES_PATH` and friends are baked in via `add_compile_definitions` at configure time. To redirect them at runtime, either (a) introduce a runtime override (a `std::string` consulted by the engine before falling back to the macro) or (b) compile the engine with a sentinel and resolve it at startup. Option (a) is the cleaner of the two — flagged as part of Task 3.
+- **Hidden window vs pure offscreen.** GLFW hidden windows still require a display server on Linux. If we want to render on a true headless machine (CI, server), we'll eventually need the pure-offscreen path. Out of scope for v1 but worth keeping in mind for Task 4's design.
+- **Swapchain readback timing.** `vkCmdCopyImageToBuffer` must happen after the final pass's color attachment finishes and before present (or after present using a fence). The simplest correct path is: render → barrier to `TRANSFER_SRC_OPTIMAL` → copy → barrier back → present → wait on fence → map staging buffer. Costs one extra synchronization per frame but keeps the loop deterministic.
+- **ffmpeg distribution license.** Static LGPL builds are redistributable with attribution; GPL builds (with x264/x265) impose stronger requirements. Verify the bundled binary's license matches what we can ship and document it.
+- **Animation must terminate.** The current `Animation::sample()` supports looping. For SLViewer the loop must be disabled (or the runner must stop after `duration` seconds regardless). Either set a non-loop flag on the loaded Animation or have the frame loop count down independently. Pick the simpler — frame countdown in the main loop.
+- **Color space.** The forward chain ends in an SRGB swapchain. PNGs are gamma-encoded by stb. Confirm we read back the post-tonemap, post-FXAA image and that the byte values are already sRGB-encoded — otherwise the video will look washed out.
+- **No GUI dependency.** `gui.h/cpp` pulls ImGui. Compile-gate it out of the SLViewer target to keep the binary lean and to avoid initializing ImGui font atlases / descriptor pools we never use.
+
+---

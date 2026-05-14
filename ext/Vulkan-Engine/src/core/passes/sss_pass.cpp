@@ -152,7 +152,7 @@ void SSSPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
 
 void SSSPass::setup_shader_passes() {
     GraphicShaderPass* sssPass = new GraphicShaderPass(
-        m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/misc/ssss.glsl");
+        m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/misc/ssss.glsl");
     sssPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}};
     // Two color attachments: att 0 = scattered HDR, att 1 = bright pass-through
     sssPass->graphicSettings.blendAttachments = {Init::color_blend_attachment_state(false),

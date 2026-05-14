@@ -22,11 +22,15 @@ class WindowGLFW : public IWindow
 {
   private:
     GLFWwindow* m_handle{nullptr};
+    bool        m_visibleHint{true};
 
   public:
     WindowGLFW(const std::string t, uint32_t w, uint32_t h, bool resizable = true, bool fullscreen = false)
         : IWindow(t, w, h, resizable, fullscreen) {
     }
+
+    // Must be called before init(). Pass false for headless/offscreen rendering.
+    inline void set_visible_hint(bool visible) { m_visibleHint = visible; }
 
     void init();
 

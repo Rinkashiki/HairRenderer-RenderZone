@@ -108,7 +108,7 @@ void ShadowPass::setup_shader_passes() {
     gfxSettings.blendAttachments = {};
 
     GraphicShaderPass* depthPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/shadows/shadows_geom.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/shadows/shadows_geom.glsl");
     depthPass->settings        = settings;
     depthPass->graphicSettings = gfxSettings;
     depthPass->build_shader_stages();
@@ -116,7 +116,7 @@ void ShadowPass::setup_shader_passes() {
     m_shaderPasses[0] = depthPass;
 
     GraphicShaderPass* depthLinePass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/shadows/shadows_line_geom.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/shadows/shadows_line_geom.glsl");
     depthLinePass->settings                    = settings;
     depthLinePass->graphicSettings             = gfxSettings;
     depthLinePass->graphicSettings.topology    = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
@@ -127,7 +127,7 @@ void ShadowPass::setup_shader_passes() {
 
     // [2] Alpha-tested triangles — hair cards (reads opacity from texture, discards transparent fragments)
     GraphicShaderPass* depthHairCardPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/shadows/shadows_alpha_geom.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/shadows/shadows_alpha_geom.glsl");
     depthHairCardPass->settings        = settings;
     depthHairCardPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     depthHairCardPass->graphicSettings = gfxSettings;

@@ -9,6 +9,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include <engine/engine_config.h>
+
 #ifdef _WIN32
 // Windows-specific includes and definitions
 #define VK_USE_PLATFORM_WIN32_KHR

@@ -98,7 +98,7 @@ void VarianceShadowPass::setup_shader_passes() {
     // settings.blendAttachments       = {};
 
     GraphicShaderPass* depthPass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/shadows/vsm_geom.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/shadows/vsm_geom.glsl");
     depthPass->settings        = settings;
     depthPass->graphicSettings = gfxSettings;
     depthPass->build_shader_stages();
@@ -106,7 +106,7 @@ void VarianceShadowPass::setup_shader_passes() {
     m_shaderPasses[0] = depthPass;
 
     GraphicShaderPass* depthLinePass =
-        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, ENGINE_RESOURCES_PATH "shaders/shadows/vsm_line_geom.glsl");
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/shadows/vsm_line_geom.glsl");
     depthLinePass->settings                    = settings;
     depthLinePass->graphicSettings             = gfxSettings;
     depthLinePass->graphicSettings.topology    = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;

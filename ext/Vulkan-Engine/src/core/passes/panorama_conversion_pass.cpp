@@ -41,7 +41,7 @@ void PanoramaConverterPass::setup_shader_passes() {
         new GraphicShaderPass(m_device->get_handle(),
                               m_renderpass,
                               m_imageExtent,
-                              ENGINE_RESOURCES_PATH "shaders/misc/panorama_converter.glsl");
+                              get_engine_resources_path() + "shaders/misc/panorama_converter.glsl");
     converterPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}};
     converterPass->graphicSettings.attributes      = {{POSITION_ATTRIBUTE, true},
                                                       {NORMAL_ATTRIBUTE, false},
