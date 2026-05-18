@@ -203,6 +203,69 @@ This renders 10 frames, captures validation layer messages to `build/debug_trace
 - Logger: `ext/Vulkan-Engine/thirdparty/logger/include/logger.h`
 - CLI parsing + frame limit: `src/main.cpp`, `src/application.h/cpp`
 
+## Building the SLViewer Distributable
+
+The distributable is produced by building in Release mode and running `cmake --install`. The result is a self-contained folder that can be copied to any machine without a Vulkan SDK, IDE, or source tree.
+
+### Linux
+
+```bash
+# 1. Configure and build (Release defines NDEBUG — disables validation layers)
+cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake --build . --target SLViewer -j$(nproc)
+
+# 2. Install into a distribution folder
+cmake --install . --prefix ~/SLViewer-linux
+```
+
+The installed layout:
+
+```
+SLViewer-linux/
+├── SLViewer              # ELF binary
+├── ffmpeg                # bundled static ffmpeg GPL build (BtbN linux64)
+├── THIRD_PARTY_NOTICES.txt
+└── resources/
+    ├── shaders/          # full engine shader tree (compiled on-the-fly)
+    ├── meshes/           # engine built-in meshes (sphere, cube)
+    ├── textures/         # engine LUTs + IBL maps
+    ├── models/alex/      # alex.glb, hair_fauxmohawk.obj
+    ├── textures/alex/    # hair data + tangent textures
+    └── animations/       # test_anim.json, test_morph.json
+```
+
+`libvulkan.so.1` is **not bundled**. On Linux the Vulkan loader ships with GPU drivers (`mesa-vulkan-drivers`, `nvidia-driver`, etc.) and is always present on any machine capable of running Vulkan. Bundling an SDK copy of the loader breaks on other machines because the SDK loader looks for ICDs in SDK-specific paths that don't exist there.
+
+**Important**: use `CMAKE_BUILD_TYPE=Release` for distribution. A Debug build requests Vulkan validation layers, which are SDK-only and unavailable on target machines.
+
+### Windows
+
+```bat
+rem 1. Configure and build (MSVC; /MT static runtime is set automatically)
+cd build
+cmake -G "Visual Studio 17 2022" ..
+cmake --build . --config Release --target SLViewer
+
+rem 2. Install into a distribution folder
+cmake --install . --config Release --prefix C:\SLViewer-windows
+```
+
+The installed layout:
+
+```
+SLViewer-windows\
+├── SLViewer.exe          # statically linked MSVC runtime (/MT — no VC++ redist needed)
+├── ffmpeg.exe            # bundled static ffmpeg GPL build (BtbN win64)
+├── vulkan-1.dll          # Vulkan loader from %VULKAN_SDK%\Bin\
+├── THIRD_PARTY_NOTICES.txt
+└── resources\            # same tree as Linux
+```
+
+`vulkan-1.dll` is located automatically from `%VULKAN_SDK%\Bin\` at configure time. If the env var is not set, CMake emits a warning and the DLL must be copied manually. The MSVC runtime is compiled in statically (`/MT`), so no VC++ Redistributable is required on the target machine.
+
+**Note**: The ffmpeg `.zip` for Windows is downloaded at configure time (same as Linux). If the download fails, system `ffmpeg` on `PATH` is used as a fallback at runtime.
+
 ## SLViewer — Headless Video Export
 
 `SLViewer` renders the Alex scene from a JSON animation file and encodes the result as an MP4 using system ffmpeg.

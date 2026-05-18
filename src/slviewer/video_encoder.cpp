@@ -7,7 +7,8 @@
 
 void VideoEncoder::encode(const std::filesystem::path& framesDir,
                           const std::string&           outputPath,
-                          float                        fps)
+                          float                        fps,
+                          const std::string&           ffmpegExe)
 {
     int fpsi = static_cast<int>(std::round(fps));
     if (fpsi <= 0)
@@ -16,12 +17,12 @@ void VideoEncoder::encode(const std::filesystem::path& framesDir,
     const std::string inputPattern = (framesDir / "frame_%05d.png").string();
 
 #ifdef _WIN32
-    std::string cmd = "ffmpeg -y -framerate " + std::to_string(fpsi) +
+    std::string cmd = "\"" + ffmpegExe + "\" -y -framerate " + std::to_string(fpsi) +
                       " -i \"" + inputPattern + "\"" +
                       " -c:v libx264 -pix_fmt yuv420p -crf 18" +
                       " \"" + outputPath + "\"";
 #else
-    std::string cmd = "ffmpeg -y -framerate " + std::to_string(fpsi) +
+    std::string cmd = "'" + ffmpegExe + "' -y -framerate " + std::to_string(fpsi) +
                       " -i '" + inputPattern + "'" +
                       " -c:v libx264 -pix_fmt yuv420p -crf 18" +
                       " '" + outputPath + "'";

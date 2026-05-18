@@ -1,4 +1,5 @@
 #include "application_sl.h"
+#include "resource_paths.h"
 
 #include <engine/core/animation_json.h>
 #include <engine/core/windows/windowGLFW.h>
@@ -49,7 +50,7 @@ void SLApplication::run(const std::string& animPath,
     m_renderer->shutdown(m_scene);
 
     try {
-        VideoEncoder::encode(m_tempDir, m_outputPath, m_fps);
+        VideoEncoder::encode(m_tempDir, m_outputPath, m_fps, get_ffmpeg_path());
     } catch (const std::exception& e) {
         LOG_ERROR(std::string("Video encoding failed: ") + e.what());
         m_keepFrames = true;  // retain frames so the user can diagnose

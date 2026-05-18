@@ -5,6 +5,10 @@
 // Falls back to "./" on error.
 std::string get_exe_dir();
 
+// Returns <exe_dir>/ffmpeg if a bundled binary exists there; otherwise returns "ffmpeg"
+// so the caller falls back to whatever is on PATH.
+std::string get_ffmpeg_path();
+
 // Probes for the resource root in this order:
 //   1. <exe_dir>/resources/           — deployed package layout
 //   2. <exe_dir>/../resources/        — dev build (binary in build/ one level below project root)

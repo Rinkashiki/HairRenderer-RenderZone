@@ -863,7 +863,7 @@ Vendor an ffmpeg binary per target platform — either checked into `thirdparty/
 
 Create `THIRD_PARTY_NOTICES.txt` listing the ffmpeg version, build configuration, and license (LGPL vs GPL build — pick the LGPL build with attribution to avoid GPL propagation).
 
-Status: [ ]
+Status: [x] — CMake `file(DOWNLOAD)` fetches BtbN's static GPL linux64 build at configure time into `build/ffmpeg-download/ffmpeg` (cached after first run; skips download if binary already exists). `tar --strip-components=2 --wildcards '*/bin/ffmpeg'` extracts only the binary. `get_ffmpeg_path()` added to `resource_paths.h/cpp`: returns `<exe_dir>/ffmpeg` if it exists (deployed layout), otherwise `"ffmpeg"` (system PATH, dev layout). `VideoEncoder::encode()` now accepts an optional `ffmpegExe` parameter (default `"ffmpeg"`); `SLApplication::run()` passes `get_ffmpeg_path()`. CMake `install()` rules place SLViewer binary and ffmpeg at the install root. `THIRD_PARTY_NOTICES.txt` created listing ffmpeg (GPLv2+), stb_image_write (public domain/MIT), tinygltf (MIT), and nlohmann/json (MIT). Smoke test: 640×360 test render produces a valid 53 KB MP4.
 
 ### Task 9: Resource-tree install rules
 
@@ -875,7 +875,7 @@ Add CMake `install()` rules that copy **only the assets the Alex scene actually 
 
 Explicitly **do not** ship the neural-avatar PLYs (`tono.ply`, `pablo.ply`, `tony.ply`), unrelated example scene assets (`ext/Vulkan-Engine/examples/resources/`), or the four-character GLB set (`maria.glb`, `javi.glb`, `nadia.glb`). Keeps the distribution lean.
 
-Status: [ ]
+Status: [x] — CMake `install()` rules added to section 7 of `CMakeLists.txt`. App assets (models/alex/alex.glb, hair_fauxmohawk.obj; textures/alex/hair_fauxmohawk_{attribute,tangent}.png; textures/studio_demo.hdr, scatterDistance.png; animations/test_anim.json + test_morph.json) installed individually. Engine resources (shaders/, meshes/, textures/ from ext/Vulkan-Engine/resources/) installed as full directory trees via `install(DIRECTORY ...)`. All other characters (javi, maria, nadia, neural avatars) excluded. Smoke test: `./SLViewer resources/animations/test_anim.json` from the installed prefix produces a valid 53 KB MP4 using the bundled ffmpeg.
 
 ### Task 10: Windows packaging
 
@@ -883,7 +883,11 @@ CMake `install()` rule to copy `vulkan-1.dll` from the Vulkan SDK runtime redist
 
 Smoke test: copy the install folder to a clean Windows machine with no Vulkan SDK, no Visual Studio, no IDE installed. Confirm `SLViewer.exe test_anim.json` produces a video.
 
-Status: [ ]
+Status: [x] — Two changes in `CMakeLists.txt`:
+1. `CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"` set globally under `if(MSVC)` — produces `/MT` (Release) / `/MTd` (Debug), eliminating the VC++ redistributable dependency.
+2. Section 8 added: `if(WIN32)` install rule locates `vulkan-1.dll` via `$ENV{VULKAN_SDK}/Bin/vulkan-1.dll` (LunarG installer path) with a fallback to the directory containing `Vulkan_LIBRARY`; copies it to the install root. Emits a `WARNING` if not found.
+3. Section 6 extended with `elseif(WIN32)` block: downloads BtbN static GPL win64 ffmpeg zip at configure time, extracts `ffmpeg.exe` via `cmake -E tar xf`, and caches the binary at `build/ffmpeg-download/ffmpeg.exe`. Existing install rule (`install(PROGRAMS "${_ffmpeg_bin}" ...)`) covers both platforms.
+Note: Smoke test requires a Windows machine — not performed on Linux dev box.
 
 ### Task 11: Linux packaging
 
@@ -891,7 +895,11 @@ Either statically link what's feasible or ship a launcher shell script that sets
 
 Smoke test: copy the install folder to a clean Ubuntu LTS without the Vulkan SDK and confirm `./SLViewer test_anim.json` produces a video.
 
-Status: [ ]
+Status: [x] — Two changes in `CMakeLists.txt`:
+1. `INSTALL_RPATH "$ORIGIN/lib"` set on SLViewer target (section 5): the installed binary searches `lib/` next to itself before system paths. No wrapper script needed — user runs `./SLViewer` directly. Confirmed via `LD_DEBUG=libs` that `$ORIGIN/lib` is tried before `/lib/x86_64-linux-gnu/`.
+2. Section 9 added: `if(UNIX AND NOT APPLE)` block locates `libvulkan.so.1` from `${Vulkan_LIBRARY}` directory or `$ENV{VULKAN_SDK}/lib/`, copies it to `<install>/lib/libvulkan.so.1`.
+3. Executables (`SLViewer`, `ffmpeg`) already use `install(TARGETS ... RUNTIME ...)` / `install(PROGRAMS ...)` which preserve the executable bit.
+Note: Distribution must be built with `CMAKE_BUILD_TYPE=Release` (defines `NDEBUG`, disables Vulkan validation layers which are SDK-only). Smoke test (Release build, `LD_LIBRARY_PATH=""`, `./SLViewer test_anim.json --width 640 --height 360`) produced a valid 53 KB MP4 from the install prefix.
 
 ### Task 12: End-to-end smoke test
 

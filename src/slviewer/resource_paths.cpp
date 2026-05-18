@@ -28,6 +28,13 @@ std::string get_exe_dir() {
 #endif
 }
 
+std::string get_ffmpeg_path() {
+    std::string bundled = get_exe_dir() + "ffmpeg";
+    if (std::filesystem::exists(bundled))
+        return bundled;
+    return "ffmpeg";
+}
+
 std::string discover_resources_path() {
     std::string exeDir = get_exe_dir();
 
