@@ -8,9 +8,9 @@ The engine parses a JSON file into an internal `Animation` IR (Intermediate Repr
 
 | Path | Purpose |
 |------|---------|
-| `src/animation.h` | IR types: `Animation`, `Track`, `Keyframe`, enums. |
-| `src/animation_json.h` | JSON adapter interface + loader entry point. |
-| `src/animation_json.cpp` | Default parser implementation. |
+| `ext/Vulkan-Engine/include/engine/core/animation.h` | IR types: `Animation`, `Track`, `Keyframe`, enums. |
+| `ext/Vulkan-Engine/include/engine/core/animation_json.h` | JSON adapter interface + loader entry point. |
+| `ext/Vulkan-Engine/src/core/animation_json.cpp` | Default parser implementation. |
 | `src/application.cpp` (around lines 117–127) | Where the animation is loaded and attached to the character mesh. |
 
 Loading entry point:

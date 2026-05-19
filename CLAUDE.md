@@ -310,3 +310,60 @@ This renders 120 frames (4 s × 30 fps) headlessly, writes PNGs to a temp dir (`
 - If ffmpeg fails, the temp PNG dump is retained automatically for diagnosis.
 - Validation layer errors shown in the log from the IBL/scatter pass are pre-existing and not caused by the capture path.
 - The resources path (models, textures, HDR) is auto-discovered relative to the executable via `discover_resources_path()` — no extra flags needed.
+
+## AMASS → Animation JSON Converter
+
+`tools/amass_to_json.py` converts AMASS / SMPL-X motion-capture `.npz` files
+into the engine's animation JSON (see `ANIMATION.md`).
+
+The Alex GLB rig is a verbatim SMPL-X 55-joint skeleton (identical joint names
+and ordering), so conversion is a **direct skeletal retarget** — no joint
+remapping. The script is **numpy-only**: it does not need the SMPL-X model,
+identity betas, `torch`, or the `smplx` package (those only generate mesh
+vertices; the engine does the skinning from the emitted joint tracks). AMASS
+body mocap carries no facial expression animation, so no `morph:` tracks are
+produced.
+
+### Prerequisites
+
+- Python 3 with `numpy`. No other dependencies.
+
+### Usage
+
+```bash
+# Single file (writes Stefanos_....json next to the .npz)
+python3 tools/amass_to_json.py path/to/clip_stageii.npz
+
+# Explicit output path, into the engine's animations dir
+python3 tools/amass_to_json.py clip_stageii.npz resources/animations/dance.json
+
+# Batch a directory tree (recursive); mirrors structure into the out dir
+python3 tools/amass_to_json.py amass_DanceDB/ resources/animations/danceDB/
+```
+
+| Argument / flag | Default | Description |
+|-----------------|---------|-------------|
+| `INPUT` | (required) | An AMASS `.npz`, or a directory (batch all `*.npz`, recursive). |
+| `OUTPUT` | next to input | `.json` path, or a directory to write into. |
+| `--channels body,hands,face` | all three | Comma list of joint groups to emit. `body` also covers the pelvis. |
+| `--fps N` | `30` | Output sample rate. Source (usually 120 fps) is decimated; real wall-clock timing is preserved. |
+| `--no-root-motion` | off (root motion **on**) | Drop the `joint:pelvis/translation` track (animate in place). |
+| `--no-up-convert` | off (convert **on**) | Skip the Z-up→Y-up root rotation. AMASS is Z-up; the rig is Y-up — leave conversion on unless the character appears lying down. |
+| `--loop` | off (`"loop": false`) | AMASS clips are one-shot; set this to loop playback. |
+| `--keep-static` | off | Keep rotation tracks that never leave the rest pose (default drops them to shrink files). |
+| `--name NAME` | input file stem | Override the animation `name` field. |
+
+### Notes
+
+- DanceDB folders contain a `*_stagei.npz` **shape-only** identity file (no
+  motion) alongside the `*_stageii.npz` motion clips. The shape files have no
+  `trans`/pose arrays; batch mode **skips them with a warning** — this is
+  expected, not an error.
+- Both AMASS layouts are handled: split arrays (`root_orient`, `pose_body`,
+  `pose_hand`, `pose_jaw`, `pose_eye`) when present, else the SMPL-X
+  `poses` (165) block is sliced.
+- Files are dense per-frame mocap: an 80 s clip at 30 fps with hands ≈ several
+  MB. Shrink with `--channels body`, a lower `--fps`, or `--no-root-motion`.
+- Output is sanity-checkable: every rotation key is `[t, [x,y,z,w]]` with a
+  unit-norm quaternion; load any result with `SLViewer` or the interactive
+  `HairViewer` to verify visually.
