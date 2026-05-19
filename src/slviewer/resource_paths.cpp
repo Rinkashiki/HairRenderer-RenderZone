@@ -29,10 +29,15 @@ std::string get_exe_dir() {
 }
 
 std::string get_ffmpeg_path() {
-    std::string bundled = get_exe_dir() + "ffmpeg";
+#ifdef _WIN32
+    const std::string exeName = "ffmpeg.exe";
+#else
+    const std::string exeName = "ffmpeg";
+#endif
+    std::string bundled = get_exe_dir() + exeName;
     if (std::filesystem::exists(bundled))
         return bundled;
-    return "ffmpeg";
+    return exeName;  // fall back to PATH lookup
 }
 
 std::string discover_resources_path() {

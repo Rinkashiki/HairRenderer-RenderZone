@@ -21,6 +21,11 @@ void VideoEncoder::encode(const std::filesystem::path& framesDir,
                       " -i \"" + inputPattern + "\"" +
                       " -c:v libx264 -pix_fmt yuv420p -crf 18" +
                       " \"" + outputPath + "\"";
+    // std::system() runs `cmd.exe /c <cmd>`. When the string starts with a quote
+    // and contains several quoted tokens, cmd.exe strips the outermost quote pair
+    // and corrupts the path (see `cmd /?`). Wrapping the whole line in one extra
+    // pair of quotes makes the inner quoting survive intact.
+    cmd = "\"" + cmd + "\"";
 #else
     std::string cmd = "'" + ffmpegExe + "' -y -framerate " + std::to_string(fpsi) +
                       " -i '" + inputPattern + "'" +

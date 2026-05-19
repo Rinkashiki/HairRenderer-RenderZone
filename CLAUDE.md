@@ -303,7 +303,7 @@ SLViewer-windows\
            --log-level warn
 ```
 
-This renders 120 frames (4 s × 30 fps) headlessly, writes PNGs to a temp dir (`/tmp/slviewer_<pid>/`), encodes them with ffmpeg (`libx264`, `yuv420p`, `crf 18`), and deletes the temp dir on success.
+This renders 120 frames (4 s × 30 fps) headlessly, writes PNGs to a temp dir (`std::filesystem::temp_directory_path()/slviewer_<pid>/` — e.g. `/tmp/slviewer_<pid>/` on Linux, `%TEMP%\slviewer_<pid>\` on Windows), encodes them with ffmpeg (`libx264`, `yuv420p`, `crf 18`), and deletes the temp dir on success.
 
 ### Notes
 
