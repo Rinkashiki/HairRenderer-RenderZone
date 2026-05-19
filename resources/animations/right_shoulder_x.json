@@ -1,0 +1,17 @@
+{
+  "name": "test_anim",
+  "duration": 2.0,
+  "fps": 30,
+  "loop": true,
+  "tracks": [
+    {
+      "target": "joint:right_shoulder/rotation",
+      "interp": "linear",
+      "keys": [
+        [0.0,  [0.000,  0.000, 0.000, 1.000]],
+        [1.0,  [0.383,  0.000, 0.000, 0.924]],
+        [2.0,  [0.000,  0.000, 0.000, 1.000]]
+      ]
+    }
+  ]
+}

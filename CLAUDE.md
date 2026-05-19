@@ -106,6 +106,9 @@ All loading goes through `Tools::Loaders::load_3D_file()` (`ext/Vulkan-Engine/sr
 
 Loaded data flows: `Vertex[]` + `uint32_t[]` → `Core::Geometry::fill()` → `Core::Mesh::push_geometry()` → scene.
 
+### Animation format
+
+The animations loaded are in json format. The specifics of this format and its structure are defined in detail in @ANIMATION.md
 
 ### Scene Selection
 
