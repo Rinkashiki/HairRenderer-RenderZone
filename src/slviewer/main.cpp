@@ -7,11 +7,12 @@
 int main(int argc, char* argv[]) {
     if (argc < 2)
     {
-        std::cerr << "Usage: SLViewer <animation.json> [--output out.mp4] [--width W] [--height H] [--keep-frames] [--log-level error|warn|verbose]\n";
+        std::cerr << "Usage: SLViewer <animation.json> [--scene scene.json] [--output out.mp4] [--width W] [--height H] [--keep-frames] [--log-level error|warn|verbose]\n";
         return EXIT_FAILURE;
     }
 
     std::string animPath    = argv[1];
+    std::string scenePath;  // empty → use bundled default
     std::string outputPath  = "output.mp4";
     int         width       = 1920;
     int         height      = 1080;
@@ -21,7 +22,11 @@ int main(int argc, char* argv[]) {
     for (int i = 2; i < argc; ++i)
     {
         std::string token(argv[i]);
-        if (token == "--output" && i + 1 < argc)
+        if (token == "--scene" && i + 1 < argc)
+        {
+            scenePath = argv[++i];
+        }
+        else if (token == "--output" && i + 1 < argc)
         {
             outputPath = argv[++i];
         }
@@ -63,7 +68,7 @@ int main(int argc, char* argv[]) {
 
     try {
         SLApplication app;
-        app.run(animPath, outputPath, resourcesPath, width, height, keepFrames, logLevel);
+        app.run(animPath, scenePath, outputPath, resourcesPath, width, height, keepFrames, logLevel);
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
         return EXIT_FAILURE;

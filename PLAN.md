@@ -1,6 +1,6 @@
 # Plan
 
-Forward-looking work for this project. Completed features are tracked in git history; reference docs live in `CLAUDE.md` and `ANIMATION.md`.
+Forward-looking work for this project. Completed features are tracked in git history; reference docs live in `CLAUDE.md`, `ANIMATION.md`, and `SCENE.md`.
 
 ---
 
@@ -21,6 +21,27 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### Scene definition → JSON (2026-05-20)
+
+Replaced the duplicated hardcoded `setup()` bodies in `src/application.cpp` (HairViewer) and `src/slviewer/application_sl.cpp` (SLViewer) — previously a `#ifdef USE_GLB_MODELS / LOAD_ALEX|JAVI|MARIA|NADIA / USE_NEURAL_MODELS` ladder — with a JSON scene format loaded at runtime. Both viewers ship `resources/scenes/default.json` (current Alex configuration); SLViewer adds `--scene <path>`. The old C++ paths remain compiled behind `#define USE_HARDCODED_SCENE` as a fallback.
+
+**Shipped:**
+- `src/scene_loader.{h,cpp}` — application-layer parser (linked by both targets). Broad schema covering all material classes (`pbr`/`haircard`/`hairepic`/`hair`/`hairdisney`/`unlit`), `point`/`directional` lights, mesh types `glb`/`obj`/`ply`/`hair`/`neural_hair`, nested `children`, skybox, ambient, fog, SSS LUT. Tolerates unknown keys (warn), hard-fails on missing required ones.
+- `resources/scenes/default.json` (Alex) plus `javi.json`, `maria.json`, `nadia.json`, `neural_tono.json`, `bust_strands.json` — exercise the broad schema across all variants previously gated by `#ifdef`s.
+- SLViewer CLI: `SLViewer <animation.json> [--scene S.json] [other flags]`. Animation arg always overrides the first mesh's `animation` field (or the first skinned mesh if none has one); warning if neither exists.
+- `SCENE.md` documents the full schema; `CLAUDE.md` updated.
+- CMake: `scene_loader.cpp` + `hair_loader.cpp` explicitly added to SLViewer source list; `resources/scenes` directory installed.
+
+**Issues found + decisions:**
+- *Animation in two places confused the override semantics.* Resolved by making the per-mesh `animation` field **optional** (option b). SLViewer-targeted scenes can omit it; HairViewer scenes (and `default.json`) keep it because HairViewer has no animation CLI flag.
+- *GLB-embedded textures need a sentinel.* Materials reference GLB-embedded textures via `"$GLB[N]"` (resolves to the Nth element of the GLB's `outTextures` vector). Plain strings are paths relative to the resources root.
+- *Children support added late.* Neural avatars parent hair to head — required nesting. `build_mesh` now recurses through `children`, transforms inherit through the engine's existing `Object3D` hierarchy.
+- *Frame budget for SLViewer.* When the animation comes from the CLI override (not the scene), the loader doesn't surface duration/fps to SLViewer. Resolved by re-reading the animation JSON header (a few hundred bytes) in `SLApplication::setup()`.
+
+**Verified:** Debug `HairViewer --frames 10 --log-level warn` produced an empty `debug_trace.log` (clean). Release `SLViewer test_anim.json` renders 120 frames and encodes a valid MP4. `--scene javi.json|maria.json|nadia.json|neural_tono.json|bust_strands.json` all load and render without errors.
+
+---
 
 ### SLViewer — Windows ffmpeg export fix + local smoke test (2026-05-19)
 

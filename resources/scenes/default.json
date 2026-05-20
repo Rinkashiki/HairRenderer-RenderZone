@@ -1,0 +1,74 @@
+{
+  "name": "alex_default",
+
+  "camera": {
+    "position": [0.0, 0.0, -16.0],
+    "near":     0.1,
+    "far":      100.0,
+    "fov":      40.0
+  },
+
+  "lights": [
+    {
+      "type":           "point",
+      "name":           "PointLight",
+      "position":       [-5.0, 1.0, -5.0],
+      "intensity":      1.0,
+      "shadow_fov":     120.0,
+      "shadow_bias":    0.0002,
+      "shadow_near":    0.1,
+      "area_of_effect": 30.0,
+      "dummy_mesh":     "sphere.obj"
+    }
+  ],
+
+  "meshes": [
+    {
+      "name":           "Alex",
+      "type":           "glb",
+      "file":           "models/alex/alex.glb",
+      "glb_mesh_index": 0,
+      "position":       [0.0, -12.6, 0.2],
+      "scale":          10.0,
+      "rotation":       [0.0, 180.0, 0.0],
+      "material": {
+        "type":           "pbr",
+        "albedo_texture": "$GLB[0]",
+        "albedo":         [0.8, 0.482353, 0.333333],
+        "metalness":      0.0,
+        "roughness":      0.5
+      },
+      "animation": "animations/test_anim.json"
+    },
+    {
+      "name":     "HairCards",
+      "type":     "obj",
+      "file":     "models/alex/hair_fauxmohawk.obj",
+      "position": [0.0, -11.8, 0.4],
+      "scale":    0.1,
+      "rotation": [0.0, 180.0, 0.0],
+      "material": {
+        "type":              "haircard",
+        "hair_color":        [0.05, 0.02, 0.01],
+        "hair_data_texture": "textures/alex/hair_fauxmohawk_attribute.png",
+        "tangent_texture":   "textures/alex/hair_fauxmohawk_tangent.png"
+      }
+    }
+  ],
+
+  "scene": {
+    "ambient_color":     [0.05, 0.05, 0.05],
+    "ambient_intensity": 0.1,
+    "skybox": {
+      "hdri":      "textures/studio_demo.hdr",
+      "intensity": 1.0
+    },
+    "use_ibl": true,
+    "fog":     { "enabled": false }
+  },
+
+  "renderer": {
+    "clear_color":     [0.0, 0.0, 0.0, 1.0],
+    "sss_scatter_lut": "textures/scatterDistance.png"
+  }
+}

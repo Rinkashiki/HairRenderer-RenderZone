@@ -110,20 +110,18 @@ Loaded data flows: `Vertex[]` + `uint32_t[]` → `Core::Geometry::fill()` → `C
 
 The animations loaded are in json format. The specifics of this format and its structure are defined in detail in @ANIMATION.md
 
+### Scene format
+
+Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. The bundled default is `resources/scenes/default.json`; alternative scenes (`javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`) exercise the broader schema. Both viewers retain their hardcoded `setup()` behind `#define USE_HARDCODED_SCENE` as a fallback.
+
 ### Scene Selection
 
-There is **no runtime CLI argument to switch scenes**. Each application is its own binary. The main build (`HairViewer`) is always the hair renderer.
+Scenes are JSON-driven (`resources/scenes/*.json` — see @SCENE.md).
 
-#### Within HairViewer — `USE_NEURAL_MODELS` define
+- **HairViewer** loads `resources/scenes/default.json` unconditionally. To use a different scene, either edit that file or change the path in `src/application.cpp::HairViewer::setup()`.
+- **SLViewer** accepts an optional `--scene <path>` flag; default falls back to `resources/scenes/default.json`.
 
-`src/application.cpp` line 4 has a commented-out define:
-
-```cpp
-// #define USE_NEURAL_MODELS
-```
-
-- **Disabled (default)**: loads `straight.hair` + `head.ply` + `eyes.ply` with conventional PBR/hair materials.
-- **Enabled**: calls `load_neural_avatar()` with `.ply` hair/head files (neural network-generated geometry). The specific avatar files are hardcoded in the `#ifdef` block (TONO, PABLO, TONY variants). Uncomment/swap lines there to select a different neural avatar.
+The previous C++ `#ifdef USE_GLB_MODELS / LOAD_ALEX|JAVI|MARIA|NADIA / USE_NEURAL_MODELS` ladder is retained behind `#define USE_HARDCODED_SCENE` as a fallback (see top of `src/application.cpp` and `src/slviewer/application_sl.cpp`). Default builds use the JSON path.
 
 #### Engine example applications
 
@@ -287,7 +285,8 @@ SLViewer-windows\
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `<animation.json>` | (required) | Path to the timeline JSON |
+| `<animation.json>` | (required) | Path to the timeline JSON. Overrides the scene's `animation` field on the first mesh that declares one (or on the first skinned mesh). |
+| `--scene <file.json>` | `resources/scenes/default.json` | Scene JSON. Schema in @SCENE.md. |
 | `--output <file.mp4>` | `output.mp4` | Output video path |
 | `--width N` | 1920 | Render width in pixels |
 | `--height N` | 1080 | Render height in pixels |

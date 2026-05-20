@@ -23,6 +23,7 @@ class SLApplication
 
     std::string m_resourcesPath;
     std::string m_animationPath;
+    std::string m_scenePath;  // empty → bundled resources/scenes/default.json
     std::string m_outputPath{"output.mp4"};
     int         m_width{1920};
     int         m_height{1080};
@@ -38,6 +39,7 @@ class SLApplication
 
   public:
     void run(const std::string& animPath,
+             const std::string& scenePath,
              const std::string& outputPath,
              const std::string& resourcesPath,
              int                width,

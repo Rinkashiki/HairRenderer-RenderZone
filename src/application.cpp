@@ -1,9 +1,18 @@
 #include "application.h"
+#include "scene_loader.h"
+#include <engine/engine_config.h>
 #include <filesystem>
 
+// Define USE_HARDCODED_SCENE to bypass JSON scene loading and use the original
+// `#ifdef` ladder below (Alex/Javi/Maria/Nadia GLBs, neural avatars, .hair fallback).
+// Kept as a fallback in case the JSON loader misbehaves; default path is JSON.
+// #define USE_HARDCODED_SCENE
+
+#ifdef USE_HARDCODED_SCENE
 // #define USE_NEURAL_MODELS
 #define USE_GLB_MODELS
 #define LOAD_ALEX
+#endif
 
 void HairViewer::init(Systems::RendererSettings settings) {
     m_window = new WindowGLFW("Hair Viewer", 1024, 1024);
@@ -42,6 +51,20 @@ void HairViewer::run(Systems::RendererSettings settings) {
 }
 
 void HairViewer::setup() {
+#ifndef USE_HARDCODED_SCENE
+    // JSON-driven scene path (default). See SCENE.md.
+    auto result   = scene_loader::load_scene_json(
+        RESOURCES_PATH "scenes/default.json",
+        RESOURCES_PATH,
+        VKFW::get_engine_resources_path(),
+        /*animationOverride*/ "",
+        m_renderer);
+    m_scene  = result.scene;
+    camera   = result.camera;
+
+    m_controller = new Tools::Controller(camera, m_window, ControllerMovementType::ORBITAL);
+    return;
+#else
     const std::string MESH_PATH(RESOURCES_PATH "models/");
     const std::string TEXTURE_PATH(RESOURCES_PATH "textures/");
     const std::string ENGINE_MESH_PATH(ENGINE_RESOURCES_PATH "meshes/");
@@ -352,6 +375,7 @@ void HairViewer::setup() {
     m_controller = new Tools::Controller(camera, m_window, ControllerMovementType::ORBITAL);
 
     static_cast<Systems::ForwardRenderer*>(m_renderer)->load_sss_scatter_lut(TEXTURE_PATH + "scatterDistance.png");
+#endif // USE_HARDCODED_SCENE
 }
 
 void HairViewer::update() {

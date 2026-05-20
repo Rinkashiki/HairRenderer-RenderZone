@@ -1,0 +1,73 @@
+{
+  "name": "javi",
+
+  "camera": {
+    "position": [0.0, 0.0, -16.0],
+    "near":     0.1,
+    "far":      100.0,
+    "fov":      40.0
+  },
+
+  "lights": [
+    {
+      "type":           "point",
+      "name":           "PointLight",
+      "position":       [-5.0, 1.0, -5.0],
+      "intensity":      1.0,
+      "shadow_fov":     120.0,
+      "shadow_bias":    0.0002,
+      "shadow_near":    0.1,
+      "area_of_effect": 30.0,
+      "dummy_mesh":     "sphere.obj"
+    }
+  ],
+
+  "meshes": [
+    {
+      "name":           "Javi",
+      "type":           "glb",
+      "file":           "models/javi/javi.glb",
+      "glb_mesh_index": 0,
+      "position":       [0.0, -12.6, 0.2],
+      "scale":          10.0,
+      "rotation":       [0.0, 180.0, 0.0],
+      "material": {
+        "type":           "pbr",
+        "albedo_texture": "$GLB[0]",
+        "albedo":         [0.8, 0.482353, 0.333333],
+        "metalness":      0.0,
+        "roughness":      0.5
+      }
+    },
+    {
+      "name":     "HairCards",
+      "type":     "obj",
+      "file":     "models/javi/hair_brushcut.obj",
+      "position": [0.0, -13.15, 0.3],
+      "scale":    0.1,
+      "rotation": [0.0, 180.0, 0.0],
+      "material": {
+        "type":              "haircard",
+        "hair_color":        [0.05, 0.02, 0.01],
+        "hair_data_texture": "textures/javi/hair_brushcut_attribute.png",
+        "tangent_texture":   "textures/javi/hair_brushcut_tangent.png"
+      }
+    }
+  ],
+
+  "scene": {
+    "ambient_color":     [0.05, 0.05, 0.05],
+    "ambient_intensity": 0.1,
+    "skybox": {
+      "hdri":      "textures/studio_demo.hdr",
+      "intensity": 1.0
+    },
+    "use_ibl": true,
+    "fog":     { "enabled": false }
+  },
+
+  "renderer": {
+    "clear_color":     [0.0, 0.0, 0.0, 1.0],
+    "sss_scatter_lut": "textures/scatterDistance.png"
+  }
+}

@@ -77,6 +77,16 @@ endif()
 file(GLOB_RECURSE SLVIEWER_SOURCES "src/slviewer/*.cpp")
 file(GLOB_RECURSE SLVIEWER_HEADERS "src/slviewer/*.h")
 
+# Pull in the shared scene loader and hair loader from the application layer.
+list(APPEND SLVIEWER_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_loader.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_loader.cpp"
+)
+list(APPEND SLVIEWER_HEADERS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_loader.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_loader.h"
+)
+
 add_executable(SLViewer ${SLVIEWER_SOURCES} ${SLVIEWER_HEADERS})
 
 target_link_libraries(SLViewer PRIVATE
@@ -232,6 +242,11 @@ install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/resources/animations/test_morph.json"
     DESTINATION resources/animations
 )
+
+# Scene definitions (default scene + any alternatives shipped for SLViewer's --scene flag)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/scenes"
+        DESTINATION resources
+        FILES_MATCHING PATTERN "*.json")
 
 # Engine resources — shaders (compiled on-the-fly), meshes, and textures (LUTs etc.)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/shaders"

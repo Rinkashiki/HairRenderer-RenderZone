@@ -1,8 +1,14 @@
 #include "application_sl.h"
 #include "resource_paths.h"
+#include "../scene_loader.h"
 
 #include <engine/core/animation_json.h>
 #include <engine/core/windows/windowGLFW.h>
+#include <engine/engine_config.h>
+
+// Define USE_HARDCODED_SCENE to bypass JSON scene loading and use the original
+// inline Alex scene setup. Kept as a fallback; default path is JSON.
+// #define USE_HARDCODED_SCENE
 
 #include <chrono>
 #include <cstdio>
@@ -19,6 +25,7 @@
 #endif
 
 void SLApplication::run(const std::string& animPath,
+                        const std::string& scenePath,
                         const std::string& outputPath,
                         const std::string& resourcesPath,
                         int                width,
@@ -26,6 +33,7 @@ void SLApplication::run(const std::string& animPath,
                         bool               keepFrames,
                         LogLevel           logLevel) {
     m_animationPath = animPath;
+    m_scenePath     = scenePath;
     m_outputPath    = outputPath;
     m_resourcesPath = resourcesPath;
     m_width         = width;
@@ -121,9 +129,46 @@ void SLApplication::init() {
 }
 
 void SLApplication::setup() {
+#ifndef USE_HARDCODED_SCENE
+    const std::string scenePath = m_scenePath.empty()
+        ? (m_resourcesPath + "scenes/default.json")
+        : m_scenePath;
+
+    auto result   = scene_loader::load_scene_json(
+        scenePath,
+        m_resourcesPath,
+        VKFW::get_engine_resources_path(),
+        /*animationOverride*/ m_animationPath,
+        m_renderer);
+
+    m_scene     = result.scene;
+    m_camera    = result.camera;
+    m_character = result.primaryAnimated;  // may be null if scene had no animated mesh
+
+    // Derive frame budget by re-reading the animation header (fps + duration).
+    // Cheap: the JSON header is a few hundred bytes regardless of track count.
+    m_totalFrames = 1;
+    if (!m_animationPath.empty())
+    {
+        try {
+            std::ifstream f(m_animationPath);
+            if (f.is_open()) {
+                nlohmann::json j;
+                f >> j;
+                const float fps      = j.value("fps", 30.0f);
+                const float duration = j.value("duration", 0.0f);
+                m_fps         = fps > 0.0f ? fps : 30.0f;
+                m_animDt      = 1.0f / m_fps;
+                if (duration > 0.0f)
+                    m_totalFrames = static_cast<int>(std::round(duration * m_fps));
+            }
+        } catch (...) { /* keep m_totalFrames = 1 */ }
+    }
+    return;
+#else
     const std::string MESH_PATH    = m_resourcesPath + "models/";
     const std::string TEXTURE_PATH = m_resourcesPath + "textures/";
-    const std::string ENGINE_MESH_PATH = get_engine_resources_path() + "meshes/";
+    const std::string ENGINE_MESH_PATH = VKFW::get_engine_resources_path() + "meshes/";
 
     m_camera = new Camera();
     m_camera->set_position(Vec3(0.0f, 0.0f, -16.0f));
@@ -224,6 +269,7 @@ void SLApplication::setup() {
     m_scene->enable_fog(false);
 
     static_cast<Systems::ForwardRenderer*>(m_renderer)->load_sss_scatter_lut(TEXTURE_PATH + "scatterDistance.png");
+#endif // USE_HARDCODED_SCENE
 }
 
 void SLApplication::tick() {
