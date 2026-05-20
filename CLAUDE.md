@@ -308,7 +308,6 @@ This renders 120 frames (4 s × 30 fps) headlessly, writes PNGs to a temp dir (`
 ### Notes
 
 - If ffmpeg fails, the temp PNG dump is retained automatically for diagnosis.
-- Validation layer errors shown in the log from the IBL/scatter pass are pre-existing and not caused by the capture path.
 - The resources path (models, textures, HDR) is auto-discovered relative to the executable via `discover_resources_path()` — no extra flags needed.
 
 ## AMASS → Animation JSON Converter

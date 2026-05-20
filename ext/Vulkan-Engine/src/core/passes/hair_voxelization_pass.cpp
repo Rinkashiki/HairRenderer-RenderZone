@@ -448,6 +448,21 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
         }
     }
 
+    // If no strand-hair mesh ran the in-loop transition at line ~422, the voxel
+    // volume is still in GENERAL after the clear. The forward pass binding 13
+    // expects SHADER_READ_ONLY_OPTIMAL — bring it there unconditionally so the
+    // hair-cards-only scene path stays validation-clean.
+    if (ResourceManager::HAIR_VOXEL_VOLUME.currentLayout == LAYOUT_GENERAL)
+    {
+        cmd.pipeline_barrier(ResourceManager::HAIR_VOXEL_VOLUME,
+                             LAYOUT_GENERAL,
+                             LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                             ACCESS_SHADER_WRITE,
+                             ACCESS_SHADER_READ,
+                             STAGE_COMPUTE_SHADER,
+                             STAGE_FRAGMENT_SHADER);
+    }
+
     cmd.pipeline_barrier(ResourceManager::HAIR_PERECEIVED_DENSITY_VOLUME,
                          LAYOUT_GENERAL,
                          LAYOUT_SHADER_READ_ONLY_OPTIMAL,
