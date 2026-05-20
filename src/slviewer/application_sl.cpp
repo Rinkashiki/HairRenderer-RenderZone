@@ -4,8 +4,11 @@
 #include <engine/core/animation_json.h>
 #include <engine/core/windows/windowGLFW.h>
 
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <stdexcept>
 #ifdef _WIN32
 #include <process.h>
@@ -38,19 +41,52 @@ void SLApplication::run(const std::string& animPath,
 
     init();
 
+    std::cout << "[1/2] Rendering " << m_totalFrames << " frames at "
+              << m_width << "x" << m_height << " ("
+              << m_fps << " fps)..." << std::endl;
+
+    const auto renderStart = std::chrono::steady_clock::now();
+
     while (!m_window->get_window_should_close() && m_frameIndex < m_totalFrames)
     {
         m_window->poll_events();
         tick();
         ++m_frameIndex;
+
+        // In-place progress bar — overwrites the same line with \r.
+        const int    barWidth = 30;
+        const float  progress = static_cast<float>(m_frameIndex) /
+                                static_cast<float>(m_totalFrames);
+        const int    filled   = static_cast<int>(progress * barWidth);
+        const auto   now      = std::chrono::steady_clock::now();
+        const double elapsed  = std::chrono::duration<double>(now - renderStart).count();
+        const double curFps   = (elapsed > 0.0) ? (m_frameIndex / elapsed) : 0.0;
+        const double eta      = (curFps > 0.0)
+                                    ? (m_totalFrames - m_frameIndex) / curFps
+                                    : 0.0;
+        const int    etaM     = static_cast<int>(eta) / 60;
+        const int    etaS     = static_cast<int>(eta) % 60;
+
+        std::fprintf(stdout,
+                     "\r  [%-*.*s] %d/%d (%3d%%) %.1f fps  ETA %02d:%02d ",
+                     barWidth, filled, "##############################",
+                     m_frameIndex, m_totalFrames,
+                     static_cast<int>(progress * 100.0f),
+                     curFps, etaM, etaS);
+        std::fflush(stdout);
     }
+    std::cout << std::endl;
 
     m_capture.cleanup();
 
     m_renderer->shutdown(m_scene);
 
+    std::cout << "[2/2] Encoding video with ffmpeg (this may take a moment)..."
+              << std::endl;
+
     try {
         VideoEncoder::encode(m_tempDir, m_outputPath, m_fps, get_ffmpeg_path());
+        std::cout << "Done. Video saved to: " << m_outputPath << std::endl;
     } catch (const std::exception& e) {
         LOG_ERROR(std::string("Video encoding failed: ") + e.what());
         m_keepFrames = true;  // retain frames so the user can diagnose
