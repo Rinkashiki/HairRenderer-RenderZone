@@ -44,8 +44,8 @@
       "name":     "Hair",
       "type":     "hair",
       "file":     "models/straight.hair",
-      "position": [0.0, 2.9, -0.2],
-      "scale":    0.025,
+      "position": [0.0, 2.7, 0.6],
+      "scale":    0.028,
       "rotation": [90.0, 180.0, -90.0],
       "material": {
         "type":      "hairepic",
