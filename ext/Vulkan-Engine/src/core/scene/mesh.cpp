@@ -41,11 +41,16 @@ void BoundingSphere::setup(Mesh* const mesh) {
 bool BoundingSphere::is_on_frustrum(const Frustum& frustum) const
 
 {
-    const Vec3 globalScale = obj->get_scale();
+    // Extract effective world-space scale from the full model matrix instead of
+    // the local TRS — otherwise a parented mesh (e.g. hair under a 10× character
+    // root) gets a too-small radius and gets incorrectly culled.
+    const Mat4  worldMat = obj->get_model_matrix();
+    const float sx = math::length(Vec3(worldMat[0]));
+    const float sy = math::length(Vec3(worldMat[1]));
+    const float sz = math::length(Vec3(worldMat[2]));
 
-    const Vec3 globalCenter{obj->get_model_matrix() * Vec4(center, 1.f)};
-
-    const float maxScale     = std::max(std::max(globalScale.x, globalScale.y), globalScale.z);
+    const Vec3  globalCenter{worldMat * Vec4(center, 1.f)};
+    const float maxScale     = std::max({sx, sy, sz});
     const float globalRadius = radius * maxScale;
 
     return (frustum.leftFace.get_signed_distance(globalCenter) >= -globalRadius && frustum.rightFace.get_signed_distance(globalCenter) >= -globalRadius &&
@@ -84,6 +89,24 @@ void Mesh::set_animation(std::unique_ptr<Animation> anim) {
     m_animation = std::move(anim);
     m_localTime = 0.0f;
     m_pose      = {};
+    m_worldJointMatrices.clear();
+}
+
+// Walk the joint hierarchy root-to-leaf to compose local TRS matrices into
+// mesh-local world matrices. parentIndices is sorted parent[j] < j (glTF
+// guarantee), so a single forward sweep is enough.
+static void build_world_joint_matrices(const std::vector<Mat4>& localTRS,
+                                       const std::vector<int>&  parentIndices,
+                                       std::vector<Mat4>&       out) {
+    const size_t nJoints = std::min(localTRS.size(), parentIndices.size());
+    out.assign(nJoints, Mat4(1.0f));
+    for (size_t j = 0; j < nJoints; ++j) {
+        const int parent = parentIndices[j];
+        if (parent >= 0 && parent < (int)nJoints)
+            out[j] = out[parent] * localTRS[j];
+        else
+            out[j] = localTRS[j];
+    }
 }
 
 void Mesh::advance_animation(float dtSeconds) {
@@ -103,12 +126,35 @@ void Mesh::advance_animation(float dtSeconds) {
     }
     m_animation->sample(m_localTime, *skin, *morphs, m_pose);
 
+    build_world_joint_matrices(m_pose.jointMatrices, skin->parentIndices, m_worldJointMatrices);
+
     for (auto* g : m_geometry) {
         if (!g) continue;
         const auto& props = g->get_properties();
         if (props.morphTargetData.has_value() || props.skinData.has_value())
             g->apply_deformation(m_pose.morphWeights, m_pose.jointMatrices);
     }
+}
+
+Mat4 Mesh::get_world_joint_matrix(const std::string& jointName) const {
+    // Locate this mesh's skin. Without one, no joint to return.
+    const SkinData* skin = nullptr;
+    for (auto* g : m_geometry) {
+        if (!g) continue;
+        const auto& props = g->get_properties();
+        if (props.skinData.has_value()) { skin = &*props.skinData; break; }
+    }
+    if (!skin) return Mat4(1.0f);
+
+    // Lazy populate from the bind pose so attachments work for skinned meshes
+    // that have no animation driving them (e.g. a static character scene).
+    // advance_animation() overrides this whenever an animation is playing.
+    if (m_worldJointMatrices.empty() && !skin->bindLocalMatrices.empty())
+        build_world_joint_matrices(skin->bindLocalMatrices, skin->parentIndices, m_worldJointMatrices);
+
+    for (size_t j = 0; j < skin->jointNames.size() && j < m_worldJointMatrices.size(); ++j)
+        if (skin->jointNames[j] == jointName) return m_worldJointMatrices[j];
+    return Mat4(1.0f);
 }
 
 Mesh* Mesh::clone() const {

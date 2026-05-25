@@ -238,7 +238,11 @@ class Object3D
         return m_children;
     }
 
-    // virtual set_parent(Object3D* parent){m_parent=parent;}
+    // Re-parent without inserting into the new parent's m_children — caller
+    // remains responsible for the new parent's lifetime. Useful for hooking a
+    // child into a transform-only pivot (e.g. JointAttachment) without
+    // transferring ownership.
+    virtual void set_parent(Object3D* parent) { m_parent = parent; isDirty = true; }
 
     virtual void reconcile()
     {

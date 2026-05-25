@@ -51,7 +51,8 @@
       "material": {
         "type":      "hairepic",
         "thickness": 0.0015
-      }
+      },
+      "attach_to": { "mesh": "Alex", "joint": "head" }
     },
     {
       "name":     "Hair1",
@@ -63,7 +64,8 @@
       "material": {
         "type":      "hairepic",
         "thickness": 0.0015
-      }
+      },
+      "attach_to": { "mesh": "Alex", "joint": "head" }
     }
   ],
 

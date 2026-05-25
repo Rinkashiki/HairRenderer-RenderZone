@@ -246,9 +246,25 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
         {
             if (m) // If mesh exists
             {
-                if (m->is_active() &&                                                                     // Check if is active
-                    m->get_num_geometries() > 0 &&                                                        // Check if has geometry
-                    m->get_bounding_volume()->is_on_frustrum(scene->get_active_camera()->get_frustrum())) // Check if is inside frustrum
+                const bool basicChecks = m->is_active() && m->get_num_geometries() > 0;
+                const bool inFrustum   = basicChecks && m->get_bounding_volume()->is_on_frustrum(scene->get_active_camera()->get_frustrum());
+
+                // Off-frustum, still-active meshes need their BLAS uploaded and
+                // their instance added to the TLAS — otherwise a scene with all
+                // ray-hittable meshes momentarily offscreen leaves the TLAS
+                // empty, which the RT-enabled pipeline cannot bind.
+                if (basicChecks && enableRT && m->ray_hittable())
+                {
+                    for (size_t i = 0; i < m->get_num_geometries(); i++)
+                    {
+                        Core::Geometry* g = m->get_geometry(i);
+                        upload_geometry_data(device, g, true);
+                        if (get_BLAS(g)->handle)
+                            BLASInstances.push_back({*get_BLAS(g), m->get_model_matrix()});
+                    }
+                }
+
+                if (inFrustum)
                 {
                     // Offset calculation
                     uint32_t objectOffset = currentFrame->uniformBuffers[OBJECT_LAYOUT].strideSize * mesh_idx;
@@ -259,8 +275,6 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                     objectData.otherParams2 = {m->is_selected(), m->get_bounding_volume()->center};
                     objectData.maxCoord     = objectData.model * Vec4(m->get_bounding_volume()->maxCoords, 1.0);
                     objectData.minCoord     = objectData.model * Vec4(m->get_bounding_volume()->minCoords, 1.0);
-                    // objectData.maxCoord     =  Vec4(m->get_bounding_volume()->maxCoords, 1.0);
-                    // objectData.minCoord     =  Vec4(m->get_bounding_volume()->minCoords, 1.0);
                     currentFrame->uniformBuffers[OBJECT_LAYOUT].upload_data(&objectData, sizeof(Graphics::ObjectUniforms), objectOffset);
 
                     for (size_t i = 0; i < m->get_num_geometries(); i++)
@@ -268,9 +282,6 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                         // Object vertex buffer setup
                         Core::Geometry* g = m->get_geometry(i);
                         upload_geometry_data(device, g, enableRT && m->ray_hittable());
-                        // Add BLASS to instances list
-                        if (enableRT && m->ray_hittable() && get_BLAS(g)->handle)
-                            BLASInstances.push_back({*get_BLAS(g), m->get_model_matrix()});
 
                         // Object material setup
                         Core::IMaterial* mat = m->get_material(g->get_material_ID());

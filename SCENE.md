@@ -151,6 +151,7 @@ All fields optional. `fov` is vertical field-of-view in degrees.
 | `cast_shadows` | bool | `true` | |
 | `affected_by_fog` | bool | `true` | |
 | `children` | array | `[]` | Nested meshes. Transforms inherited from this parent. |
+| `attach_to` | object | (none) | Parent this mesh to a specific joint of another mesh's skeleton — useful for hair/glasses/hats that should follow an animated bone. Shape: `{ "mesh": "<top-level mesh name>", "joint": "<joint name>" }`. The mesh's `position` / `rotation` / `scale` then act as **local offset relative to that joint**, so existing values may need re-tuning after attaching. Resolved after every mesh is built, so forward references are fine. Requires the referenced mesh to carry skinning data (i.e. a GLB with a skeleton). |
 
 ---
 

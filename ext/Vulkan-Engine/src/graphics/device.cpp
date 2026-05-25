@@ -760,10 +760,15 @@ void Device::upload_TLAS(TLAS& accel, std::vector<BLASInstance>& BLASinstances) 
     }
 
     // Create a buffer for the instances -----------------------------------------------------------
-    Buffer instanceBuffer = create_buffer(sizeof(VkAccelerationStructureInstanceKHR) * instances.size(),
+    // Defensive floor: Vulkan rejects 0-byte buffer allocations. Scenes with
+    // no ray-hittable meshes would otherwise trip VK_ERROR_OUT_OF_DEVICE_MEMORY
+    // here; with at least one slot the TLAS still builds (primitiveCount=0).
+    const size_t   instanceBytes = sizeof(VkAccelerationStructureInstanceKHR) * std::max<size_t>(1, instances.size());
+    Buffer instanceBuffer = create_buffer(instanceBytes,
                                           BUFFER_USAGE_SHADER_DEVICE_ADDRESS | BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
                                           MEMORY_PROPERTY_HOST_VISIBLE | MEMORY_PROPERTY_HOST_COHERENT);
-    instanceBuffer.upload_data(instances.data(), sizeof(VkAccelerationStructureInstanceKHR) * instances.size());
+    if (!instances.empty())
+        instanceBuffer.upload_data(instances.data(), sizeof(VkAccelerationStructureInstanceKHR) * instances.size());
 
     VkDeviceOrHostAddressConstKHR instanceDataDeviceAddress{};
     instanceDataDeviceAddress.deviceAddress = instanceBuffer.get_device_address();
@@ -793,15 +798,20 @@ void Device::upload_TLAS(TLAS& accel, std::vector<BLASInstance>& BLASinstances) 
                                          &accelerationStructureBuildSizesInfo);
 
     // CREATE ACCELERATION BUFFER
+    // Drivers may return size 0 when primitiveCount == 0; clamp to keep the
+    // Vulkan buffer allocation valid so the empty TLAS can still be bound.
     if (!accel.handle)
-        accel.buffer = create_buffer(accelerationStructureBuildSizesInfo.accelerationStructureSize,
+    {
+        VkDeviceSize accelSize = std::max<VkDeviceSize>(1, accelerationStructureBuildSizesInfo.accelerationStructureSize);
+        accel.buffer = create_buffer(accelSize,
                                      BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE | BUFFER_USAGE_SHADER_DEVICE_ADDRESS,
                                      MEMORY_PROPERTY_DEVICE_LOCAL);
+    }
 
     VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
     accelerationStructureCreateInfo.sType  = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
     accelerationStructureCreateInfo.buffer = accel.buffer.handle;
-    accelerationStructureCreateInfo.size   = accelerationStructureBuildSizesInfo.accelerationStructureSize;
+    accelerationStructureCreateInfo.size   = std::max<VkDeviceSize>(1, accelerationStructureBuildSizesInfo.accelerationStructureSize);
     accelerationStructureCreateInfo.type   = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
     if (vkCreateAccelerationStructure(m_handle, &accelerationStructureCreateInfo, nullptr, &accel.handle) != VK_SUCCESS)
@@ -811,7 +821,7 @@ void Device::upload_TLAS(TLAS& accel, std::vector<BLASInstance>& BLASinstances) 
 
     // Create a small scratch buffer used during build of the bottom level acceleration structure
     Buffer scratchBuffer = create_buffer(
-        accelerationStructureBuildSizesInfo.buildScratchSize, BUFFER_USAGE_STORAGE_BUFFER | BUFFER_USAGE_SHADER_DEVICE_ADDRESS, MEMORY_PROPERTY_DEVICE_LOCAL);
+        std::max<VkDeviceSize>(1, accelerationStructureBuildSizesInfo.buildScratchSize), BUFFER_USAGE_STORAGE_BUFFER | BUFFER_USAGE_SHADER_DEVICE_ADDRESS, MEMORY_PROPERTY_DEVICE_LOCAL);
 
     VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = Init::acceleration_structure_build_geometry_info();
     accelerationBuildGeometryInfo.type                                        = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;

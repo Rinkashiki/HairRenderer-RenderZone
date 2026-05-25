@@ -104,6 +104,13 @@ class Mesh : public Object3D
     float                      m_localTime  = 0.0f;
     bool                       m_animPaused = false;
 
+    // World joint matrices in mesh-local space, refreshed each frame inside
+    // advance_animation() and populated lazily from the bind pose by
+    // get_world_joint_matrix() when no animation is driving the skeleton.
+    // Empty only for meshes without skin data. Used by JointAttachment so
+    // child Object3Ds can ride a specific bone.
+    mutable std::vector<Mat4> m_worldJointMatrices;
+
     static IMaterial* m_debugMaterial;
     static int        m_instanceCount;
 
@@ -259,6 +266,12 @@ class Mesh : public Object3D
     inline bool has_animation() const { return m_animation != nullptr; }
     inline void set_anim_paused(bool p) { m_animPaused = p; }
     inline bool is_anim_paused() const { return m_animPaused; }
+
+    // Mesh-local world matrix of the named joint (joint hierarchy resolved each
+    // frame in advance_animation). Returns identity if the joint is unknown or
+    // the mesh has no skin — callers can compose with get_model_matrix() to get
+    // world-space transforms suitable for attachments.
+    Mat4 get_world_joint_matrix(const std::string& jointName) const;
 
     Mesh* clone() const;
 };

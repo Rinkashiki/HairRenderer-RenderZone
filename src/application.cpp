@@ -54,7 +54,7 @@ void HairViewer::setup() {
 #ifndef USE_HARDCODED_SCENE
     // JSON-driven scene path (default). See SCENE.md.
     auto result   = scene_loader::load_scene_json(
-        RESOURCES_PATH "scenes/alex.json",
+        RESOURCES_PATH "scenes/nadia.json",
         RESOURCES_PATH,
         VKFW::get_engine_resources_path(),
         /*animationOverride*/ "",

@@ -2,6 +2,7 @@
 #include "hair_loader.h"
 
 #include <engine/core/animation_json.h>
+#include <engine/core/scene/joint_attachment.h>
 #include <engine/systems/renderers/forward.h>
 #include <engine/tools/loaders.h>
 
@@ -377,8 +378,18 @@ static Core::IMaterial* build_material(const json&                        jm,
 
 // ─── meshes ─────────────────────────────────────────────────────────────────
 
-static Core::Mesh* build_mesh(const json&        jm,
-                              const std::string& resourcesPath) {
+// Forward references for joint attachments (e.g. hair attached to character
+// head). Resolved in a second pass once every mesh exists and can be looked up
+// by name.
+struct PendingAttachment {
+    Core::Mesh* child;          // mesh that declared attach_to
+    std::string sourceName;     // name of the mesh holding the skeleton
+    std::string jointName;      // joint inside that skeleton
+};
+
+static Core::Mesh* build_mesh(const json&                     jm,
+                              const std::string&              resourcesPath,
+                              std::vector<PendingAttachment>& pending) {
     require(jm, "type", "mesh");
     require(jm, "file", "mesh");
 
@@ -432,14 +443,25 @@ static Core::Mesh* build_mesh(const json&        jm,
     // Child meshes — transforms are inherited from this parent.
     if (jm.contains("children")) {
         for (const auto& jc : jm["children"])
-            mesh->add_child(build_mesh(jc, resourcesPath));
+            mesh->add_child(build_mesh(jc, resourcesPath, pending));
+    }
+
+    // Joint attachment — resolved after every top-level mesh is built so the
+    // source mesh's name lookup succeeds regardless of declaration order.
+    if (jm.contains("attach_to")) {
+        const auto& ja = jm["attach_to"];
+        require(ja, "mesh",  "attach_to");
+        require(ja, "joint", "attach_to");
+        pending.push_back({mesh,
+                           ja["mesh"].get<std::string>(),
+                           ja["joint"].get<std::string>()});
     }
 
     warn_unknown(jm,
         {"name", "type", "file", "glb_mesh_index",
          "preload", "verbose", "calculate_tangents", "save_output",
          "position", "scale", "rotation",
-         "material", "animation", "children",
+         "material", "animation", "children", "attach_to",
          "active", "cast_shadows", "affected_by_fog"},
         "mesh");
 
@@ -515,9 +537,11 @@ LoadResult load_scene_json(const std::string&     scenePath,
     std::string firstAnimFieldPath;
     Core::Mesh* firstSkinned = nullptr;
 
+    std::vector<PendingAttachment> pendingAttachments;
+
     if (root.contains("meshes")) {
         for (const auto& jm : root["meshes"]) {
-            Core::Mesh* mesh = build_mesh(jm, resourcesPath);
+            Core::Mesh* mesh = build_mesh(jm, resourcesPath, pendingAttachments);
             result.scene->add(mesh);
 
             if (jm.contains("animation") && firstWithAnimField == nullptr) {
@@ -530,6 +554,23 @@ LoadResult load_scene_json(const std::string&     scenePath,
                     firstSkinned = mesh;
             }
         }
+    }
+
+    // ── resolve joint attachments ───────────────────────────────────────────
+    for (const auto& pa : pendingAttachments) {
+        Core::Mesh* source = nullptr;
+        for (Core::Mesh* m : result.scene->get_meshes()) {
+            if (m && m->get_name() == pa.sourceName) { source = m; break; }
+        }
+        if (!source) {
+            LOG_ERROR("scene_loader: attach_to references unknown mesh '" +
+                      pa.sourceName + "' — '" + pa.child->get_name() + "' will not be attached");
+            continue;
+        }
+        auto* anchor = new Core::JointAttachment(source, pa.jointName);
+        anchor->set_name(pa.child->get_name() + "_attach_" + pa.jointName);
+        source->add_child(anchor);
+        pa.child->set_parent(anchor);
     }
 
     // ── animation: override beats scene field ───────────────────────────────
