@@ -44,7 +44,7 @@
       "name":     "Hair0",
       "type":     "hair",
       "file":     "models/alex/alex_0.hair",
-      "position": [0.0, -13.0, 1.1],
+      "position": [0.0, -2.4, 0.3],
       "scale":    0.1,
       "rotation": [90.0, 180.0, 0.0],
       "material": {
@@ -56,7 +56,7 @@
       "name":     "Hair1",
       "type":     "hair",
       "file":     "models/alex/alex_1.hair",
-      "position": [0.0, -13.0, 1.1],
+      "position": [0.0, -2.4, 0.3],
       "scale":    0.1,
       "rotation": [90.0, 180.0, 0.0],
       "material": {

@@ -40,17 +40,15 @@
       }
     },
     {
-      "name":     "HairCards",
-      "type":     "obj",
-      "file":     "models/javi/hair_brushcut.obj",
-      "position": [0.0, -13.15, 0.3],
+      "name":     "Hair",
+      "type":     "hair",
+      "file":     "models/javi/javi.hair",
+      "position": [0.0, -3.1, 0.1],
       "scale":    0.1,
-      "rotation": [0.0, 180.0, 0.0],
+      "rotation": [90.0, 180.0, 0.0],
       "material": {
-        "type":              "haircard",
-        "hair_color":        [0.05, 0.02, 0.01],
-        "hair_data_texture": "textures/javi/hair_brushcut_attribute.png",
-        "tangent_texture":   "textures/javi/hair_brushcut_tangent.png"
+        "type":      "hairepic",
+        "thickness": 0.0015
       }
     }
   ],

@@ -40,17 +40,27 @@
       }
     },
     {
-      "name":     "HairCards",
-      "type":     "obj",
-      "file":     "models/nadia/hair_afrocurly.obj",
-      "position": [0.0, -12.2, 0.1],
+      "name":     "Hair0",
+      "type":     "hair",
+      "file":     "models/nadia/nadia_0.hair",
+      "position": [0.0, -2.7, 0.0],
       "scale":    0.1,
-      "rotation": [0.0, 180.0, 0.0],
+      "rotation": [90.0, 180.0, 0.0],
       "material": {
-        "type":              "haircard",
-        "hair_color":        [0.05, 0.02, 0.01],
-        "hair_data_texture": "textures/nadia/hair_afrocurly_attribute.png",
-        "tangent_texture":   "textures/nadia/hair_afrocurly_tangent.png"
+        "type":      "hairepic",
+        "thickness": 0.0015
+      }
+    },
+    {
+      "name":     "Hair1",
+      "type":     "hair",
+      "file":     "models/nadia/nadia_1.hair",
+      "position": [0.0, -2.7, 0.0],
+      "scale":    0.1,
+      "rotation": [90.0, 180.0, 0.0],
+      "material": {
+        "type":      "hairepic",
+        "thickness": 0.0015
       }
     }
   ],
