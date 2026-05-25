@@ -1,4 +1,6 @@
 #include <fstream>
+#include <cerrno>
+#include <cstring>
 #include <stb_image.h>                  // declarations — implementation lives in the engine's stb_image library
 
 #define TINYGLTF_IMPLEMENTATION
@@ -912,19 +914,27 @@ void VKFW::Tools::Loaders::load_hair(Core::Mesh* const mesh, const char* fileNam
 
     FILE* fp;
     fp = fopen(fileName, "rb");
-    if (fp == nullptr)
+    if (fp == nullptr) {
+        LOG_ERROR(std::string("load_hair: cannot open '") + fileName + "' (" + strerror(errno) + ")");
         return;
+    }
 
     // read the header
     size_t headread = fread(&header, sizeof(Header), 1, fp);
 
     // Check if header is correctly read
-    if (headread < 1)
+    if (headread < 1) {
+        LOG_ERROR(std::string("load_hair: '") + fileName + "' is shorter than the 128-byte HAIR header");
+        fclose(fp);
         return;
+    }
 
     // Check if this is a hair file
-    if (strncmp(header.signature, "HAIR", 4) != 0)
+    if (strncmp(header.signature, "HAIR", 4) != 0) {
+        LOG_ERROR(std::string("load_hair: '") + fileName + "' is not a Cem Yuksel HAIR file (bad signature)");
+        fclose(fp);
         return;
+    }
 
     // Read segments array
     if (header.arrays & HAIR_FILE_SEGMENTS_BIT)
@@ -933,7 +943,9 @@ void VKFW::Tools::Loaders::load_hair(Core::Mesh* const mesh, const char* fileNam
         size_t readcount = fread(segments, sizeof(unsigned short), header.hair_count, fp);
         if (readcount < header.hair_count)
         {
-            std::cerr << "Error reading segments" << std::endl;
+            LOG_ERROR(std::string("load_hair: '") + fileName + "': truncated segments array (read " +
+                      std::to_string(readcount) + " of " + std::to_string(header.hair_count) + ")");
+            fclose(fp);
             return;
         }
     }
@@ -945,7 +957,9 @@ void VKFW::Tools::Loaders::load_hair(Core::Mesh* const mesh, const char* fileNam
         size_t readcount = fread(points, sizeof(float), header.point_count * 3, fp);
         if (readcount < header.point_count * 3)
         {
-            std::cerr << "Error reading points" << std::endl;
+            LOG_ERROR(std::string("load_hair: '") + fileName + "': truncated points array (read " +
+                      std::to_string(readcount) + " of " + std::to_string(header.point_count * 3) + ")");
+            fclose(fp);
             return;
         }
     }
@@ -957,19 +971,21 @@ void VKFW::Tools::Loaders::load_hair(Core::Mesh* const mesh, const char* fileNam
         size_t readcount = fread(thickness, sizeof(float), header.point_count, fp);
         if (readcount < header.point_count)
         {
-            std::cerr << "Error reading thickness" << std::endl;
+            LOG_ERROR(std::string("load_hair: '") + fileName + "': truncated thickness array");
+            fclose(fp);
             return;
         }
     }
 
-    // Read thickness array
+    // Read transparency array
     if (header.arrays & HAIR_FILE_TRANSPARENCY_BIT)
     {
         transparency     = new float[header.point_count];
         size_t readcount = fread(transparency, sizeof(float), header.point_count, fp);
         if (readcount < header.point_count)
         {
-            std::cerr << "Error reading alpha" << std::endl;
+            LOG_ERROR(std::string("load_hair: '") + fileName + "': truncated transparency array");
+            fclose(fp);
             return;
         }
     }
@@ -981,7 +997,8 @@ void VKFW::Tools::Loaders::load_hair(Core::Mesh* const mesh, const char* fileNam
         size_t readcount = fread(colors, sizeof(float), header.point_count * 3, fp);
         if (readcount < header.point_count * 3)
         {
-            std::cerr << "Error reading colors" << std::endl;
+            LOG_ERROR(std::string("load_hair: '") + fileName + "': truncated colors array");
+            fclose(fp);
             return;
         }
     }

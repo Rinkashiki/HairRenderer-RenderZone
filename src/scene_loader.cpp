@@ -391,6 +391,11 @@ static Core::Mesh* build_mesh(const json&        jm,
         Tools::Loaders::load_GLB(mesh, fullPath, meshIndex, &glbTextures);
     } else if (type == "obj" || type == "ply" || type == "hair") {
         Tools::Loaders::load_3D_file(mesh, fullPath, false);
+        if (mesh->get_num_geometries() == 0) {
+            throw std::runtime_error("scene_loader: mesh '" +
+                jm.value("name", std::string("?")) + "' (" + type + ") at '" +
+                fullPath + "' loaded zero geometries — file missing, unreadable, or malformed");
+        }
     } else if (type == "neural_hair") {
         // Matches application.cpp's threaded path for neural avatars.
         std::thread t(hair_loaders::load_neural_hair, mesh, fullPath.c_str(),
