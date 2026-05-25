@@ -99,6 +99,8 @@ static Core::Light* build_light(const json&        jl,
         light->set_name(jl["name"].get<std::string>());
 
     // Optional marker mesh — engine built-in resolved against engineResourcesPath.
+    // "dummy_visible" (default true) sets the dummy's initial active state so it
+    // can still be toggled back on from the GUI — same semantics as the GUI checkbox.
     if (jl.contains("dummy_mesh")) {
         const std::string dummyName = jl["dummy_mesh"].get<std::string>();
         auto* dummy = new Core::Mesh();
@@ -106,13 +108,14 @@ static Core::Light* build_light(const json&        jl,
         dummy->push_material(new Core::UnlitMaterial());
         dummy->cast_shadows(false);
         dummy->set_name((light->get_name().empty() ? std::string("Light") : light->get_name()) + "Dummy");
+        dummy->set_active(jl.value("dummy_visible", true));
         light->add_child(dummy);
     }
 
     warn_unknown(jl,
         {"type", "name", "position", "color", "intensity",
          "shadow_fov", "shadow_bias", "shadow_near", "shadow_far",
-         "area_of_effect", "cast_shadows", "direction", "dummy_mesh"},
+         "area_of_effect", "cast_shadows", "direction", "dummy_mesh", "dummy_visible"},
         "light");
 
     return light;

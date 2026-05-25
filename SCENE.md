@@ -97,6 +97,7 @@ All fields optional. `fov` is vertical field-of-view in degrees.
 | `shadow_near` | float | engine default | |
 | `shadow_far` | float | engine default | |
 | `dummy_mesh` | string | (none) | Optional marker mesh from the **engine** resources (e.g. `"sphere.obj"`). Loaded as a child of the light with an `UnlitMaterial` and `cast_shadows(false)` — matches the existing light-marker pattern. |
+| `dummy_visible` | bool | `true` | Initial active state of the `dummy_mesh` orb. Set to `false` to hide it on load; the GUI checkbox still works to toggle it back on. Ignored when `dummy_mesh` is absent. |
 
 ### 4.2 Type-specific
 

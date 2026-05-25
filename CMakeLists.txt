@@ -217,31 +217,18 @@ endif()
 # Legal
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.txt" DESTINATION .)
 
-# Alex scene — models
-install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/models/alex/alex.glb"
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/models/alex/hair_fauxmohawk.obj"
-    DESTINATION resources/models/alex
-)
-
-# Alex scene — textures
-install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures/alex/hair_fauxmohawk_attribute.png"
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures/alex/hair_fauxmohawk_tangent.png"
-    DESTINATION resources/textures/alex
-)
-install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures/studio_demo.hdr"
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures/scatterDistance.png"
-    DESTINATION resources/textures
-)
-
-# Sample animation files (used as --input to SLViewer)
-install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/animations/test_anim.json"
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/animations/test_morph.json"
-    DESTINATION resources/animations
-)
+# Application-side runtime resources: models, textures, animations.
+# Installed as full trees so any shipped scene (resources/scenes/*.json) resolves
+# its references without per-scene CMake edits. The alembic source clips under
+# models/hair_strands_ABCextraction/ are pre-process inputs (Blender + Python
+# convert them to .hair) and are excluded from the install.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/models"
+        DESTINATION resources
+        PATTERN "hair_strands_ABCextraction" EXCLUDE)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures"
+        DESTINATION resources)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/animations"
+        DESTINATION resources)
 
 # Scene definitions (default scene + any alternatives shipped for SLViewer's --scene flag)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/scenes"
