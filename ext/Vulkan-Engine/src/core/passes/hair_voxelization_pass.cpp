@@ -344,8 +344,29 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                             // DRAW
                             VolumeData vol;
                             vol.model = skull->get_model_matrix();
-                            vol.maxCoord = m->get_model_matrix() * Vec4(m->get_bounding_volume()->maxCoords, 1.0);  
-                            vol.minCoord = m->get_model_matrix() * Vec4(m->get_bounding_volume()->minCoords, 1.0);
+                            // Conservative world-space AABB from all 8 corners
+                            // (transforming only min/max is wrong under rotation).
+                            // Must match the bounds in ResourceManager::update_object_data
+                            // so the voxel grid is read back consistently.
+                            {
+                                const Mat4 mm     = m->get_model_matrix();
+                                const Vec3& lmin = m->get_bounding_volume()->minCoords;
+                                const Vec3& lmax = m->get_bounding_volume()->maxCoords;
+                                Vec3 wmin( INFINITY,  INFINITY,  INFINITY);
+                                Vec3 wmax(-INFINITY, -INFINITY, -INFINITY);
+                                for (int ci = 0; ci < 8; ++ci) {
+                                    Vec4 corner(
+                                        (ci & 1) ? lmax.x : lmin.x,
+                                        (ci & 2) ? lmax.y : lmin.y,
+                                        (ci & 4) ? lmax.z : lmin.z,
+                                        1.0f);
+                                    Vec3 wc = Vec3(mm * corner);
+                                    wmin = glm::min(wmin, wc);
+                                    wmax = glm::max(wmax, wc);
+                                }
+                                vol.maxCoord = Vec4(wmax, 1.0f);
+                                vol.minCoord = Vec4(wmin, 1.0f);
+                            }
                             vol.density = FLT_MAX;  
                             vol.density = 10000.0;  
                             cmd.push_constants(*shPass, SHADER_STAGE_FRAGMENT, &vol, sizeof(VolumeData));

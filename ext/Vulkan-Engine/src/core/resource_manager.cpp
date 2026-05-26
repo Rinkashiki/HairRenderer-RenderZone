@@ -281,9 +281,34 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                     Graphics::ObjectUniforms objectData;
                     objectData.model        = m->get_model_matrix();
                     objectData.otherParams1 = {m->affected_by_fog(), m->receive_shadows(), m->cast_shadows(), false};
-                    objectData.otherParams2 = {m->is_selected(), m->get_bounding_volume()->center};
-                    objectData.maxCoord     = objectData.model * Vec4(m->get_bounding_volume()->maxCoords, 1.0);
-                    objectData.minCoord     = objectData.model * Vec4(m->get_bounding_volume()->minCoords, 1.0);
+
+                    // Conservative world-space AABB: transforming only the two
+                    // diagonal corners of the local AABB is correct for
+                    // translation + uniform scale but produces a degenerate box
+                    // under rotation (corners stop being extrema). Transform all
+                    // 8 corners and take componentwise min/max — this is what
+                    // the hair voxel grid + cone marching rely on.
+                    const Vec3& lmin = m->get_bounding_volume()->minCoords;
+                    const Vec3& lmax = m->get_bounding_volume()->maxCoords;
+                    Vec3 wmin( INFINITY,  INFINITY,  INFINITY);
+                    Vec3 wmax(-INFINITY, -INFINITY, -INFINITY);
+                    for (int ci = 0; ci < 8; ++ci) {
+                        Vec4 corner(
+                            (ci & 1) ? lmax.x : lmin.x,
+                            (ci & 2) ? lmax.y : lmin.y,
+                            (ci & 4) ? lmax.z : lmin.z,
+                            1.0f);
+                        Vec3 wc = Vec3(objectData.model * corner);
+                        wmin = glm::min(wmin, wc);
+                        wmax = glm::max(wmax, wc);
+                    }
+                    objectData.maxCoord = Vec4(wmax, 1.0f);
+                    objectData.minCoord = Vec4(wmin, 1.0f);
+                    // Volume center must be in world space too — the hair shader
+                    // computes fakeNormal = normalize(g_modelPos - volumeCenter)
+                    // and g_modelPos is world-space.
+                    Vec3 wcenter = (wmin + wmax) * 0.5f;
+                    objectData.otherParams2 = {m->is_selected(), wcenter};
                     currentFrame->uniformBuffers[OBJECT_LAYOUT].upload_data(&objectData, sizeof(Graphics::ObjectUniforms), objectOffset);
 
                     for (size_t i = 0; i < m->get_num_geometries(); i++)

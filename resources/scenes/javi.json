@@ -44,9 +44,9 @@
       "name":     "Hair",
       "type":     "hair",
       "file":     "models/javi/javi.hair",
-      "position": [0.0, -3.1, 0.1],
-      "scale":    0.1,
-      "rotation": [90.0, 180.0, 0.0],
+      "position": [-0.011, -0.73, -0.025],
+      "scale":    0.01,
+      "rotation": [90.0, 180.0, 180.0],
       "material": {
         "type":      "hairepic",
         "thickness": 0.0015

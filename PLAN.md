@@ -6,12 +6,6 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
-### Hair lighting (Phase 2 of the pink-flash work — to test)
-
-Pink-flash fix landed (see Done below). The original bug report also mentioned the hair looks too dark from certain angles and the specular streak doesn't track the light. The BSDF degeneracy fixes from the pink-flash work plausibly resolve this too (same "strand tangent aligns with V or L" root cause). User to verify visually next session; if still wrong, return to the original Phase 2 plan (bisect T/V/L frames with a debug dropdown).
-
----
-
 ### SLViewer — Windows clean-machine deploy validation
 
 Local Windows smoke test now passes (see Done below). **Still not validated on a clean Windows host** (no Vulkan SDK, no VS), and there is a known blocker for that step:
@@ -27,6 +21,28 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### Hair phantom shadows + rotation-dependent shadow shape (2026-05-26)
+
+Hair self-shadowing produced shadows where no occluders existed, and the shadows changed size/position as the hair rotated with the head joint during animation. Isolated to the voxel cone-marching path (`computeHairShadowCone` in `hair_strand_epic.glsl`) — setting `material.advShadows = 0` made the artifact disappear.
+
+**Root cause:** classic AABB-under-rotation bug. Two sites computed the hair's world-space AABB by transforming **only the two diagonal corners** of the local AABB:
+
+```cpp
+objectData.maxCoord = model * Vec4(boundingVolume->maxCoords, 1.0);
+objectData.minCoord = model * Vec4(boundingVolume->minCoords, 1.0);
+```
+
+That's correct for translation + uniform scale but degenerate under rotation — the transformed `min`/`max` stop being the extrema of the rotated box. Worst around 45°, where the diagonal-corner approximation deviates most. With the hair parented to the head joint via `JointAttachment`, `get_model_matrix()` returns a rotating matrix every frame, so the "AABB" warped with rotation and the world↔voxel mapping shifted per frame. Writer (voxelization) and reader (cone-marching) used the same broken bounds, so density was written and read at warped texel locations — phantom shadows.
+
+**Fixes shipped:**
+
+- `ext/Vulkan-Engine/src/core/resource_manager.cpp::update_object_data` — transform all 8 corners of the local AABB by the model matrix, then componentwise min/max. Also fix `volumeCenter` to be in world space (the hair shader's `fakeNormal = normalize(g_modelPos - volumeCenter)` expects world coords; it was getting local).
+- `ext/Vulkan-Engine/src/core/passes/hair_voxelization_pass.cpp` — same 8-corner fix for the skull-occluder voxelization step, so writer and reader stay consistent.
+
+**Verified:** user confirmed phantom shadows and rotation-induced shadow drift gone after the fix.
+
+---
 
 ### Hair pink/magenta flash on certain camera angles (2026-05-26)
 

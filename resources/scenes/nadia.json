@@ -44,7 +44,7 @@
       "name":     "Hair0",
       "type":     "hair",
       "file":     "models/nadia/nadia_0.hair",
-      "position": [0.0, -0.6, 0.0],
+      "position": [-0.011, -0.6, -0.025],
       "scale":    0.01,
       "rotation": [90.0, 180.0, 180.0],
       "material": {
@@ -57,7 +57,7 @@
       "name":     "Hair1",
       "type":     "hair",
       "file":     "models/nadia/nadia_1.hair",
-      "position": [0.0, -0.6, 0.0],
+      "position": [-0.011, -0.6, -0.025],
       "scale":    0.01,
       "rotation": [90.0, 180.0, 180.0],
       "material": {
