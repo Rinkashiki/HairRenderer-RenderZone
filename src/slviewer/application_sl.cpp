@@ -6,10 +6,6 @@
 #include <engine/core/windows/windowGLFW.h>
 #include <engine/engine_config.h>
 
-// Define USE_HARDCODED_SCENE to bypass JSON scene loading and use the original
-// inline Alex scene setup. Kept as a fallback; default path is JSON.
-// #define USE_HARDCODED_SCENE
-
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -129,7 +125,6 @@ void SLApplication::init() {
 }
 
 void SLApplication::setup() {
-#ifndef USE_HARDCODED_SCENE
     const std::string scenePath = m_scenePath.empty()
         ? (m_resourcesPath + "scenes/default.json")
         : m_scenePath;
@@ -164,112 +159,6 @@ void SLApplication::setup() {
             }
         } catch (...) { /* keep m_totalFrames = 1 */ }
     }
-    return;
-#else
-    const std::string MESH_PATH    = m_resourcesPath + "models/";
-    const std::string TEXTURE_PATH = m_resourcesPath + "textures/";
-    const std::string ENGINE_MESH_PATH = VKFW::get_engine_resources_path() + "meshes/";
-
-    m_camera = new Camera();
-    m_camera->set_position(Vec3(0.0f, 0.0f, -16.0f));
-    m_camera->set_far(100.0f);
-    m_camera->set_near(0.1f);
-    m_camera->set_field_of_view(40.0f);
-
-    m_scene = new Scene(m_camera);
-
-    PointLight* light = new PointLight();
-    light->set_position({-5.0f, 1.0f, -5.0f});
-    light->set_shadow_fov(120.0f);
-    light->set_intensity(1.0f);
-    light->set_shadow_bias(0.0002f);
-    light->set_shadow_near(0.1f);
-    light->set_area_of_effect(30.0f);
-    light->set_name("PointLight");
-
-    Mesh* lightDummy = new Mesh();
-    Tools::Loaders::load_3D_file(lightDummy, ENGINE_MESH_PATH + "sphere.obj", false);
-    lightDummy->push_material(new UnlitMaterial());
-    lightDummy->cast_shadows(false);
-    lightDummy->set_name("LightDummy");
-    light->add_child(lightDummy);
-    m_scene->add(light);
-
-    // Alex character
-    m_character = new Mesh();
-    std::vector<Texture*> glbTextures;
-    Tools::Loaders::load_GLB(m_character, MESH_PATH + "alex/alex.glb", 0, &glbTextures);
-    m_character->set_position({0.0f, -12.6f, 0.2f});
-    m_character->set_scale(10.0f);
-    m_character->set_rotation({0.0f, 180.0f, 0.0f});
-    auto charMat = new PhysicallyBasedMaterial();
-    if (!glbTextures.empty())
-        charMat->set_albedo_texture(glbTextures[0]);
-    charMat->set_albedo(Vec3(204.0f, 123.0f, 85.0f) / 255.0f);
-    charMat->set_metalness(0.0f);
-    charMat->set_roughness(0.5f);
-    m_character->push_material(charMat);
-    m_character->set_name("Alex");
-    m_scene->add(m_character);
-
-    // Load animation and derive frame budget
-    if (Geometry* g = m_character->get_geometry(0))
-    {
-        const auto& props = g->get_properties();
-
-        static const SkinData        emptySkin;
-        static const MorphTargetData emptyMorphs;
-        const SkinData*        skin   = props.skinData.has_value()       ? &*props.skinData       : &emptySkin;
-        const MorphTargetData* morphs = props.morphTargetData.has_value() ? &*props.morphTargetData : &emptyMorphs;
-
-        try {
-            Animation anim = load_animation_json(m_animationPath, *skin, *morphs);
-
-            m_fps         = (anim.fps > 0.0f) ? anim.fps : 30.0f;
-            m_animDt      = 1.0f / m_fps;
-            m_totalFrames = (anim.duration > 0.0f && anim.fps > 0.0f)
-                                ? static_cast<int>(std::round(anim.duration * anim.fps))
-                                : 1;
-
-            m_character->set_animation(std::make_unique<Animation>(std::move(anim)));
-        } catch (const std::exception& e) {
-            LOG_ERROR(std::string("Animation load failed: ") + e.what());
-            m_totalFrames = 1;
-        }
-    }
-
-    // Hair cards
-    Vec3  hairOffset = Vec3{0.0f, 0.8f, 0.2f};
-    Mesh* hairCards  = new Mesh();
-    Tools::Loaders::load_3D_file(hairCards, MESH_PATH + "alex/hair_fauxmohawk.obj", false);
-    hairCards->set_position(m_character->get_position() + hairOffset);
-    hairCards->set_scale(0.1f);
-    hairCards->set_rotation({0.0f, 180.0f, 0.0f});
-    auto* hcMat = new HairCardMaterial();
-    hcMat->set_hair_color(Vec3(0.05f, 0.02f, 0.01f));
-    Texture* hairDataTex = new Texture();
-    Tools::Loaders::load_texture(hairDataTex, TEXTURE_PATH + "alex/hair_fauxmohawk_attribute.png", TEXTURE_FORMAT_TYPE_NORMAL);
-    hcMat->set_hair_data_texture(hairDataTex);
-    Texture* hairTangentTex = new Texture();
-    Tools::Loaders::load_texture(hairTangentTex, TEXTURE_PATH + "alex/hair_fauxmohawk_tangent.png", TEXTURE_FORMAT_TYPE_NORMAL);
-    hcMat->set_tangent_texture(hairTangentTex);
-    hairCards->push_material(hcMat);
-    hairCards->set_name("HairCards");
-    m_scene->add(hairCards);
-
-    m_scene->set_ambient_color({0.05f, 0.05f, 0.05f});
-    m_scene->set_ambient_intensity(0.1f);
-
-    TextureHDR* envMap = new TextureHDR();
-    Tools::Loaders::load_HDRi(envMap, TEXTURE_PATH + "studio_demo.hdr");
-    Skybox* sky = new Skybox(envMap);
-    sky->set_color_intensity(1.0f);
-    m_scene->set_skybox(sky);
-    m_scene->set_use_IBL(true);
-    m_scene->enable_fog(false);
-
-    static_cast<Systems::ForwardRenderer*>(m_renderer)->load_sss_scatter_lut(TEXTURE_PATH + "scatterDistance.png");
-#endif // USE_HARDCODED_SCENE
 }
 
 void SLApplication::tick() {

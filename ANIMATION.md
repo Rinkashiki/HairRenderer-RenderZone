@@ -141,8 +141,7 @@ See `resources/animations/test_morph.json` for a working file.
 }
 ```
 
-See `resources/animations/right_shoulder_x.json` or `resources/animations/right_elbow_y.json` for a joint example.
-See `resources/animations/test_anim.json` for a combined joint + morph animation example.
+See `resources/animations/test_anim.json` for a combined joint + morph animation example (includes `right_shoulder` and `right_elbow` rotation tracks).
 
 ---
 

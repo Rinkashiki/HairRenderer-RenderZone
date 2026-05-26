@@ -112,16 +112,14 @@ The animations loaded are in json format. The specifics of this format and its s
 
 ### Scene format
 
-Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. The bundled default is `resources/scenes/default.json`; alternative scenes (`javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`) exercise the broader schema. Both viewers retain their hardcoded `setup()` behind `#define USE_HARDCODED_SCENE` as a fallback.
+Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. The bundled default is `resources/scenes/default.json`; alternative scenes (`alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`) exercise the broader schema.
 
 ### Scene Selection
 
 Scenes are JSON-driven (`resources/scenes/*.json` — see @SCENE.md).
 
-- **HairViewer** loads `resources/scenes/default.json` unconditionally. To use a different scene, either edit that file or change the path in `src/application.cpp::HairViewer::setup()`.
+- **HairViewer** loads a scene unconditionally (currently `resources/scenes/nadia.json`). To use a different scene, either edit that file or change the path in `src/application.cpp::HairViewer::setup()`.
 - **SLViewer** accepts an optional `--scene <path>` flag; default falls back to `resources/scenes/default.json`.
-
-The previous C++ `#ifdef USE_GLB_MODELS / LOAD_ALEX|JAVI|MARIA|NADIA / USE_NEURAL_MODELS` ladder is retained behind `#define USE_HARDCODED_SCENE` as a fallback (see top of `src/application.cpp` and `src/slviewer/application_sl.cpp`). Default builds use the JSON path.
 
 #### Engine example applications
 

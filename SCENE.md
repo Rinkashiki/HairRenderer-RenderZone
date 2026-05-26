@@ -374,14 +374,3 @@ animation, so SLViewer can derive the frame budget from the animation header.
   }
 }
 ```
-
----
-
-## 11. Fallback to hardcoded `setup()`
-
-Both viewers retain their original C++ scene setup behind
-`#define USE_HARDCODED_SCENE` (in `src/application.cpp` and
-`src/slviewer/application_sl.cpp`). Default builds use the JSON path. Define
-the macro at the top of either file to restore the prior `#ifdef
-USE_GLB_MODELS / LOAD_ALEX|JAVI|MARIA|NADIA / USE_NEURAL_MODELS` ladder
-without rebuilding the engine.

@@ -45,14 +45,6 @@ class HairViewer
     void set_max_frames(int n) { m_maxFrames = n; }
 
   private:
-    void load_neural_avatar(const char* hairFile,
-                            const char* headFile,
-                            const char* objName,
-                            math::vec3 hairColor,
-                            Vec3        position = Vec3(0.0f),
-                            float       rotation = 0.0f,
-                            bool        active = true);
-
     void setup();
 
     void tick();
