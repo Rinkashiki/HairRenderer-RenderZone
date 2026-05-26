@@ -264,7 +264,16 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                     }
                 }
 
-                if (inFrustum)
+                // Ray-hittable meshes can momentarily fall out of frustum during
+                // fast camera motion (small bounding sphere + parented transform
+                // chain), but their uniform slot is indexed by mesh_idx and read
+                // unconditionally by the shader. If we skip the upload, the slot
+                // keeps last frame's data — for a hair mesh this manifests as a
+                // pink/magenta flash because the BSDF reads stale or wrong
+                // material params. Force uniform upload for ray-hittable meshes
+                // regardless of frustum, mirroring the BLAS rule above.
+                const bool forceUniformUpload = basicChecks && m->ray_hittable();
+                if (inFrustum || forceUniformUpload)
                 {
                     // Offset calculation
                     uint32_t objectOffset = currentFrame->uniformBuffers[OBJECT_LAYOUT].strideSize * mesh_idx;

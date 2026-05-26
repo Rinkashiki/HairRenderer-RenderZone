@@ -137,7 +137,18 @@ float fresnel(float cosTheta, float ior) {
 vec3 evalKajiyaKayDiffuseAttenuation(vec3 color, float metallic, vec3 L, vec3 V, vec3 N, float shadow) {
     float kajiyaDiffuse = 1.0 - abs(dot(N, L));
 
-    vec3 fakeNormal = normalize(V - N * dot(V, N));
+    // V projected perpendicular to N (here N is actually the strand tangent T).
+    // Degenerate at V parallel to T — projection is zero, normalize → NaN. Fall
+    // back to a stable arbitrary perpendicular axis in that case.
+    vec3 raw = V - N * dot(V, N);
+    float rawLen2 = dot(raw, raw);
+    vec3 fakeNormal;
+    if (rawLen2 < 1e-8) {
+        vec3 fallback = abs(N.x) < 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+        fakeNormal = normalize(fallback - N * dot(fallback, N));
+    } else {
+        fakeNormal = normalize(raw);
+    }
     // N = normalize( DiffuseN + FakeNormal * 2 );
     N = fakeNormal;
 
@@ -441,10 +452,16 @@ vec3 evalEpicHairBSDF(vec3         L,
     const float sinThetaL = clamp(dot(N, L), -1.0, 1.0);
     const float sinThetaV = clamp(dot(N, V), -1.0, 1.0);
     float       cosThetaD = cos(0.5 * abs(asin(sinThetaV) - asin(sinThetaL)));
+    // cosThetaD reaches 0 when the strand tangent aligns with V on one side and
+    // with L on the other (asin diff → π, half-cos → 0). Several terms below
+    // divide by cosThetaD or feed it as a pow exponent, so an unclamped value
+    // produces Inf / NaN and the BSDF either zeroes out (looks too dark) or
+    // blows up to huge HDR values (renders as bright magenta after MSAA resolve
+    // and tonemap). Floor it to keep the BSDF well-defined.
+    cosThetaD = max(cosThetaD, 1e-3);
 
     float viewPerpendicularity = sqrt(max(0.0, 1.0 - sinThetaV * sinThetaV));
     float grazingTerm = viewPerpendicularity;
-    // cosThetaD = abs( cosThetaD ) < 0.01 ? 0.01 : cosThetaD;
 
     // PHI
     const vec3  Lp         = L - sinThetaL * N;
@@ -598,8 +615,11 @@ EpicHairBSDF computeDualScatteringTerms(const HairTransmittanceMask Transmittanc
     const float HairCount = max(0.0, float(TransmittanceMask.hairCount) - 1.0);
 
     // This is a coarse approximation of eq. 13. Normally, Beta_f should be weighted by the 'normalized'
-    // R, TT, and TRT terms
-    const vec3 af_weights = af / (af.r + af.g + af.b);
+    // R, TT, and TRT terms.
+    // Protect against af being all-zero (LUT can return 0 at corners) — division would be NaN
+    // and propagate through Beta_f → sigma_f2 → Sf, eventually surfacing as bright magenta.
+    const float afSum = max(af.r + af.g + af.b, 1e-5);
+    const vec3 af_weights = af / afSum;
     const vec3 Beta_f     = vec3(dot(vec3(Beta_R, Beta_TT, Beta_TRT), af_weights));
     const vec3 Beta_f2    = Beta_f * Beta_f;
     const vec3 sigma_f2   = Beta_f2 * max(1.0, HairCount);
@@ -616,12 +636,16 @@ EpicHairBSDF computeDualScatteringTerms(const HairTransmittanceMask Transmittanc
     const vec3 shift_b = shift_f;
     const vec3 delta_b = shift_b * (1 - 2 * ab2 / pow2(1 - af2)) * shift_f * (2 * pow2(1 - af2) + 4 * af2 * ab2) / ((1 - af2) * (1 - af2) * (1 - af2));
 
-    const vec3 ab_weights = ab / (ab.r + ab.g + ab.b);
+    // Same protection as af_weights — ab can be all-zero at LUT corners.
+    const float abSum = max(ab.r + ab.g + ab.b, 1e-5);
+    const vec3 ab_weights = ab / abSum;
     const vec3 Beta_b     = vec3(dot(vec3(Beta_R, Beta_TT, Beta_TRT), ab_weights));
     const vec3 Beta_b2    = Beta_b * Beta_b;
 
+    // sigma_b's denominator can also be zero when ab is zero; clamp to keep math finite.
+    const vec3 sigmaBDenom = max(ab + ab * ab2 * (2 * Beta_f + 3 * Beta_b), vec3(1e-5));
     const vec3 sigma_b =
-        (1 + db * af2) * (ab * sqrt(2 * Beta_f2 + Beta_b2) + ab * ab2 * sqrt(2 * Beta_f2 + Beta_b2)) / (ab + ab * ab2 * (2 * Beta_f + 3 * Beta_b));
+        (1 + db * af2) * (ab * sqrt(2 * Beta_f2 + Beta_b2) + ab * ab2 * sqrt(2 * Beta_f2 + Beta_b2)) / sigmaBDenom;
     const vec3 sigma_b2 = sigma_b * sigma_b;
 
     // Local scattering Spread 'Sb'
@@ -757,7 +781,8 @@ vec3 evalHairBSDF(vec3         L,
     const float sinThetaL = clamp(dot(N, L), -1.0, 1.0);
     const float sinThetaV = clamp(dot(N, V), -1.0, 1.0);
     float       cosThetaD = cos(0.5 * abs(asin(sinThetaV) - asin(sinThetaL)));
-    // cosThetaD = abs( cosThetaD ) < 0.01 ? 0.01 : cosThetaD;
+    // See evalEpicHairBSDF — same instability at degenerate strand/V/L alignment.
+    cosThetaD = max(cosThetaD, 1e-3);
 
     // PHI
     const vec3  Lp         = L - sinThetaL * N;

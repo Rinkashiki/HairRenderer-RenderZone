@@ -18,7 +18,8 @@
       "shadow_bias":    0.0002,
       "shadow_near":    0.1,
       "area_of_effect": 30.0,
-      "dummy_mesh":     "sphere.obj"
+      "dummy_mesh":     "sphere.obj",
+	  "dummy_visible":	false
     }
   ],
 

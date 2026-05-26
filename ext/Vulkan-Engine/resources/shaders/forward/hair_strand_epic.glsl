@@ -217,7 +217,12 @@ layout(location = 6) out vec4 outLinearDepth;
 
 vec3 computeAmbient(vec3 n) {
 
-    vec3 ambient;
+    // Always initialize: the original IBL branch only computed rotatedNormal
+    // without ever assigning ambient, returning whatever was in the register —
+    // including NaN — which then poisons color += ambient. Fall back to the
+    // simple ambient term in both paths; the IBL branch can be filled in later
+    // without reintroducing the uninitialized-read footgun.
+    vec3 ambient = (scene.ambientIntensity * scene.ambientColor);
     if (scene.useIBL)
     {
         float rad           = radians(scene.envRotation);
@@ -225,10 +230,7 @@ vec3 computeAmbient(vec3 n) {
         float s             = sin(rad);
         mat3  rotationY     = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
         vec3  rotatedNormal = normalize(rotationY * n);
-
-    } else
-    {
-        ambient = (scene.ambientIntensity * scene.ambientColor);
+        // TODO: sample the irradiance cubemap with rotatedNormal here.
     }
     return ambient;
 }
@@ -255,10 +257,19 @@ float getOpticalDensity(vec3 worldPos, vec3 lightWorldPos) {
 void buildBasis(vec3 T, vec3 V, out vec3 N, out vec3 B) {
     // 1. Binormal (B): Es el vector que va "a lo ancho" de la cinta en pantalla.
     // Es perpendicular a la hebra (T) y a la mirada (V).
-    B = normalize(cross(T, V));
+    // Degenerate case: T parallel to V → cross is zero → normalize is NaN. Pick
+    // any arbitrary perpendicular axis instead so the BSDF stays finite.
+    vec3 raw = cross(T, V);
+    float rawLen2 = dot(raw, raw);
+    if (rawLen2 < 1e-8) {
+        vec3 fallback = abs(T.x) < 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+        raw = cross(T, fallback);
+    }
+    B = normalize(raw);
 
     // 2. Normal (N): Es el vector que apunta "hacia fuera" del cilindro.
-    // Es perpendicular a la Binormal y a la Tangente.
+    // Es perpendicular a la Binormal y a la Tangente. B ⟂ T by construction,
+    // so cross(B, T) is non-zero and normalize is safe.
     N = normalize(cross(B, T));
 }
 float hash31(vec3 p3) {
@@ -452,7 +463,7 @@ void applyNaturalVariation(inout float m, inout float r, float uv_length, float 
 void main() {
 
     // BSDF setup ............................................................
-    float melanin = material.baseColor.x; 
+    float melanin = material.baseColor.x;
     float redness = material.baseColor.y;
     applyNaturalVariation(melanin, redness, g_uv.x, g_uv.y);
     vec3 physicalSigma = getAbsorptionFromMelanin(melanin, redness, material.baseColor.z);
@@ -562,7 +573,15 @@ void main() {
         color   = f * color + (1 - f) * scene.fogColor.rgb;
     }
 
-    //    vec3 color = vec3(41.0,0.0,0.0);
+    // Defensive guard: the dual-scattering BSDF has multiple division-by-near-zero
+    // sites (cosThetaD, af/ab weights, sigma_b denominators) that can still leak
+    // NaN/Inf at degenerate strand/V/L alignments. Once NaN reaches fragColor it
+    // poisons MSAA resolve and shows up as magenta — replace any non-finite value
+    // with a safe black, and clamp legitimate HDR to a sane upper bound so a
+    // single misbehaving lobe can't blow up bloom either.
+    if (any(isnan(color)) || any(isinf(color)))
+        color = vec3(0.0);
+    color = clamp(color, vec3(0.0), vec3(64.0));
 
     fragColor = vec4(color, 1.0);
     // fragColor = vec4(g_uv.x, 0.0,0.0, 1.0);
