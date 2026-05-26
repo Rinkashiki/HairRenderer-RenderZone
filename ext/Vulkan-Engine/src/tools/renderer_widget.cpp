@@ -59,7 +59,18 @@ void Tools::ForwardRendererWidget::render() {
 
     const char* res[] = {"VERY LOW", "LOW", "MID", "HIGH", "ULTRA"};
 
-    int res_current;
+    auto shadowQualityToIndex = [](ShadowResolution r) {
+        switch (r)
+        {
+        case ShadowResolution::VERY_LOW: return 0;
+        case ShadowResolution::LOW:      return 1;
+        case ShadowResolution::MEDIUM:   return 2;
+        case ShadowResolution::HIGH:     return 3;
+        case ShadowResolution::ULTRA:    return 4;
+        }
+        return 2;
+    };
+    static int res_current = shadowQualityToIndex(m_renderer->get_shadow_quality());
 
     if (ImGui::Combo("Shadow Quality", &res_current, res, IM_ARRAYSIZE(res)))
     {
