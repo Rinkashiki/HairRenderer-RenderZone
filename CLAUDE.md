@@ -288,6 +288,7 @@ SLViewer-windows\
 | `--output <file.mp4>` | `output.mp4` | Output video path |
 | `--width N` | 1920 | Render width in pixels |
 | `--height N` | 1080 | Render height in pixels |
+| `--msaa 1\|4\|8` | `8` | Hardware MSAA sample count. 8× is needed for clean hair fibers; 1× is much faster but heavily aliased. |
 | `--keep-frames` | off | Retain the per-frame PNG dump in the temp dir after encoding |
 | `--log-level error\|warn\|verbose` | `warn` | Vulkan validation message severity filter |
 

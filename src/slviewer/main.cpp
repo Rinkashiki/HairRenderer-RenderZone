@@ -7,7 +7,7 @@
 int main(int argc, char* argv[]) {
     if (argc < 2)
     {
-        std::cerr << "Usage: SLViewer <animation.json> [--scene scene.json] [--output out.mp4] [--width W] [--height H] [--keep-frames] [--log-level error|warn|verbose]\n";
+        std::cerr << "Usage: SLViewer <animation.json> [--scene scene.json] [--output out.mp4] [--width W] [--height H] [--msaa 1|4|8] [--keep-frames] [--log-level error|warn|verbose]\n";
         return EXIT_FAILURE;
     }
 
@@ -18,6 +18,7 @@ int main(int argc, char* argv[]) {
     int         height      = 1080;
     bool        keepFrames  = false;
     LogLevel    logLevel    = LogLevel::Warn;
+    MSAASamples msaa        = MSAASamples::x8;
 
     for (int i = 2; i < argc; ++i)
     {
@@ -37,6 +38,17 @@ int main(int argc, char* argv[]) {
         else if (token == "--height" && i + 1 < argc)
         {
             height = std::stoi(argv[++i]);
+        }
+        else if (token == "--msaa" && i + 1 < argc)
+        {
+            std::string m(argv[++i]);
+            if (m == "1")      msaa = MSAASamples::x1;
+            else if (m == "4") msaa = MSAASamples::x4;
+            else if (m == "8") msaa = MSAASamples::x8;
+            else {
+                std::cerr << "--msaa expects 1, 4, or 8 (got \"" << m << "\")\n";
+                return EXIT_FAILURE;
+            }
         }
         else if (token == "--keep-frames")
         {
@@ -68,7 +80,7 @@ int main(int argc, char* argv[]) {
 
     try {
         SLApplication app;
-        app.run(animPath, scenePath, outputPath, resourcesPath, width, height, keepFrames, logLevel);
+        app.run(animPath, scenePath, outputPath, resourcesPath, width, height, keepFrames, logLevel, msaa);
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
         return EXIT_FAILURE;

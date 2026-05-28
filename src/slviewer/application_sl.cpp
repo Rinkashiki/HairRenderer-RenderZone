@@ -27,7 +27,8 @@ void SLApplication::run(const std::string& animPath,
                         int                width,
                         int                height,
                         bool               keepFrames,
-                        LogLevel           logLevel) {
+                        LogLevel           logLevel,
+                        MSAASamples        msaa) {
     m_animationPath = animPath;
     m_scenePath     = scenePath;
     m_outputPath    = outputPath;
@@ -35,6 +36,7 @@ void SLApplication::run(const std::string& animPath,
     m_width         = width;
     m_height        = height;
     m_keepFrames    = keepFrames;
+    m_msaa          = msaa;
 
     Logger::init(logLevel, "slviewer.log");
 
@@ -111,9 +113,10 @@ void SLApplication::init() {
     m_window->init();
 
     Systems::RendererSettings settings{};
-    settings.samplesMSAA = MSAASamples::x1;
-    settings.clearColor  = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    settings.enableUI    = false;
+    settings.samplesMSAA     = m_msaa;
+    settings.clearColor      = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    settings.enableUI        = false;
+    settings.enableRaytracing = false;
 
     m_renderer = new Systems::ForwardRenderer(m_window, ShadowResolution::ULTRA, settings);
     m_renderer->init();

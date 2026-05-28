@@ -25,9 +25,10 @@ class SLApplication
     std::string m_animationPath;
     std::string m_scenePath;  // empty → bundled resources/scenes/default.json
     std::string m_outputPath{"output.mp4"};
-    int         m_width{1920};
-    int         m_height{1080};
-    bool        m_keepFrames{false};
+    int           m_width{1920};
+    int           m_height{1080};
+    bool          m_keepFrames{false};
+    MSAASamples   m_msaa{MSAASamples::x8};
 
     int   m_totalFrames{0};
     int   m_frameIndex{0};
@@ -45,7 +46,8 @@ class SLApplication
              int                width,
              int                height,
              bool               keepFrames,
-             LogLevel           logLevel);
+             LogLevel           logLevel,
+             MSAASamples        msaa = MSAASamples::x8);
 
   private:
     void init();
