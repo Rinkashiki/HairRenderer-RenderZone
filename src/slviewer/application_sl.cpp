@@ -115,7 +115,7 @@ void SLApplication::init() {
     settings.clearColor  = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
     settings.enableUI    = false;
 
-    m_renderer = new Systems::ForwardRenderer(m_window, ShadowResolution::HIGH, settings);
+    m_renderer = new Systems::ForwardRenderer(m_window, ShadowResolution::ULTRA, settings);
     m_renderer->init();
 
     setup();
