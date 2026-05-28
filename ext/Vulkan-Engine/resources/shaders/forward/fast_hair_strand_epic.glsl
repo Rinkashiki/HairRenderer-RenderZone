@@ -413,6 +413,12 @@ void main() {
                     shadow = computeHairShadow(scene.lights[i], i, shadowMap, 0.7, g_modelPos, spread, directFraction);
                 if (scene.lights[i].shadowType == 1) // VSM
                     shadow = computeHairShadow(scene.lights[i], i, shadowMap, 0.7, g_modelPos, spread, directFraction);
+
+                // Layer a Chebyshev VSM occlusion test on top of the hair-fiber transmittance
+                // so that solid casters (head, body, props) fully shadow hair.
+                float solidOcclusion = computeVarianceShadow(shadowMap, scene.lights[i], i, g_modelPos);
+                shadow         *= solidOcclusion;
+                directFraction *= solidOcclusion;
             }
 
             vec3  L         = normalize(scene.lights[i].position.xyz - g_pos);
