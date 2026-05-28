@@ -75,7 +75,12 @@ void main()
             vec3 tangentSample = vec3(sin(theta) * cos(phi),  sin(theta) * sin(phi), cos(theta));
             vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * n; 
 
-            irradiance += texture(u_envMap, sampleVec).rgb * cos(theta) * sin(theta);
+            // Firefly clamp: HDRis with direct sun pixels (e.g. nature_demo.hdr) carry
+            // values in the hundreds. Without a cap the cosine-weighted integral makes
+            // silhouettes glow like wet specular. 50 keeps a bright sky punch without
+            // blow-out.
+            vec3 envSample = min(texture(u_envMap, sampleVec).rgb, vec3(50.0));
+            irradiance += envSample * cos(theta) * sin(theta);
             nrSamples++;
         }
     }
