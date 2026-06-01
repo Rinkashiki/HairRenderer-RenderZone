@@ -111,7 +111,7 @@
 
   "scene": {
     "ambient_color":     [0.05, 0.05, 0.05],
-    "ambient_intensity": 0.1,
+    "ambient_intensity": 0.05,
     "skybox": {
       "hdri":      "textures/studio_demo.hdr",
       "intensity": 1.0

@@ -134,10 +134,6 @@ void main() {
     // We replace the local diffuse term with the scattered diffuse integral
     // and keep everything else (specular, ambient) unchanged.
     // -------------------------------------------------------------------------
-    // specular + ambient. AO is applied below to match the SSS-off path
-    // (which outputs `hdrTex * ao`), otherwise nonDiffuse would escape AO
-    // attenuation and the SSS-on result would read brighter overall.
-    // vec3 nonDiffuse = max(hdr.rgb - albedo * diffIrr, vec3(0.0)) * ao;
 
 	// View fragment position computation (perspectiveRH_ZO: depth already in [0,1])
   	vec2 fragCoords = v_uv * 2.0 - vec2(1.0);
@@ -171,12 +167,12 @@ void main() {
 		vec3 diffusion = rRr / pr;
 		totalWeight += diffusion;
 
-		vec3 sampleDiffIrr = texture(diffuseIrrTex, sampleUV).rgb;
-        scatteredIrr += diffusion * sampleDiffIrr;
+		vec3  sampleDiffIrr = texture(diffuseIrrTex, sampleUV).rgb;
+        scatteredIrr       += diffusion * sampleDiffIrr;
     }
 
     // Normalize per channel
-	scatteredIrr = albedo * (scatteredIrr / max(totalWeight, vec3(EPS)));
+	scatteredIrr = (albedo / PI) * (scatteredIrr / max(totalWeight, vec3(EPS)));
 
     // -------------------------------------------------------------------------
     // Single scattering (translucency)
@@ -243,7 +239,7 @@ void main() {
     // -------------------------------------------------------------------------
     // Combine and output
     // -------------------------------------------------------------------------
-    vec3 specular = max(hdr.rgb - albedo * scatteredIrr, vec3(0.0));
+    vec3 specular = max(hdr.rgb - scatteredIrr, vec3(0.0));
     outColor  = vec4((scatteredIrr + singleScatter + specular) * ao, hdr.a);
     outBright = texture(brightTex, v_uv);
 }
