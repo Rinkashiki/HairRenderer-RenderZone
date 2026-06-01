@@ -122,6 +122,6 @@
 
   "renderer": {
     "clear_color":     [0.0, 0.0, 0.0, 1.0],
-    "sss_scatter_lut": "textures/scatterDistance.png"
+    "sss_scatter_lut": "textures/scatterDistance/monk07.png"
   }
 }
