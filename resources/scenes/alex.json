@@ -23,6 +23,16 @@
     }
   ],
 
+  "materials": {
+    "alex_hair": {
+      "type":             "hairepic",
+      "thickness":        0.0015,
+      "use_pigmentation": true,
+      "eumelanine":       1.5,
+      "pheomelanine":     0.25
+    }
+  },
+
   "meshes": [
     {
       "name":           "Alex",
@@ -42,55 +52,43 @@
       "animation": "animations/test_anim.json"
     },
     {
-      "name":     "Hair0",
-      "type":     "hair",
-      "file":     "models/alex/alex_0.hair",
-      "position": [-0.011, -0.6, -0.025],
-      "scale":    0.01,
-      "rotation": [90.0, 180.0, 180.0],
-      "material": {
-        "type":      "hairepic",
-        "thickness": 0.0015
-      },
+      "name":      "Hair0",
+      "type":      "hair",
+      "file":      "models/alex/alex_0.hair",
+      "position":  [-0.011, -0.6, -0.025],
+      "scale":     0.01,
+      "rotation":  [90.0, 180.0, 180.0],
+      "material":  "alex_hair",
       "attach_to": { "mesh": "Alex", "joint": "head" }
     },
     {
-      "name":     "Hair1",
-      "type":     "hair",
-      "file":     "models/alex/alex_1.hair",
-      "position": [-0.011, -0.6, -0.025],
-      "scale":    0.01,
-      "rotation": [90.0, 180.0, 180.0],
-      "material": {
-        "type":      "hairepic",
-        "thickness": 0.0015
-      },
+      "name":      "Hair1",
+      "type":      "hair",
+      "file":      "models/alex/alex_1.hair",
+      "position":  [-0.011, -0.6, -0.025],
+      "scale":     0.01,
+      "rotation":  [90.0, 180.0, 180.0],
+      "material":  "alex_hair",
       "attach_to": { "mesh": "Alex", "joint": "head" }
     },
     {
-      "name":     "Eyebrows",
-      "type":     "hair",
-      "file":     "models/alex/eyebrows.hair",
-      "position": [-0.011, -1.557, -0.031],
-      "scale":    0.01,
-      "rotation": [90.0, 180.0, 180.0],
-      "material": {
-        "type":      "hairepic",
-        "thickness": 0.0015
-      },
+      "name":      "Eyebrows",
+      "type":      "hair",
+      "file":      "models/alex/eyebrows.hair",
+      "position":  [-0.011, -1.557, -0.031],
+      "scale":     0.01,
+      "rotation":  [90.0, 180.0, 180.0],
+      "material":  "alex_hair",
       "attach_to": { "mesh": "Alex", "joint": "head" }
     },
     {
-      "name":     "Eyelashes",
-      "type":     "hair",
-      "file":     "models/alex/eyelashes.hair",
-      "position": [-0.011, -1.557, -0.031],
-      "scale":    0.01,
-      "rotation": [90.0, 180.0, 180.0],
-      "material": {
-        "type":      "hairepic",
-        "thickness": 0.0015
-      },
+      "name":      "Eyelashes",
+      "type":      "hair",
+      "file":      "models/alex/eyelashes.hair",
+      "position":  [-0.011, -1.557, -0.031],
+      "scale":     0.01,
+      "rotation":  [90.0, 180.0, 180.0],
+      "material":  "alex_hair",
       "attach_to": { "mesh": "Alex", "joint": "head" }
     }
   ],

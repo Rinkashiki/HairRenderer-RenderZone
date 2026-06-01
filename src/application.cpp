@@ -42,7 +42,7 @@ void HairViewer::run(Systems::RendererSettings settings) {
 void HairViewer::setup() {
     // JSON-driven scene path (default). See SCENE.md.
     auto result   = scene_loader::load_scene_json(
-        RESOURCES_PATH "scenes/nadia.json",
+        RESOURCES_PATH "scenes/maria.json",
         RESOURCES_PATH,
         VKFW::get_engine_resources_path(),
         /*animationOverride*/ "",

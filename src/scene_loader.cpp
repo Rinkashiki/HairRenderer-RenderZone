@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 
 using json = nlohmann::json;
@@ -362,9 +363,9 @@ static Core::IMaterial* build_unlit(const json&                        jm,
     return mat;
 }
 
-static Core::IMaterial* build_material(const json&                        jm,
-                                       const std::string&                 resourcesPath,
-                                       const std::vector<Core::Texture*>& glbTextures) {
+static Core::IMaterial* build_material_inline(const json&                        jm,
+                                              const std::string&                 resourcesPath,
+                                              const std::vector<Core::Texture*>& glbTextures) {
     require(jm, "type", "material");
     const std::string type = jm.at("type").get<std::string>();
     if (type == "pbr")        return build_pbr(jm, resourcesPath, glbTextures);
@@ -374,6 +375,74 @@ static Core::IMaterial* build_material(const json&                        jm,
     if (type == "hairdisney") return build_hairdisney(jm);
     if (type == "unlit")      return build_unlit(jm, resourcesPath, glbTextures);
     throw std::runtime_error("scene_loader: unknown material type '" + type + "'");
+}
+
+// ─── material library ───────────────────────────────────────────────────────
+
+// Resolves a mesh's "material" field, which can take three shapes:
+//   1. Inline object with "type"  → build fresh material (legacy behavior).
+//   2. String "<name>"            → shared reference to a library entry. The
+//                                   library material is built lazily the first
+//                                   time it's referenced and the same pointer
+//                                   is returned for every subsequent reference,
+//                                   so GUI tweaks propagate across every mesh
+//                                   that uses the name.
+//   3. Object { "base": "<name>", ...overrides } → independent instance built
+//                                   by deep-merging the override fields over
+//                                   the library entry's JSON (merge_patch /
+//                                   RFC 7396 semantics — override keys win).
+//                                   Each override site produces its own
+//                                   material, the shared library entry is
+//                                   untouched.
+struct MaterialLibrary {
+    // Definition JSON keyed by name, populated from the top-level "materials" block.
+    std::unordered_map<std::string, json> defs;
+    // Cache of built materials for by-name (shared) references.
+    std::unordered_map<std::string, Core::IMaterial*> sharedCache;
+};
+
+static Core::IMaterial* resolve_material(const json&                        jm,
+                                         const std::string&                 resourcesPath,
+                                         const std::vector<Core::Texture*>& glbTextures,
+                                         MaterialLibrary&                   lib) {
+    // Case 2: bare string → shared library reference.
+    if (jm.is_string()) {
+        const std::string name = jm.get<std::string>();
+        auto cacheIt = lib.sharedCache.find(name);
+        if (cacheIt != lib.sharedCache.end())
+            return cacheIt->second;
+        auto defIt = lib.defs.find(name);
+        if (defIt == lib.defs.end())
+            throw std::runtime_error("scene_loader: material reference '" + name +
+                                     "' has no entry in the top-level 'materials' library");
+        // Library entries are scene-global → no GLB texture context available.
+        Core::IMaterial* mat = build_material_inline(defIt->second, resourcesPath, {});
+        lib.sharedCache[name] = mat;
+        return mat;
+    }
+
+    if (!jm.is_object())
+        throw std::runtime_error("scene_loader: material must be an object or a library-entry name (string)");
+
+    // Case 3: { "base": "<name>", ... } → cloned instance with overrides.
+    if (jm.contains("base")) {
+        if (jm.contains("type"))
+            throw std::runtime_error("scene_loader: material cannot specify both 'base' and 'type' "
+                                     "— use one form or the other");
+        const std::string name = jm.at("base").get<std::string>();
+        auto defIt = lib.defs.find(name);
+        if (defIt == lib.defs.end())
+            throw std::runtime_error("scene_loader: material base '" + name +
+                                     "' has no entry in the top-level 'materials' library");
+        json merged = defIt->second;
+        json overrides = jm;
+        overrides.erase("base");
+        merged.merge_patch(overrides); // RFC 7396 — override keys win, missing fields keep base values
+        return build_material_inline(merged, resourcesPath, glbTextures);
+    }
+
+    // Case 1: inline material object with "type".
+    return build_material_inline(jm, resourcesPath, glbTextures);
 }
 
 // ─── meshes ─────────────────────────────────────────────────────────────────
@@ -389,7 +458,8 @@ struct PendingAttachment {
 
 static Core::Mesh* build_mesh(const json&                     jm,
                               const std::string&              resourcesPath,
-                              std::vector<PendingAttachment>& pending) {
+                              std::vector<PendingAttachment>& pending,
+                              MaterialLibrary&                lib) {
     require(jm, "type", "mesh");
     require(jm, "file", "mesh");
 
@@ -428,9 +498,9 @@ static Core::Mesh* build_mesh(const json&                     jm,
     if (jm.contains("scale"))    mesh->set_scale(to_scale(jm["scale"]));
     if (jm.contains("rotation")) mesh->set_rotation(to_vec3(jm["rotation"]));
 
-    // Material
+    // Material — may be inline, a library reference (string), or { base, ...overrides }.
     if (jm.contains("material")) {
-        auto* mat = build_material(jm["material"], resourcesPath, glbTextures);
+        auto* mat = resolve_material(jm["material"], resourcesPath, glbTextures, lib);
         mesh->push_material(mat);
     }
 
@@ -443,7 +513,7 @@ static Core::Mesh* build_mesh(const json&                     jm,
     // Child meshes — transforms are inherited from this parent.
     if (jm.contains("children")) {
         for (const auto& jc : jm["children"])
-            mesh->add_child(build_mesh(jc, resourcesPath, pending));
+            mesh->add_child(build_mesh(jc, resourcesPath, pending, lib));
     }
 
     // Joint attachment — resolved after every top-level mesh is built so the
@@ -521,6 +591,24 @@ LoadResult load_scene_json(const std::string&     scenePath,
 
     result.scene = new Core::Scene(result.camera);
 
+    // ── material library ────────────────────────────────────────────────────
+    // Optional top-level "materials" object: { "name": { type: ..., ... }, ... }.
+    // Each entry is stored as JSON and only built on first reference. Meshes
+    // can reference an entry by name (shared instance) or via { "base":
+    // "<name>", ...overrides } (independent instance — see SCENE.md §6.8).
+    MaterialLibrary materialLib;
+    if (root.contains("materials")) {
+        const auto& jmat = root["materials"];
+        if (!jmat.is_object())
+            throw std::runtime_error("scene_loader: top-level 'materials' must be an object");
+        for (auto it = jmat.begin(); it != jmat.end(); ++it) {
+            if (!it.value().is_object() || !it.value().contains("type"))
+                throw std::runtime_error("scene_loader: material '" + it.key() +
+                                         "' in the library must be an object with a 'type' field");
+            materialLib.defs.emplace(it.key(), it.value());
+        }
+    }
+
     // ── lights ──────────────────────────────────────────────────────────────
     if (root.contains("lights")) {
         for (const auto& jl : root["lights"]) {
@@ -541,7 +629,7 @@ LoadResult load_scene_json(const std::string&     scenePath,
 
     if (root.contains("meshes")) {
         for (const auto& jm : root["meshes"]) {
-            Core::Mesh* mesh = build_mesh(jm, resourcesPath, pendingAttachments);
+            Core::Mesh* mesh = build_mesh(jm, resourcesPath, pendingAttachments, materialLib);
             result.scene->add(mesh);
 
             if (jm.contains("animation") && firstWithAnimField == nullptr) {
@@ -631,7 +719,7 @@ LoadResult load_scene_json(const std::string&     scenePath,
         warn_unknown(jr, {"clear_color", "sss_scatter_lut"}, "renderer");
     }
 
-    warn_unknown(root, {"name", "camera", "lights", "meshes", "scene", "renderer"}, "root");
+    warn_unknown(root, {"name", "camera", "lights", "materials", "meshes", "scene", "renderer"}, "root");
 
     return result;
 }
