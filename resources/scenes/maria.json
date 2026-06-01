@@ -52,6 +52,32 @@
         "thickness": 0.0015
       },
       "attach_to": { "mesh": "Maria", "joint": "head" }
+    },
+    {
+      "name":     "Eyebrows",
+      "type":     "hair",
+      "file":     "models/maria/eyebrows.hair",
+      "position": [-0.011, -1.557, -0.035],
+      "scale":    0.01,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": {
+        "type":      "hairepic",
+        "thickness": 0.0015
+      },
+      "attach_to": { "mesh": "Maria", "joint": "head" }
+    },
+    {
+      "name":     "Eyelashes",
+      "type":     "hair",
+      "file":     "models/maria/eyelashes.hair",
+      "position": [-0.011, -1.557, -0.035],
+      "scale":    0.01,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": {
+        "type":      "hairepic",
+        "thickness": 0.0015
+      },
+      "attach_to": { "mesh": "Maria", "joint": "head" }
     }
   ],
 

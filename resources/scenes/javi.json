@@ -52,6 +52,58 @@
         "thickness": 0.0015
       },
       "attach_to": { "mesh": "Javi", "joint": "head" }
+    },
+    {
+      "name":     "Eyebrows",
+      "type":     "hair",
+      "file":     "models/javi/eyebrows.hair",
+      "position": [-0.014, -1.71, -0.038],
+      "scale":    0.01,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": {
+        "type":      "hairepic",
+        "thickness": 0.0015
+      },
+      "attach_to": { "mesh": "Javi", "joint": "head" }
+    },
+    {
+      "name":     "Eyelashes",
+      "type":     "hair",
+      "file":     "models/javi/eyelashes.hair",
+      "position": [-0.014, -1.71, -0.035],
+      "scale":    0.01,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": {
+        "type":      "hairepic",
+        "thickness": 0.0015
+      },
+      "attach_to": { "mesh": "Javi", "joint": "head" }
+    },
+    {
+      "name":     "Mustache",
+      "type":     "hair",
+      "file":     "models/javi/mustache.hair",
+      "position": [-0.011, -1.707, -0.026],
+      "scale":    0.01,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": {
+        "type":      "hairepic",
+        "thickness": 0.0015
+      },
+      "attach_to": { "mesh": "Javi", "joint": "head" }
+    },
+    {
+      "name":     "Beard",
+      "type":     "hair",
+      "file":     "models/javi/beard.hair",
+      "position": [-0.011, -1.71, -0.022],
+      "scale":    0.01,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": {
+        "type":      "hairepic",
+        "thickness": 0.0015
+      },
+      "attach_to": { "mesh": "Javi", "joint": "head" }
     }
   ],
 

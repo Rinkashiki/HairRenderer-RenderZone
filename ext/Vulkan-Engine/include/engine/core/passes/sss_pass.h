@@ -80,7 +80,7 @@ class SSSPass : public BasePass
     // Parameters
     int   m_sampleCount     = static_cast<int>(MAX_SAMPLES);
     float m_maxScatter      = 0.05f;
-    float m_extinctionCoeff = 3.0f;
+    float m_extinctionCoeff = 5.0f;
     float m_Fdr             = 0.028f;
     int   m_sssEnabled      = 1; // separate from m_enabled; controls UBO flag
 
