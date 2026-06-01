@@ -465,6 +465,11 @@ void main() {
     // BSDF setup ............................................................
     float melanin = material.baseColor.x;
     float redness = material.baseColor.y;
+
+    // TODO: Check Unreal shader code to see what the exact tonemapping needed is
+    // melanin = pow(melanin, 2.2);
+    // redness = pow(redness, 2.2);
+    
     applyNaturalVariation(melanin, redness, g_uv.x, g_uv.y);
     vec3 physicalSigma = getAbsorptionFromMelanin(melanin, redness, material.baseColor.z);
     vec3 epicBaseColor = hairAbsorptionToColor(physicalSigma);

@@ -28,15 +28,8 @@
       "type":             "hairepic",
       "thickness":        0.0015,
       "use_pigmentation": true,
-      "eumelanine":       0.25,
-      "pheomelanine":     0.4
-    },
-    "javi_beard": {
-      "type":             "hairepic",
-      "thickness":        0.0015,
-      "use_pigmentation": true,
-      "eumelanine":       0.55,
-      "pheomelanine":     0.6
+      "eumelanine":       0.3,
+      "pheomelanine":     0.25
     }
   },
 
@@ -85,26 +78,6 @@
       "scale":     0.01,
       "rotation":  [90.0, 180.0, 180.0],
       "material":  "javi_hair",
-      "attach_to": { "mesh": "Javi", "joint": "head" }
-    },
-    {
-      "name":      "Mustache",
-      "type":      "hair",
-      "file":      "models/javi/mustache.hair",
-      "position":  [-0.011, -1.707, -0.026],
-      "scale":     0.01,
-      "rotation":  [90.0, 180.0, 180.0],
-      "material":  "javi_beard",
-      "attach_to": { "mesh": "Javi", "joint": "head" }
-    },
-    {
-      "name":      "Beard",
-      "type":      "hair",
-      "file":      "models/javi/beard.hair",
-      "position":  [-0.011, -1.71, -0.022],
-      "scale":     0.01,
-      "rotation":  [90.0, 180.0, 180.0],
-      "material":  "javi_beard",
       "attach_to": { "mesh": "Javi", "joint": "head" }
     }
   ],

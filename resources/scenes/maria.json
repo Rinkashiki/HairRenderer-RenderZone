@@ -28,8 +28,8 @@
       "type":             "hairepic",
       "thickness":        0.0015,
       "use_pigmentation": true,
-      "eumelanine":       0.25,
-      "pheomelanine":     0.4
+      "eumelanine":       0.4,
+      "pheomelanine":     0.6
     }
   },
 
