@@ -404,6 +404,7 @@ typedef enum TextureFormatTypeFlagBits
 {
     TEXTURE_FORMAT_TYPE_COLOR  = 0x00000000,
     TEXTURE_FORMAT_TYPE_NORMAL = 0x00000001,
+    TEXTURE_FORMAT_TYPE_LINEAR = 0x00000001, // alias of NORMAL: linear UNORM, for data maps (roughness/metalness/AO)
     TEXTURE_FORMAT_TYPE_DEPTH  = 0x00000002,
     TEXTURE_FORMAT_TYPE_HDR    = 0x00000003
 } TextureFormatType;

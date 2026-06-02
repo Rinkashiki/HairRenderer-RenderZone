@@ -145,7 +145,7 @@ void GeometryPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
                                               0);
         m_descriptorPool.set_descriptor_write(&frames[i].uniformBuffers[OBJECT_LAYOUT],
                                               sizeof(MaterialUniforms),
-                                              m_device->pad_uniform_buffer_size(sizeof(MaterialUniforms)),
+                                              m_device->pad_uniform_buffer_size(sizeof(ObjectUniforms)),
                                               &m_descriptors[i].objectDescritor,
                                               UNIFORM_DYNAMIC_BUFFER,
                                               1);

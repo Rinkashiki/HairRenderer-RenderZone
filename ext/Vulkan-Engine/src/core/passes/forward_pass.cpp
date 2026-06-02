@@ -181,8 +181,16 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
     LayoutBinding textureBinding5(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 4);
     LayoutBinding textureBinding6(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 5);
     LayoutBinding textureBinding7(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 6);
+    LayoutBinding textureBinding8(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 7);
+    LayoutBinding textureBinding9(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 8);
+    LayoutBinding textureBinding10(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 9);
+    LayoutBinding textureBinding11(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 10);
+    LayoutBinding textureBinding12(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 11);
     m_descriptorPool.set_layout(
-        OBJECT_TEXTURE_LAYOUT, {textureBinding1, textureBinding2, textureBinding3, textureBinding4, textureBinding5, textureBinding6, textureBinding7});
+        OBJECT_TEXTURE_LAYOUT,
+        {textureBinding1, textureBinding2, textureBinding3, textureBinding4, textureBinding5,
+         textureBinding6, textureBinding7, textureBinding8, textureBinding9, textureBinding10,
+         textureBinding11, textureBinding12});
 
     // BINDLESS SETs
     LayoutBinding bindlessVAOs(UNIFORM_STORAGE_BUFFER, SHADER_STAGE_VERTEX, 0, ENGINE_MAX_OBJECTS);
@@ -228,7 +236,7 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
             &frames[i].uniformBuffers[OBJECT_LAYOUT], sizeof(ObjectUniforms), 0, &m_descriptors[i].objectDescritor, UNIFORM_DYNAMIC_BUFFER, 0);
         m_descriptorPool.set_descriptor_write(&frames[i].uniformBuffers[OBJECT_LAYOUT],
                                               sizeof(MaterialUniforms),
-                                              m_device->pad_uniform_buffer_size(sizeof(MaterialUniforms)),
+                                              m_device->pad_uniform_buffer_size(sizeof(ObjectUniforms)),
                                               &m_descriptors[i].objectDescritor,
                                               UNIFORM_DYNAMIC_BUFFER,
                                               1);

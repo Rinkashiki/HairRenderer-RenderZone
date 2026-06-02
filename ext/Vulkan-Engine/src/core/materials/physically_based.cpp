@@ -12,7 +12,31 @@ Graphics::MaterialUniforms PhysicallyBasedMaterial::get_uniforms() const {
     uniforms.dataSlot5 = {m_hasNormalTexture, m_hasRoughnessTexture, m_hasMetallicTexture, m_hasAOTexture};
     uniforms.dataSlot6 = {m_hasMaskTexture, m_maskType, m_opacityWeight, m_hasEmissiveTexture};
     uniforms.dataSlot7 = {m_emissionColor, m_emisionWeight};
-    uniforms.dataSlot8 = Vec4{m_emissionIntensity, m_isReflective, 0.0f, 0.0f}; // W = Material ID
+    // slot8.y: bit-packed material flags
+    //   bit 0: isReflective       (SSR cast)
+    //   bit 1: hasScatteringTexture
+    //   bit 2: hasClothesMaskTexture
+    int materialFlags = 0;
+    if (m_isReflective)           materialFlags |= (1 << 0);
+    if (m_hasScatteringTexture)   materialFlags |= (1 << 1);
+    if (m_hasClothesMaskTexture)  materialFlags |= (1 << 2);
+
+    uniforms.dataSlot8 = Vec4{m_emissionIntensity,
+                              float(materialFlags),
+                              m_hasCurvatureTexture ? 1.0f : 0.0f,
+                              m_hasBentNormalTexture ? 1.0f : 0.0f};
+
+    // Layer B microdetail (steps 8-11).
+    //   slot9  = (detailTiling, detailNormalStrength, hasDetailNormal, hasDetailCavity)
+    //   slot10 = (cavitySpecOcclusion, cavitySSSAttenuation, dualLobeMix, dualLobeRoughnessSoft)
+    uniforms.dataSlot9  = Vec4{m_detailTiling,
+                               m_detailNormalStrength,
+                               m_hasDetailNormalTexture ? 1.0f : 0.0f,
+                               m_hasDetailCavityTexture ? 1.0f : 0.0f};
+    uniforms.dataSlot10 = Vec4{m_cavitySpecOcclusion,
+                               m_cavitySSSAttenuation,
+                               m_dualLobeMix,
+                               m_dualLobeRoughnessSoft};
 
     return uniforms;
 }

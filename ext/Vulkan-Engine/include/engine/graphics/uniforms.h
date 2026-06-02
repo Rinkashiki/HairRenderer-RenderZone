@@ -70,6 +70,8 @@ struct MaterialUniforms {
     Vec4 dataSlot6;
     Vec4 dataSlot7;
     Vec4 dataSlot8;
+    Vec4 dataSlot9;  // Layer B microdetail params (detail normal, detail cavity)
+    Vec4 dataSlot10; // Layer B microdetail params (cavity weights, dual-lobe specular)
 };
 
 } // namespace Graphics

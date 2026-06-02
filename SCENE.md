@@ -193,6 +193,30 @@ Discriminated by `"type"`:
 | `emission_intensity` | float | `1.0` |
 | `reflective` | bool | `false` |
 
+**Skin realism — authored maps (Layer A).** All optional; absence falls back to the standard non-skin PBR path. Loaded as linear data maps (not sRGB).
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `bent_normal_texture` | texref | (none) | Tangent-space bent-normal map. When present, IBL diffuse ambient samples the irradiance cube along the bent normal so crevices read incoming light from the open-sky direction; Fresnel/specular keeps the geometric normal. |
+| `curvature_texture` | texref | (none) | Grayscale `0=flat, 1=curved`. Drives the analytical pre-integrated diffuse (Penner GDC 2011) — replaces Lambert NdotL with a curvature-aware per-channel wrapped response. Produces the warm red wraparound at shadow terminators on curved features (nose, cheeks, jaw). |
+| `scattering_texture` | texref | (none) | Per-texel SSS modulation. White = full subsurface scatter, black = none. Sampled in the forward pass into `outAlbedoMask.a`; the SSS post-process lerps between local diffuse and scattered diffuse by this value. |
+| `clothes_mask_texture` | texref | (none) | Region mask, white = clothes, black = skin. Gates **all** skin-specific effects (pre-integrated diffuse, bent-normal IBL, screen-space SSS) on clothing regions painted into the same mesh material. Smooth lerp across the boundary so no hard seam appears. |
+
+**Skin realism — microdetail (Layer B).** Pore-scale realism on top of the base normal. Detail normal + cavity share the same `detail_tiling` so the cavity dips align with the normal-map indentations.
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `detail_normal_texture` | texref | (none) | Tileable high-frequency tangent-space normal blended via "whiteout" blend over the base normal in tangent space. |
+| `detail_cavity_texture` | texref | (none) | Tileable grayscale cavity (white = flat, dark = pore). Feeds both per-light specular occlusion and per-pixel SSS sample weight. |
+| `detail_tiling` | float | `8.0` | UV multiplier for both detail textures. Higher = smaller pores. `16`–`32` is typical for face close-ups. |
+| `detail_normal_strength` | float | `0.5` | Strength of the detail-normal blend, `[0, 1]`. `0` = base normal only, `1` = full detail. |
+| `cavity_spec_occlusion` | float | `1.0` | How strongly cavity attenuates the per-light specular term. `0` = no attenuation, `1` = specular zeroed in fully-dark cavity regions. |
+| `cavity_sss_attenuation` | float | `0.0` | How strongly cavity attenuates the per-pixel SSS sample weight written into `outDiffuseIrr.a`. `0` = SSS ignores cavity, `1` = SSS fully scaled by cavity (no scatter in pore crevices). |
+| `dual_lobe_mix` | float | `0.0` | Penner GDC 2011 dual-lobe specular weight. `0` = single (default) GGX lobe, `>0` mixes a softer second lobe at `dual_lobe_roughness_soft`. `0.15` is a subtle skin sheen, `0.3` is strong. Gated by clothes mask. |
+| `dual_lobe_roughness_soft` | float | `0.55` | Roughness of the soft secondary GGX lobe. |
+
+All Layer A and Layer B fields are **optional** and gated by their respective `has*Texture` flags or `>0` checks. Existing non-skin scenes remain visually identical without changes.
+
 ### 6.2 `haircard`
 
 | Field | Type | Default |

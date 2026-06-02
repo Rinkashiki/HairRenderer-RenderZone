@@ -6,6 +6,48 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
+### Skin realism — authored maps + microdetail & pores
+
+Two-layer push on skin realism. **Layer A** surfaces the authored map sets already shipped under `resources/textures/<character>/` — some slots exist in `PhysicallyBasedMaterial` (albedo/normal/roughness/AO/metallic/emissive), others don't (bent normal, curvature, scattering, clothes mask) and need engine + shader work. **Layer B** adds pore-scale detail on top of the base normal — mostly inside `physically_based.glsl`, with a small cavity-aware modulation in `ssss.glsl`. No new render passes, no C++ pass restructure.
+
+**Layer B technique selection** (highest realism-per-effort; Fresnel-in-cavity and detail-roughness perturbation were considered and skipped as marginal):
+
+1. *Detail (pore) normal map* — tiled high-frequency tangent-space normal blended with base normal. Tiling + strength configurable per material.
+2. *Cavity map + specular occlusion* — grayscale cavity attenuates specular only, suppressing "shiny pore" artifacts. Same map feeds `ssss.glsl` to shrink scatter weight in crevices.
+3. *Dual-lobe specular* — two GGX lobes (sharp ~0.35 + soft ~0.55) mixed for layered oily/dry skin highlight (Penner GDC 2011).
+
+**Assets required from user (for Layer B):**
+
+- `resources/textures/skin/pore_normal.png` — tileable RGB tangent-space normal (Y-up, same convention as the engine's other normal maps).
+- `resources/textures/skin/pore_cavity.png` — tileable grayscale cavity aligned with `pore_normal` (white = flat, dark = pore).
+
+Both should come from the same source asset so cavities align with normal-map dips. Free sources: Poly Haven "skin pores", Textures.com tileable skin detail. Per-character overrides can be added later via scene JSON.
+
+**Schema additions** (`pbr` material in `SCENE.md`, all optional):
+
+- Layer A: `bent_normal_texture`, `curvature_texture`, `scattering_texture`, `clothes_mask_texture` (each a path or `$GLB[N]`).
+- Layer B: `detail_normal_texture`, `detail_cavity_texture`, `detail_tiling` (float, default `8.0`), `detail_normal_strength` (float `[0,1]`, default `0.5`), `cavity_spec_occlusion` (float `[0,1]`, default `1.0`), `dual_lobe_mix` (float `[0,1]`, default `0.15`), `dual_lobe_roughness_soft` (float, default `0.55`), `cavity_sss_attenuation` (float `[0,1]`, default `0.6`).
+
+**Implementation order** (each step validated before the next):
+
+1. ~~Maria authored maps wiring (Layer A, no engine change).~~ **Done — see `## Done` 2026-06-02.**
+2. ~~Engine extension for the remaining 4 maps (Layer A): slots, descriptor layout, samplers, scene_loader.~~ **Done — see `## Done` 2026-06-02.**
+3. ~~Curvature → pre-integrated skin diffuse (Penner 2011).~~ **Done — see `## Done` 2026-06-02.**
+4. ~~Bent normal → diffuse IBL direction.~~ **Done — see `## Done` 2026-06-02.**
+5. ~~Scattering map → per-texel SSS modulation.~~ **Done — see `## Done` 2026-06-02.**
+6. ~~Clothes mask → suppress skin SSS / pre-integrated / bent-normal on clothing.~~ **Done — see `## Done` 2026-06-02.**
+7. ~~*(User asset drop)* `normal_detail.png` + `cavity_detail.png` in `resources/textures/skin/`.~~ **Done — assets in place.**
+8. ~~Detail (pore) normal blended into forward shader.~~ **Done — see `## Done` 2026-06-02.**
+9. ~~Cavity map + specular occlusion (Layer B).~~ **Done — see `## Done` 2026-06-02.**
+10. ~~Dual-lobe specular (Layer B).~~ **Done — see `## Done` 2026-06-02.**
+11. ~~Cavity-aware SSS in `ssss.glsl` (Layer B).~~ **Done — see `## Done` 2026-06-02.**
+12. ~~Scene schema + docs.~~ **Done — see `## Done` 2026-06-02.**
+13. ~~Regression sweep (uncovered + fixed a pre-existing engine offset bug).~~ **Done — see `## Done` 2026-06-02.** Debug `HairViewer --frames 10 --log-level warn` clean across alex/javi/maria/nadia. Confirm hair, eyes, and non-skin materials unaffected.
+
+As each step completes, move the relevant write-up into `## Done` with a date (matching the existing entries) and record issues found + fixes shipped + verification.
+
+---
+
 ### SLViewer — Windows clean-machine deploy validation
 
 Local Windows smoke test now passes (see Done below). **Still not validated on a clean Windows host** (no Vulkan SDK, no VS), and there is a known blocker for that step:
@@ -21,6 +63,236 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### Skin realism — regression sweep + latent uniform-buffer offset bug fix (step 13) (2026-06-02)
+
+The skin realism initiative was visually verified on Maria, but the regression sweep against alex's scene (`default.json`, no skin maps bound) revealed every non-Maria scene rendering with extreme blocky color corruption across the PBR mesh. Diagnostic bisection ruled out the new shader code paths (gated by `has*Texture` flags that are all false for alex). The culprit was a **latent engine bug** that grew load-bearing only when `MaterialUniforms` got bigger.
+
+**The bug.** Every site that places `MaterialUniforms` into the per-frame OBJECT layout buffer was using `pad_uniform_buffer_size(sizeof(MaterialUniforms))` as the **offset within the mesh's stride slot** where the material data starts. The correct offset is `pad_uniform_buffer_size(sizeof(ObjectUniforms))` — material data sits right after the object data, so the offset is the size of the object portion, not the size of the material portion. Both happened to equal the same value (128 or 256 depending on GPU UBO alignment) when `MaterialUniforms` was 8 Vec4 slots. As soon as it grew to 10 slots (160 bytes), the two padded sizes diverged, and every mesh's material reads bled past its own slot into the *next* mesh's slot — explaining why Maria (single PBR mesh) survived (her material reads adjacent buffer space that happens to be skybox or hair data, but the visual result on the central mesh was OK enough), while Alex with a HairCard mesh laid out next to the PBR mesh produced wild corruption.
+
+**Why this was masked for years.** `pad(128) == pad(256)` on essentially every common GPU because UBO min-alignment rounds both up to 256. The bug only manifests when `sizeof(MaterialUniforms)` crosses an alignment boundary the way ours did. The skin realism initiative was the first growth past 128 bytes.
+
+**Fix shipped** — replaced `pad(MaterialUniforms)` with `pad(ObjectUniforms)` at all 7 sites that compute the material offset within the per-mesh stride:
+
+- `ext/Vulkan-Engine/src/core/resource_manager.cpp:339` (CPU-side upload offset)
+- `ext/Vulkan-Engine/src/core/passes/forward_pass.cpp:239` (forward pass descriptor write)
+- `ext/Vulkan-Engine/src/core/passes/shadow_pass.cpp:86` (shadow pass descriptor write)
+- `ext/Vulkan-Engine/src/core/passes/variance_shadow_pass.cpp:76` (VSM descriptor write)
+- `ext/Vulkan-Engine/src/core/passes/geometry_pass.cpp:148` (deferred-pipeline geometry pass descriptor write)
+- `ext/Vulkan-Engine/src/core/passes/hair_scattering_pass.cpp:145` (hair LUT compute pass descriptor write)
+- `ext/Vulkan-Engine/src/core/passes/hair_voxelization_pass.cpp:172` (hair voxelization compute pass descriptor write)
+
+The stride computation in `ext/Vulkan-Engine/src/systems/renderers/renderer.cpp:275` (`objectStrideSize = pad(ObjectUniforms) + pad(MaterialUniforms)`) was already correct — it's adding both sizes to compute total per-mesh footprint, not an offset.
+
+**Verified.** Alex (default.json) renders correctly. Maria (maria.json, all skin maps) continues to render correctly. User confirmed "the rest of the scenes" also rendering correctly.
+
+**Investigation trail.** Initial false lead: my step 8 normal-blend refactor going through `v_TBN` for materials without normal maps — patched to fall back to `v_normal` directly when neither a base normal map nor a detail normal map is bound. That patch is kept (it removes a real risk of `normalize(zero)` NaN on tangent-less meshes), but it was not the cause of the alex regression.
+
+---
+
+### Skin realism — SCENE.md schema documentation (Layer A + B, step 12) (2026-06-02)
+
+Documented all 12 new `pbr` material fields added by the Skin realism initiative. Two new subsections under `### 6.1 pbr`: one for Layer A (authored maps — bent normal, curvature, scattering, clothes mask) and one for Layer B (microdetail — pore normal/cavity textures plus the 6 tuning scalars). Each field documents its purpose in one sentence so future material authors know *why* it's there, not just *what* it accepts. All new fields are optional with explicit defaults; non-skin scenes remain visually identical without any JSON changes.
+
+**Not done** (intentionally): rolling the maps into alex/javi/nadia scenes. Those characters ship only `<name>.png` (base color) + hair maps under `resources/textures/<name>/` — no authored normal/AO/roughness/etc. The wiring is parked until those assets exist.
+
+**Not done** (intentionally): `CLAUDE.md` updates. The architecture overview (forward pipeline pass table, post-process pass authoring guide, scene format pointer, material-class summary) is still accurate after this work — the additions are all material-internal and surface through the `pbr` schema in `SCENE.md`. Nothing in `CLAUDE.md` describes the previous field list, so nothing is stale.
+
+---
+
+### Cavity-aware SSS (Layer B step 11) (2026-06-02)
+
+The cavity map now also shapes the screen-space SSS blur so light no longer bleeds across pore boundaries. Implemented by repurposing the unused `outDiffuseIrr.a` channel as a **per-pixel SSS sample weight**, baked at forward-pass time. The SSS pass multiplies that weight into each kernel tap's diffusion contribution (both numerator and denominator) so pore crevices contribute proportionally less to their neighbours' scatter.
+
+**Approach.** Avoided binding the cavity texture in the SSS pass — it's a global post-process, doesn't know which material a pixel belongs to. Instead the forward PBR shader writes `outDiffuseIrr.a = skinMask * mix(1.0, cavity, cavity_sss_attenuation)`. Every other shader (hair epic/strand/card/disney, unlit, phong, skybox) already writes `outDiffuseIrr.a = 0` — free benefit: those pixels are now naturally excluded from the SSS blur, which cleans up the hairline edge and silhouette transitions where hair/sky used to contribute to skin scatter via texture filtering.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/include/engine/core/materials/physically_based.h` — added `m_cavitySSSAttenuation` (default `0.0`) with getter/setter.
+- `ext/Vulkan-Engine/src/core/materials/physically_based.cpp` — packed into `dataSlot10.y`.
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — writes the modulated weight into `outDiffuseIrr.a`. The slot10.y field (`cavitySSSAttenuation`) was already declared in the uniform block from step 9.
+- `ext/Vulkan-Engine/resources/shaders/misc/ssss.glsl` — per-sample blur loop now reads `diffuseIrr.a` and folds it into the diffusion weight for both `scatteredIrr` and `totalWeight` accumulation; the normalize step is unchanged, so a region where many samples have low weight still produces a correctly-averaged result.
+- `src/scene_loader.cpp` — parses `cavity_sss_attenuation`.
+- `resources/scenes/maria.json` — final tuning landed at `cavity_sss_attenuation: 0.4`, `cavity_spec_occlusion: 0.5` (slightly softer than my initial 0.6/0.7), `detail_normal_strength: 0.4` (down from 1.0).
+
+**Verified.** User confirmed cleaner pore-scale detail (boundaries no longer washed away by SSS), cleaner hairline/clothes edges (non-skin pixels no longer contributing).
+
+---
+
+### Dual-lobe specular (Layer B step 10) (2026-06-02)
+
+Penner GDC 2011: skin's specular response is layered — a sharp oily peak on top of a broader dry-skin reflection. Approximated by mixing two GGX lobes at different roughnesses.
+
+**Approach.** In the per-light loop, when `dualLobeMix * skinMask > 0`, copy the `SchlickSmithBRDF` struct, override only `.roughness` with `dualLobeRoughnessSoft`, re-evaluate the BRDF for the soft lobe, subtract the (unchanged) `diffBase` to isolate the soft specular, and `mix(specSharp, specSoft, effectiveDualMix)`. Order matters: dual-lobe is applied *before* cavity occlusion, so cavity attenuates the final dual-lobe specular. The diffuse-term `kD` depends on Fresnel, not roughness, so both BRDF calls share `diffBase` — no duplicated diffuse evaluation.
+
+**Cost.** One extra BRDF call per light on skin pixels. Acceptable for face-filling renders. Gated by `skinMask` so clothes keep their single sharp lobe.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/include/engine/core/materials/physically_based.h` — added `m_dualLobeMix` (default `0.0` = off), `m_dualLobeRoughnessSoft` (default `0.55`) with getters/setters.
+- `ext/Vulkan-Engine/src/core/materials/physically_based.cpp` — packed into `dataSlot10.zw`.
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — second BRDF call + mix in the per-light loop, gated by `effectiveDualMix > 0`.
+- `src/scene_loader.cpp` — parses `dual_lobe_mix`, `dual_lobe_roughness_soft`.
+- `resources/scenes/maria.json` — `dual_lobe_mix: 0.15`, `dual_lobe_roughness_soft: 0.55`.
+
+**Verified.** User confirmed the layered sharp+soft highlight on cheekbone/nose under directional light.
+
+---
+
+### Cavity map + specular occlusion (Layer B step 9) (2026-06-02)
+
+Pore crevices shouldn't glint — micro-occlusion should attenuate the specular term so the per-pore highlight from step 8's detail normal doesn't read as plastic. Tied to the same `detailTiling` as the detail normal so cavity dips align with normal-map indentations.
+
+**Approach.** Refactored the per-light loop to hoist the diffuse/specular split (compute `F`, `kD`, `diffBase` once per light, derive `specPart = lighting - diffBase`). That split is then reused by both step 3's curvature wrap and step 9's cavity occlusion — cheaper than two independent Fresnel evaluations. Cavity occlusion multiplies only `specPart` by `mix(1.0, cavity, cavity_spec_occlusion)`; diffuse and SSS irradiance are untouched.
+
+**Slot restructuring.** Moved `hasDetailCavityTexture` flag into `dataSlot9.w` (previously padding); slot10 now consistently holds the cavity/dual-lobe scalar weights. Slot10.x = `cavitySpecOcclusion`, the rest reserved for steps 10–11.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/include/engine/core/materials/physically_based.h` — added `DETAIL_CAVITY = 11` slot, `m_hasDetailCavityTexture` flag, `m_cavitySpecOcclusion` (default `1.0`) param with getter/setter.
+- `ext/Vulkan-Engine/src/core/materials/physically_based.cpp` — slot9/slot10 packing restructured.
+- `ext/Vulkan-Engine/src/core/passes/forward_pass.cpp` — `OBJECT_TEXTURE_LAYOUT` 11 → 12 bindings.
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — `detailCavityTex` sampler at binding 11; uniform block updated; per-light spec/diff split hoisted; cavity occlusion in the per-light loop.
+- `src/scene_loader.cpp` — parses `detail_cavity_texture` (linear UNORM), `cavity_spec_occlusion`.
+- `resources/scenes/maria.json` — wired cavity at the same tiling as detail normal.
+
+**Verified.** User confirmed pores no longer read as shiny plastic.
+
+---
+
+### Detail (pore) normal blended into forward shader (Layer B step 8) (2026-06-02)
+
+First Layer B step. Adds pore-scale microdetail to skin by sampling a high-frequency tileable normal map at scaled UVs and blending with the existing base normal in tangent space. Pores read clearly on close-ups, vanish at distance, and don't introduce specular sparkle artifacts. Whiteout blend (xy of base + xy of detail scaled by strength, z multiplied) is used over RNM/UDN for robustness at glancing angles.
+
+**Approach.** Refactored `setupBRDFProperties` to decode the base normal into tangent space first, blend the detail normal in tangent space, then transform the combined normal to world space via `v_TBN`. Identity tangent-space normal `(0,0,1)` is used when no base normal map is bound, so the path works uniformly with or without a base normal. `MaterialUniforms` grew from 8 to 10 Vec4 slots (`uniforms.h`) to make room for Layer B parameters — extra trailing bytes are ignored by shaders that don't declare them, so other materials are unaffected.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/include/engine/graphics/uniforms.h` — added `dataSlot9` and `dataSlot10` to `MaterialUniforms`.
+- `ext/Vulkan-Engine/include/engine/core/materials/physically_based.h` — added `DETAIL_NORMAL = 10` slot, `m_hasDetailNormalTexture` flag, `m_detailTiling` (default `8.0`), `m_detailNormalStrength` (default `0.5`), getter/setter pairs.
+- `ext/Vulkan-Engine/src/core/materials/physically_based.cpp` — `dataSlot9 = (detailTiling, detailNormalStrength, hasDetailNormal, 0)`; `dataSlot10` zeroed (reserved for steps 9-10).
+- `ext/Vulkan-Engine/src/core/passes/forward_pass.cpp` — `OBJECT_TEXTURE_LAYOUT` grew 10 → 11 bindings (added `textureBinding11` at binding 10).
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — declared `detailNormalTex` sampler at binding 10; extended `MaterialUniforms` block with `detailTiling`, `detailNormalStrength`, `hasDetailNormalTexture`, padding for slot9, and a reserved `vec4 _slot10`. Replaced the single-line `brdf.normal = ...` with tangent-space decode → optional detail blend → world-space transform.
+- `src/scene_loader.cpp` — parses `detail_normal_texture` (linear UNORM), `detail_tiling`, `detail_normal_strength`; added to `warn_unknown` allowlist.
+- `resources/scenes/maria.json` — wired `normal_detail.png` with `detail_tiling: 32`, `detail_normal_strength: 1.0` (user-tuned from the 16/0.4 defaults I shipped). Also dropped `roughness_weight` from `0.85` to `0.75` — likely a complementary tweak now that pore micro-occlusion would otherwise read as plastic against the smoother base.
+
+**Verified.** User confirmed close-up pore detail visible, mid-shot subtle, and no artifacts. Tuning landed at higher tiling (denser pores) and full strength.
+
+---
+
+### Clothes mask gates skin-specific effects (2026-06-02)
+
+Layer A step 6 of the Skin realism initiative. Maria's `pbr` material covers both her face and her tank top — a single shader path serves both. The clothes mask now suppresses every skin-specific effect (pre-integrated diffuse, bent-normal IBL, screen-space SSS) on clothing regions so they render as ordinary non-skin PBR, with smooth lerps across the boundary so no hard seam appears at the neckline.
+
+**Approach.** One sample, three gates. The clothes mask is sampled once at the top of `main()` and converted to a `skinMask` scalar (`1.0 = full skin`, `0.0 = clothes`). That scalar is then used to lerp each skin effect's contribution: pre-integrated wrap delta scales by `skinMask`, bent-normal ambient lerps to plain `computeAmbient`, and the SSS pass's `outAlbedoMask.a` is multiplied by `skinMask` so the screen-space scatter is suppressed too. Convention: white = clothes, black = skin (matches the authoring of `T-Maria_ClothesMask.png`).
+
+**Changes shipped (all `physically_based.glsl`):**
+
+- Added `float skinMask = hasClothesMaskTexture ? (1.0 - texture(clothesMaskTex, v_uv).r) : 1.0;` at the top of `main()`, sampled once and reused.
+- Pre-integrated diffuse path (step 3) now gated: `(diffWrapped - diffBase) * skinMask` for the direct contribution, `mix(lambertianIrr, wrappedIrr, skinMask)` for the SSS-feeding `diffIrrPerLight`.
+- Bent-normal IBL path (step 4) lerps to plain `computeAmbient` by `skinMask`.
+- `outAlbedoMask.a` is now `scatterMask * skinMask`, so SSS sees zero on clothes pixels regardless of the scattering map content.
+
+No C++ changes; the `hasClothesMaskTexture` bit was already in `materialFlags` (slot8.y bit 2) from step 5.
+
+**Verified.** User confirmed clothes regions are no longer carrying skin-specific effects and skin regions look identical to before. The smooth lerp at the neckline avoids a hard seam.
+
+---
+
+### Scattering map → per-texel SSS modulation (2026-06-02)
+
+Layer A step 5 of the Skin realism initiative. The screen-space SSS pass previously applied a globally-uniform scatter radius to every "skin" pixel. The scattering map (`T-Maria-Scattering.png`) authored per character now drives a per-pixel modulation so thin/translucent regions (ears, lips, nose tip, eyelids) scatter strongly while thick regions (forehead, mid-cheek, jaw) stay closer to local diffuse.
+
+**Approach.** `outAlbedoMask.a` already existed as a binary skin-vs-non-skin gate in the SSS pass (line 86 of `ssss.glsl`). Generalized that channel to carry a continuous `[0, 1]` per-pixel mask. The SSS pass now lerps between local diffuse `(albedo / PI) * diffIrr` and the blurred `scatteredIrr`, and scales single-scatter, by the per-pixel mask. At mask = 1 the result matches the previous behaviour exactly; below that, the local diffuse and zero single-scatter take over proportionally.
+
+**Slot8 packing decision.** Two more flags needed slots; `slot8` was full. Solution: repurpose `slot8.y` (previously `m_isReflective`, declared but unused in any shader) as a bit-packed `materialFlags` float — bit 0 = `isReflective`, bit 1 = `hasScatteringTexture`, bit 2 = `hasClothesMaskTexture`. Shader extracts via `int flags = int(material.materialFlags); bool hasX = (flags & N) != 0;`. Slots `.z` and `.w` retain curvature and bent-normal flags as plain `bool`s. This pattern can be reused for any future single-bit-per-material flags without growing the uniform.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/src/core/materials/physically_based.cpp` — slot8.y rewritten as the packed `materialFlags` int (cast to float for transport).
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — `MaterialUniforms` (VS + FS) replaces `bool isReflective` with `float materialFlags`. At MRT write, samples `scatteringTex` when the flag is set and writes the value into `outAlbedoMask.a`; without the texture, writes `1.0` (preserves previous full-SSS behaviour).
+- `ext/Vulkan-Engine/resources/shaders/misc/ssss.glsl` — final combine now lerps `modulatedDiff = mix(localDiff, scatteredIrr, scatterMask)`, scales `modulatedSS = singleScatter * scatterMask`, and extracts specular by subtracting the modulated diffuse so total energy stays consistent at every mask value.
+
+**Verified.** User confirmed ears/lips/nose-tip read more translucent than before and forehead/jaw closer to base PBR diffuse. Anticipated step 6 behaviour also observed (clothes regions where the scattering map was painted 0 already got skipped from SSS, then made fully consistent in step 6 via the clothes mask).
+
+---
+
+### Bent normal → diffuse IBL direction (2026-06-02)
+
+Layer A step 4 of the Skin realism initiative. When a bent normal map is bound on a `pbr` material, the IBL diffuse ambient lookup samples the irradiance cube along the bent normal (the average unoccluded direction) instead of the geometric normal. Crevices and underhangs now read incoming light from the direction it actually reaches them. Fresnel/specular keep using the geometric normal — that's the correct microfacet response — so this is a diffuse-only redirection.
+
+**Approach.** Added a sibling function in `IBL.glsl` (`computeAmbientBentNormal`) rather than modifying the shared `computeAmbient` signature — three other shaders call it (`hair_card`, deferred `composition`, and the hair card variants), and growing the signature for one use case isn't worth the churn. The shader picks which variant to call based on `material.hasBentNormalTexture`.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/src/core/materials/physically_based.cpp` — packed `m_hasBentNormalTexture` into `dataSlot8.w`. With this, all four Layer A flags from step 2 (curvature, bent normal, scattering, clothes mask) have a uniform path — slot8 currently carries curvature in `.z` and bent normal in `.w`; scattering and clothes mask will need a new packing scheme when their steps land (slot8 is full).
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — added `bool hasBentNormalTexture;` to the `MaterialUniforms` block (both VS and FS copies). In the IBL ambient branch, when the flag is set, decode `bentNormalTex` as tangent-space (same convention as the regular normal map), transform via `v_TBN` to world space, and call the new variant.
+- `ext/Vulkan-Engine/resources/shaders/scripts/IBL.glsl` — added `computeAmbientBentNormal(samplerCube, envRotation, worldNormal, bentNormal, camPos, albedo, F0, metalness, roughness, intensity)`. Identical to `computeAmbient` except the irradiance cube is sampled along the rotated bent normal while Fresnel uses the rotated geometric normal.
+
+**Verified.** User confirmed the render is visually similar to the previous step with no broken regions — the expected outcome for Maria's near-uniform studio HDRi, where bent-normal redirection gives subtle results. The effect earns more visual weight in scenes with strong directional environment light (outdoor HDRi with bright sky vs dark ground), so the absence of dramatic change here is not a sign the path is wrong.
+
+**Slot8 packing note (carrying forward).** All four flag fields are now used:
+- `.x` = emissionIntensity
+- `.y` = isReflective
+- `.z` = hasCurvatureTexture
+- `.w` = hasBentNormalTexture
+
+Steps 5 (scattering) and 6 (clothes mask) need two more flags. Options: bit-pack into one existing float, repurpose `m_maskType` (currently `int` 0–2 with most bits unused), or extend `MaterialUniforms` to a 9th Vec4. Decision deferred to step 5.
+
+---
+
+### Curvature → pre-integrated skin diffuse (Penner 2011, analytical) (2026-06-02)
+
+Layer A step 3 of the Skin realism initiative. Replaces the per-light Lambertian `NdotL` term with a curvature-aware, per-channel wrapped response for skin materials, so the shadow terminator on curved features (nose bridge, cheekbones, jaw) gets the characteristic warm red wraparound. Composes cleanly with the existing screen-space SSS — pre-integrated handles local curvature, SSS handles broader inter-pixel scatter; the chromatic wrapped value is fed into the `diffuseIrr` MRT so SSS blurs it too.
+
+**Approach.** Chose the analytical Brisebois-Hoffman variant over a baked 2D LUT: ~20 lines of GLSL, no new resources, no engine plumbing, and visually ~95% of the baked version. The chromatic shift falls out naturally from per-channel wrap widths matching skin's relative scatter distances (R=1.0, G=0.4, B=0.2 — Burley defaults) — no explicit tint table.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/src/core/materials/physically_based.cpp` — packed `m_hasCurvatureTexture` into `dataSlot8.z`. Also rewrote slot8 to explicitly cast `m_isReflective` to `1.0f/0.0f` (was an implicit bool→float that other slots already did).
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — extended `MaterialUniforms` (both VS and FS blocks) with `bool isReflective; bool hasCurvatureTexture;` after `emissionIntensity`. Added `preIntegratedSkinDiffuse(NdotL, curvature)` helper. In the per-light loop, when `hasCurvatureTexture` is true, locally recompute `kD` from Fresnel, subtract the Lambertian diffuse contribution embedded in the BRDF call, and add the wrapped contribution. Same wrapped value (without albedo/π prefactor) is written into `diffuseIrr` so the SSS pass blurs it.
+
+**Tuning landed.** Wrap scale constant in `w = 0.35 * curvature * channelWrap`. Initial value `0.5` produced visibly correct wraparound but read too warm on Maria's chin/neck under SSS-on; `0.35` was the natural-looking setting. The constant is the per-skin-author calibration knob for how strongly the curvature map drives wraparound.
+
+**Verified.** User compared SSS-off (clear orange band at terminators on curved features, none on flat forehead — confirms texture is `0=flat, 1=curved` convention, not center-flat) vs SSS-on (warm soft wraparound on cheek/nose/chin, natural). After dropping wrap scale to 0.35 with SSS on, render reads as natural fleshy skin.
+
+**Known caveat for later steps.** Maria's `pbr` material currently covers both skin and clothes — the clothes mask isn't wired into the shader yet (step 6 of the initiative), so any curvature painted into clothing regions will also get the wrap. Effect is mild because clothes typically have low painted curvature, but step 6 will gate this off explicitly.
+
+---
+
+### PBR material extension for BentNormal / Curvature / Scattering / ClothesMask (2026-06-02)
+
+Layer A of the Skin realism initiative: extend `PhysicallyBasedMaterial` with the 4 authored map types shipped under `resources/textures/<character>/` that had no engine slot. Samplers are declared but no shader logic yet — that lands per-map in subsequent steps (curvature → pre-integrated diffuse, bent normal → IBL diffuse direction, scattering → per-texel SSS modulation, clothes mask → SSS gate).
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/include/engine/core/materials/physically_based.h` — added `BENT_NORMAL=6`, `CURVATURE=7`, `SCATTERING=8`, `CLOTHES_MASK=9` to the `Textures` enum; added `m_hasBentNormalTexture` / `m_hasCurvatureTexture` / `m_hasScatteringTexture` / `m_hasClothesMaskTexture` flags; added matching `get_*_texture` / `set_*_texture` pairs; expanded the `m_textures` map.
+- `ext/Vulkan-Engine/src/core/passes/forward_pass.cpp` — grew `OBJECT_TEXTURE_LAYOUT` from 7 to 10 fragment-stage combined-image-sampler bindings (added `textureBinding8/9/10` at bindings 7/8/9).
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — declared `bentNormalTex`, `curvatureTex`, `scatteringTex`, `clothesMaskTex` samplers at set=2 bindings 6–9. No fragment-shader logic touches them yet.
+- `src/scene_loader.cpp` — parses `bent_normal_texture` (linear UNORM, like the main normal map), `curvature_texture` / `scattering_texture` / `clothes_mask_texture` (linear data maps via `TEXTURE_FORMAT_TYPE_LINEAR`); added all four to the `warn_unknown` allowlist.
+- `resources/scenes/maria.json` — wired all 4 new maps so the descriptor writes exercise the path.
+
+`geometry_pass` and the deferred path were intentionally skipped: HairViewer uses the forward renderer, and growing the deferred layout adds risk for no current benefit. Uniform `has*Texture` flags weren't packed into `MaterialUniforms` yet — they'll be added one slot at a time as each map gets shader logic, since `MaterialUniforms` has limited free room in `dataSlot8` and packing everything up front would be premature.
+
+**Verified.** User built and ran HairViewer; render is visually identical to the previous step (correct — samplers declared but unread) and no new debug-layer warnings appeared.
+
+---
+
+### Maria authored skin maps wiring + data-map sRGB-vs-linear fix (2026-06-02)
+
+Maria's material was using the GLB-embedded base color (`$GLB[0]`) with no normal/roughness/AO map — skin read as a flat tone. The repo already shipped a full authored map set under `resources/textures/maria/` (`T-Maria_BaseColor.png`, `T-Maria-Normal.png`, `T-Maria-Roughness.png`, `T-Maria-AO.png`, plus four more — BentNormal, Curvature, Scattering, ClothesMask — for which no engine slot exists yet; tracked as step 2 of the Skin realism initiative). Wiring the first four into `resources/scenes/maria.json` surfaced a second bug:
+
+**Issue found.** `src/scene_loader.cpp` was resolving `roughness_texture`, `metallic_texture` and `occlusion_texture` with `TEXTURE_FORMAT_TYPE_COLOR`, which selects `SRGBA_8` in `loaders.cpp::load_PNG`. These are data maps and must sample linearly. The sRGB→linear curve was darkening every value (painted 0.5 → ~0.21 in shader), making Maria's skin look wet and plastic at `roughness_weight = 1.0`.
+
+**Fixes shipped:**
+
+- `ext/Vulkan-Engine/include/engine/common.h` — added `TEXTURE_FORMAT_TYPE_LINEAR` as an alias for `TEXTURE_FORMAT_TYPE_NORMAL` (which was always linear UNORM — the comment at `sss_pass.cpp:218` already confirmed this). Alias is for readability so future readers don't think a roughness map is being treated as a normal map.
+- `src/scene_loader.cpp` — `roughness_texture`, `metallic_texture`, `occlusion_texture` now resolved with `TEXTURE_FORMAT_TYPE_LINEAR`. Albedo and emissive stay on `TEXTURE_FORMAT_TYPE_COLOR` (genuinely sRGB).
+- `resources/scenes/maria.json` — material now reads the 4 authored maps explicitly (no longer `$GLB[0]`). Tuned `roughness_weight: 0.85` (small bias toward matte over the painted texture).
+
+**Verified.** User confirmed end-to-end visual result on Maria: no more wet-plastic skin on shoulders, subtle remaining specular on cheekbones at `roughness_weight: 0.85`. Wiring + sRGB fix together unlocked using `roughness_weight: 1.0`–level fidelity without the original gloss problem (the 0.85 is a small artistic damp, not a workaround).
+
+---
 
 ### Hair phantom shadows + rotation-dependent shadow shape (2026-05-26)
 

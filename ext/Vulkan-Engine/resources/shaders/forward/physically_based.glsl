@@ -45,6 +45,19 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     vec3    emissiveColor;
     float   emissiveWeight;
     float   emissionIntensity;
+    float   materialFlags;        // bit 0 = isReflective, bit 1 = hasScatteringTexture, bit 2 = hasClothesMaskTexture
+    bool    hasCurvatureTexture;
+    bool    hasBentNormalTexture;
+    // slot9: detail params (tiling shared by normal & cavity, plus has-flags)
+    float   detailTiling;
+    float   detailNormalStrength;
+    bool    hasDetailNormalTexture;
+    bool    hasDetailCavityTexture;
+    // slot10: cavity / dual-lobe scalars
+    float   cavitySpecOcclusion;
+    float   cavitySSSAttenuation; // reserved (step 11)
+    float   dualLobeMix;          // reserved (step 10)
+    float   dualLobeRoughnessSoft;// reserved (step 10)
 } material;
 
 void main() {
@@ -140,6 +153,19 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     vec3    emissiveColor;
     float   emissiveWeight;
     float   emissionIntensity;
+    float   materialFlags;        // bit 0 = isReflective, bit 1 = hasScatteringTexture, bit 2 = hasClothesMaskTexture
+    bool    hasCurvatureTexture;
+    bool    hasBentNormalTexture;
+    // slot9: detail params (tiling shared by normal & cavity, plus has-flags)
+    float   detailTiling;
+    float   detailNormalStrength;
+    bool    hasDetailNormalTexture;
+    bool    hasDetailCavityTexture;
+    // slot10: cavity / dual-lobe scalars
+    float   cavitySpecOcclusion;
+    float   cavitySSSAttenuation; // reserved (step 11)
+    float   dualLobeMix;          // reserved (step 10)
+    float   dualLobeRoughnessSoft;// reserved (step 10)
 } material;
 layout(set = 2, binding = 0) uniform sampler2D albedoTex;
 layout(set = 2, binding = 1) uniform sampler2D normalTex;
@@ -147,6 +173,12 @@ layout(set = 2, binding = 2) uniform sampler2D maskRoughTex;
 layout(set = 2, binding = 3) uniform sampler2D metalTex;
 layout(set = 2, binding = 4) uniform sampler2D occlusionTex;
 layout(set = 2, binding = 5) uniform sampler2D emissiveTex;
+layout(set = 2, binding = 6) uniform sampler2D bentNormalTex;
+layout(set = 2, binding = 7) uniform sampler2D curvatureTex;
+layout(set = 2, binding = 8) uniform sampler2D scatteringTex;
+layout(set = 2, binding = 9) uniform sampler2D clothesMaskTex;
+layout(set = 2, binding = 10) uniform sampler2D detailNormalTex;
+layout(set = 2, binding = 11) uniform sampler2D detailCavityTex;
 
 
 //BRDF Definiiton
@@ -157,12 +189,50 @@ const float backRadiancePower = 5.0;
 const float backRadianceScale = 2.0;
 const float ambient = 0.05;
 
+// Penner-style pre-integrated skin diffuse (analytical Brisebois-Hoffman variant).
+// curvature in [0,1]: 0 = flat surface (Lambert), 1 = highly curved (max wraparound).
+// Returns per-channel wrapped NdotL response; red wraps farthest (longest mean free
+// path in skin), green less, blue least -> warm halo at the terminator emerges
+// without an explicit tint table.
+vec3 preIntegratedSkinDiffuse(float NdotL, float curvature) {
+    const vec3 channelWrap = vec3(1.0, 0.4, 0.2); // R/G/B relative scatter distances in skin
+    vec3 w = 0.35 * curvature * channelWrap;
+    vec3 wrapped = (vec3(NdotL) + w) / (vec3(1.0) + w);
+    wrapped = max(wrapped, vec3(0.0));
+    // energy normalize so a curvature=0, NdotL=1 surface stays at 1.0
+    return wrapped / (vec3(1.0) + 0.5 * w);
+}
+
 
 void setupBRDFProperties(){
   //Setting input surface properties
     brdf.albedo = material.hasAlbdoTexture ? mix(material.albedo.rgb, texture(albedoTex, v_uv).rgb, material.albedoWeight) : material.albedo.rgb;
     brdf.opacity =  material.hasAlbdoTexture ?  mix(material.opacity, texture(albedoTex, v_uv).a, material.opacityWeight) :material.opacity;
-    brdf.normal = material.hasNormalTexture ? normalize(v_TBN * (texture(normalTex, v_uv).rgb * 2.0 - 1.0)) : v_normal;
+
+    // Normal: if neither a base normal map nor a detail normal map is bound,
+    // fall back to the vertex normal directly. Going through v_TBN when the
+    // mesh lacks tangent data produces NaN (normalize of zero), which then
+    // poisons all downstream shading.
+    if (material.hasNormalTexture || material.hasDetailNormalTexture) {
+        vec3 baseTangentN = material.hasNormalTexture
+            ? (texture(normalTex, v_uv).rgb * 2.0 - 1.0)
+            : vec3(0.0, 0.0, 1.0);
+
+        // Detail/pore normal: high-frequency tileable normal map blended on top
+        // via "whiteout" blend (xy of base + xy of detail scaled by strength,
+        // z multiplied). Robust to glancing angles, cheap, no NaN edges.
+        if (material.hasDetailNormalTexture) {
+            vec3 detailN = texture(detailNormalTex, v_uv * material.detailTiling).rgb * 2.0 - 1.0;
+            detailN.xy *= material.detailNormalStrength;
+            detailN.z = max(detailN.z, 0.01);
+            baseTangentN = normalize(vec3(baseTangentN.xy + detailN.xy,
+                                          baseTangentN.z   * detailN.z));
+        }
+
+        brdf.normal = normalize(v_TBN * baseTangentN);
+    } else {
+        brdf.normal = v_normal;
+    }
 
     if(material.hasMaskTexture) {
         // vec4 mask = pow(texture(maskRoughTex, v_uv).rgba, vec4(2.2)); //Correction linearize color
@@ -201,6 +271,13 @@ void main() {
     if(material.alphaTest)
         if(brdf.opacity<1-EPSILON)discard;
 
+    // Clothes mask gates all skin-specific effects (pre-integrated diffuse,
+    // bent-normal IBL, screen-space SSS). Convention: white = clothes, black = skin.
+    int   flags = int(material.materialFlags);
+    bool  hasScatteringTexture  = (flags & 2) != 0;
+    bool  hasClothesMaskTexture = (flags & 4) != 0;
+    float skinMask = hasClothesMaskTexture ? (1.0 - texture(clothesMaskTex, v_uv).r) : 1.0;
+
     //Compute all lights ___________________________________________________________________
     vec3 color = vec3(0.0);
     vec3 diffuseIrr = vec3(0.0);
@@ -232,8 +309,57 @@ void main() {
             }
             lighting *= shadowFactor;
 
+            // Common diffuse / specular split. Used by:
+            //   - Curvature wrap (step 3): replaces Lambert diffuse with pre-integrated.
+            //   - Cavity specular occlusion (step 9): attenuates the specular part only.
+            // Cheaper than two separate Fresnel evaluations.
+            float NdotL_raw = dot(brdf.normal, wi);
+            float NdotL     = max(NdotL_raw, 0.0);
+            vec3  wo = normalize(-v_pos);
+            vec3  h  = normalize(wi + wo);
+            vec3  F  = fresnelSchlick(max(dot(h, wo), 0.0), brdf.F0);
+            vec3  kD = (vec3(1.0) - F) * (1.0 - brdf.metalness);
+            vec3  diffBase = kD * brdf.albedo / PI * radiance * NdotL * shadowFactor;
+            vec3  specPart = lighting - diffBase;
+
+            // Dual-lobe specular (Penner GDC 2011): mix in a softer secondary
+            // GGX lobe for the layered oily-on-dry skin highlight. Gated by
+            // skinMask so clothes keep their single sharp lobe.
+            float effectiveDualMix = material.dualLobeMix * skinMask;
+            if (effectiveDualMix > 0.0) {
+                SchlickSmithBRDF softBrdf = brdf;
+                softBrdf.roughness        = material.dualLobeRoughnessSoft;
+                vec3 lightingSoft = evalSchlickSmithBRDF(wi, wo, radiance, softBrdf) * shadowFactor;
+                // diffBase is identical for both calls (kD depends on F, not roughness)
+                vec3 specSoft = lightingSoft - diffBase;
+                specPart = mix(specPart, specSoft, effectiveDualMix);
+                lighting = diffBase + specPart;
+            }
+
+            // Cavity → specular occlusion: pore crevices receive less specular
+            // (no shiny pores). Diffuse and SSS irradiance untouched.
+            if (material.hasDetailCavityTexture) {
+                float cavity = texture(detailCavityTex, v_uv * material.detailTiling).r;
+                float cavOcc = mix(1.0, cavity, material.cavitySpecOcclusion);
+                specPart *= cavOcc;
+                lighting = diffBase + specPart;
+            }
+
+            // Pre-integrated skin diffuse (Penner GDC 2011, analytical Brisebois):
+            // replace the Lambertian diffuse term with a curvature-wrapped per-channel
+            // response. Specular is left untouched.
+            vec3 diffIrrPerLight = vec3(NdotL) * radiance * shadowFactor;
+            if (material.hasCurvatureTexture && skinMask > 0.0)
+            {
+                float curvature   = texture(curvatureTex, v_uv).r;
+                vec3  wrapped     = preIntegratedSkinDiffuse(NdotL_raw, curvature);
+                vec3  diffWrapped = kD * brdf.albedo / PI * radiance * wrapped * shadowFactor;
+                color += (diffWrapped - diffBase) * skinMask;
+                diffIrrPerLight = mix(diffIrrPerLight, wrapped * radiance * shadowFactor, skinMask);
+            }
+
             color += lighting;
-            diffuseIrr += max(dot(brdf.normal, wi), 0.0) * radiance * shadowFactor;
+            diffuseIrr += diffIrrPerLight;
 
             vec3 HBack = wi + brdf.normal * distortion;
             float VDotH = pow(clamp(dot(normalize(-v_pos), -HBack), EPSILON, 1.0), backRadiancePower) * backRadianceScale;
@@ -246,16 +372,45 @@ void main() {
     //Ambient component ___________________________________________________________________
     vec3 ambient;
     if(scene.useIBL){
-        ambient = computeAmbient(
-            irradianceMap,
-            scene.envRotation,
-            v_modelNormal,
-            normalize(camera.position.xyz-v_modelPos),
-            brdf.albedo,
-            brdf.F0,
-            brdf.metalness,
-            brdf.roughness,
-            scene.ambientIntensity);
+        if (material.hasBentNormalTexture && skinMask > 0.0) {
+            // Bent normal map is authored in tangent space, like a regular normal map.
+            // Transform to world space via v_TBN and sample the irradiance cube along it.
+            // Fresnel/specular still uses the smooth geometric normal so highlights stay sharp.
+            vec3 bentNormalWS = normalize(v_TBN * (texture(bentNormalTex, v_uv).rgb * 2.0 - 1.0));
+            vec3 bentAmbient = computeAmbientBentNormal(
+                irradianceMap,
+                scene.envRotation,
+                v_modelNormal,
+                bentNormalWS,
+                normalize(camera.position.xyz-v_modelPos),
+                brdf.albedo,
+                brdf.F0,
+                brdf.metalness,
+                brdf.roughness,
+                scene.ambientIntensity);
+            vec3 plainAmbient = computeAmbient(
+                irradianceMap,
+                scene.envRotation,
+                v_modelNormal,
+                normalize(camera.position.xyz-v_modelPos),
+                brdf.albedo,
+                brdf.F0,
+                brdf.metalness,
+                brdf.roughness,
+                scene.ambientIntensity);
+            ambient = mix(plainAmbient, bentAmbient, skinMask);
+        } else {
+            ambient = computeAmbient(
+                irradianceMap,
+                scene.envRotation,
+                v_modelNormal,
+                normalize(camera.position.xyz-v_modelPos),
+                brdf.albedo,
+                brdf.F0,
+                brdf.metalness,
+                brdf.roughness,
+                scene.ambientIntensity);
+        }
     }else{
         ambient = (scene.ambientIntensity * scene.ambientColor) * brdf.albedo;
     }
@@ -280,8 +435,27 @@ void main() {
         outBrightColor = vec4(0.0, 0.0, 0.0, 1.0);
 
     outNormals     = vec4(brdf.normal, 0.0);
-    outAlbedoMask  = vec4(brdf.albedo, 1.0);
-    outDiffuseIrr  = vec4(diffuseIrr, 0.0);
+
+    // Alpha carries the per-pixel SSS modulation mask: 1.0 = full subsurface
+    // scattering (default for skin materials), 0.0 = pass-through (non-skin).
+    // The scattering texture drives this per-texel so thin/translucent regions
+    // like ears and nose tips scatter more than thick ones like forehead;
+    // skinMask zeros it out on clothes regions (when clothes mask is bound).
+    float scatterMask = hasScatteringTexture ? texture(scatteringTex, v_uv).r : 1.0;
+    outAlbedoMask  = vec4(brdf.albedo, scatterMask * skinMask);
+
+    // outDiffuseIrr.a carries the per-pixel SSS *sample weight* — used by the
+    // SSS post-process to attenuate this pixel's contribution when neighbouring
+    // pixels integrate over it. Cavity drives down the weight inside pore
+    // crevices, so scattered light no longer bleeds across pore boundaries.
+    // Non-skin pixels (clothes via skinMask, hair/sky in their own shaders)
+    // write 0 here, which excludes them from the SSS blur entirely.
+    float sssSampleWeight = skinMask;
+    if (material.hasDetailCavityTexture) {
+        float cavity = texture(detailCavityTex, v_uv * material.detailTiling).r;
+        sssSampleWeight *= mix(1.0, cavity, material.cavitySSSAttenuation);
+    }
+    outDiffuseIrr  = vec4(diffuseIrr, sssSampleWeight);
     outBackIrr     = vec4(backIrr, 0.0);
     outLinearDepth = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);
 

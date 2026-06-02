@@ -182,16 +182,46 @@ static Core::IMaterial* build_pbr(const json&                        jm,
                                                 TEXTURE_FORMAT_TYPE_NORMAL));
     if (jm.contains("roughness_texture"))
         mat->set_roughness_texture(resolve_texture(jm["roughness_texture"], resourcesPath, glbTextures,
-                                                   TEXTURE_FORMAT_TYPE_COLOR));
+                                                   TEXTURE_FORMAT_TYPE_LINEAR));
     if (jm.contains("metallic_texture"))
         mat->set_metallic_texture(resolve_texture(jm["metallic_texture"], resourcesPath, glbTextures,
-                                                  TEXTURE_FORMAT_TYPE_COLOR));
+                                                  TEXTURE_FORMAT_TYPE_LINEAR));
     if (jm.contains("occlusion_texture"))
         mat->set_occlusion_texture(resolve_texture(jm["occlusion_texture"], resourcesPath, glbTextures,
-                                                   TEXTURE_FORMAT_TYPE_COLOR));
+                                                   TEXTURE_FORMAT_TYPE_LINEAR));
     if (jm.contains("emissive_texture"))
         mat->set_emissive_texture(resolve_texture(jm["emissive_texture"], resourcesPath, glbTextures,
                                                   TEXTURE_FORMAT_TYPE_COLOR));
+    if (jm.contains("bent_normal_texture"))
+        mat->set_bent_normal_texture(resolve_texture(jm["bent_normal_texture"], resourcesPath, glbTextures,
+                                                     TEXTURE_FORMAT_TYPE_NORMAL));
+    if (jm.contains("curvature_texture"))
+        mat->set_curvature_texture(resolve_texture(jm["curvature_texture"], resourcesPath, glbTextures,
+                                                   TEXTURE_FORMAT_TYPE_LINEAR));
+    if (jm.contains("scattering_texture"))
+        mat->set_scattering_texture(resolve_texture(jm["scattering_texture"], resourcesPath, glbTextures,
+                                                    TEXTURE_FORMAT_TYPE_LINEAR));
+    if (jm.contains("clothes_mask_texture"))
+        mat->set_clothes_mask_texture(resolve_texture(jm["clothes_mask_texture"], resourcesPath, glbTextures,
+                                                      TEXTURE_FORMAT_TYPE_LINEAR));
+    if (jm.contains("detail_normal_texture"))
+        mat->set_detail_normal_texture(resolve_texture(jm["detail_normal_texture"], resourcesPath, glbTextures,
+                                                       TEXTURE_FORMAT_TYPE_NORMAL));
+    if (jm.contains("detail_cavity_texture"))
+        mat->set_detail_cavity_texture(resolve_texture(jm["detail_cavity_texture"], resourcesPath, glbTextures,
+                                                       TEXTURE_FORMAT_TYPE_LINEAR));
+    if (jm.contains("detail_tiling"))
+        mat->set_detail_tiling(jm["detail_tiling"].get<float>());
+    if (jm.contains("detail_normal_strength"))
+        mat->set_detail_normal_strength(jm["detail_normal_strength"].get<float>());
+    if (jm.contains("cavity_spec_occlusion"))
+        mat->set_cavity_spec_occlusion(jm["cavity_spec_occlusion"].get<float>());
+    if (jm.contains("cavity_sss_attenuation"))
+        mat->set_cavity_sss_attenuation(jm["cavity_sss_attenuation"].get<float>());
+    if (jm.contains("dual_lobe_mix"))
+        mat->set_dual_lobe_mix(jm["dual_lobe_mix"].get<float>());
+    if (jm.contains("dual_lobe_roughness_soft"))
+        mat->set_dual_lobe_roughness_soft(jm["dual_lobe_roughness_soft"].get<float>());
 
     warn_unknown(jm,
         {"type", "albedo", "albedo_weight", "albedo_texture",
@@ -200,7 +230,12 @@ static Core::IMaterial* build_pbr(const json&                        jm,
          "roughness", "roughness_weight", "roughness_texture",
          "occlusion", "occlusion_weight", "occlusion_texture",
          "emissive_color", "emissive_weight", "emission_intensity", "emissive_texture",
-         "normal_texture", "reflective"},
+         "normal_texture", "reflective",
+         "bent_normal_texture", "curvature_texture", "scattering_texture", "clothes_mask_texture",
+         "detail_normal_texture", "detail_cavity_texture",
+         "detail_tiling", "detail_normal_strength",
+         "cavity_spec_occlusion", "cavity_sss_attenuation",
+         "dual_lobe_mix", "dual_lobe_roughness_soft"},
         "material(pbr)");
 
     return mat;

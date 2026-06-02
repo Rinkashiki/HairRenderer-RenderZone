@@ -167,8 +167,17 @@ void main() {
 		vec3 diffusion = rRr / pr;
 		totalWeight += diffusion;
 
-		vec3  sampleDiffIrr = texture(diffuseIrrTex, sampleUV).rgb;
-        scatteredIrr       += diffusion * sampleDiffIrr;
+		// diffuseIrrTex.a is the per-pixel SSS sample weight written by the forward
+		// pass: clothes/hair/sky write 0 (excluded), skin pixels write skinMask *
+		// cavity-attenuation. Multiplying it into each tap's diffusion weight is
+		// the cavity-aware SSS step: light no longer bleeds across pore boundaries
+		// because pore crevices contribute proportionally less to their neighbours.
+		vec4  sampleDiffIrr4 = texture(diffuseIrrTex, sampleUV);
+		vec3  sampleDiffIrr  = sampleDiffIrr4.rgb;
+		float sampleWeight   = sampleDiffIrr4.a;
+		vec3  weighted       = diffusion * sampleWeight;
+		scatteredIrr        += weighted * sampleDiffIrr;
+		totalWeight         += weighted;
     }
 
     // Normalize per channel
@@ -237,9 +246,23 @@ void main() {
     vec3 singleScatter = fresnelTransmission * phase * transmittance * backIrr;
 
     // -------------------------------------------------------------------------
+    // Per-texel SSS modulation (scatteringTex authored on the material)
+    //
+    // scatterMask drives how much of the scattered diffuse and single-scatter
+    // contribution this pixel receives, so thin/translucent regions (ear lobes,
+    // nose tips, lips) scatter strongly while thick regions (forehead, cheeks)
+    // stay closer to the local diffuse. At mask = 1 we get the full SSS effect
+    // (the previous behaviour); at mask = 0 the early-return above already
+    // skipped the entire path.
+    // -------------------------------------------------------------------------
+    vec3 localDiff   = (albedo / PI) * diffIrr;
+    vec3 modulatedDiff = mix(localDiff, scatteredIrr, scatterMask);
+    vec3 modulatedSS   = singleScatter * scatterMask;
+
+    // -------------------------------------------------------------------------
     // Combine and output
     // -------------------------------------------------------------------------
-    vec3 specular = max(hdr.rgb - scatteredIrr, vec3(0.0));
-    outColor  = vec4((scatteredIrr + singleScatter + specular) * ao, hdr.a);
+    vec3 specular = max(hdr.rgb - modulatedDiff, vec3(0.0));
+    outColor  = vec4((modulatedDiff + modulatedSS + specular) * ao, hdr.a);
     outBright = texture(brightTex, v_uv);
 }

@@ -333,10 +333,12 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
 
                         // ObjectUniforms materialData;
                         Graphics::MaterialUniforms materialData = mat->get_uniforms();
+                        // Material data sits right AFTER the object data inside this mesh's
+                        // stride slot. Offset must be pad(ObjectUniforms), not pad(MaterialUniforms).
                         currentFrame->uniformBuffers[OBJECT_LAYOUT].upload_data(
                             &materialData,
                             sizeof(Graphics::MaterialUniforms),
-                            objectOffset + device->pad_uniform_buffer_size(sizeof(Graphics::MaterialUniforms)));
+                            objectOffset + device->pad_uniform_buffer_size(sizeof(Graphics::ObjectUniforms)));
                     }
                 }
             }

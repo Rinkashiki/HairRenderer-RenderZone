@@ -43,14 +43,28 @@ class PhysicallyBasedMaterial : public IMaterial
     bool m_isReflective = false;
 
     // Query
-    bool m_hasAlbedoTexture    = false;
-    bool m_hasNormalTexture    = false;
-    bool m_hasRoughnessTexture = false;
-    bool m_hasMetallicTexture  = false;
-    bool m_hasAOTexture        = false;
-    bool m_hasEmissiveTexture  = false;
-    bool m_hasMaskTexture      = false;
-    int  m_maskType            = -1;
+    bool m_hasAlbedoTexture       = false;
+    bool m_hasNormalTexture       = false;
+    bool m_hasRoughnessTexture    = false;
+    bool m_hasMetallicTexture     = false;
+    bool m_hasAOTexture           = false;
+    bool m_hasEmissiveTexture     = false;
+    bool m_hasMaskTexture         = false;
+    bool m_hasBentNormalTexture   = false;
+    bool m_hasCurvatureTexture    = false;
+    bool m_hasScatteringTexture   = false;
+    bool m_hasClothesMaskTexture  = false;
+    bool m_hasDetailNormalTexture = false;
+    bool m_hasDetailCavityTexture = false;
+    int  m_maskType               = -1;
+
+    // Layer B microdetail (pore-scale realism)
+    float m_detailTiling           = 8.0f;
+    float m_detailNormalStrength   = 0.5f;
+    float m_cavitySpecOcclusion    = 1.0f;
+    float m_cavitySSSAttenuation   = 0.0f;   // 0 = SSS ignores cavity; 1 = SSS fully scaled by cavity
+    float m_dualLobeMix            = 0.0f;   // 0 = single-lobe (default); >0 = blend soft lobe in
+    float m_dualLobeRoughnessSoft  = 0.55f;
 
     enum Textures
     {
@@ -60,6 +74,12 @@ class PhysicallyBasedMaterial : public IMaterial
         METALNESS      = 3,
         AO             = 4,
         EMISSIVE       = 5,
+        BENT_NORMAL    = 6,
+        CURVATURE      = 7,
+        SCATTERING     = 8,
+        CLOTHES_MASK   = 9,
+        DETAIL_NORMAL  = 10,
+        DETAIL_CAVITY  = 11,
     };
 
     std::unordered_map<int, ITexture*> m_textures{{ALBEDO, nullptr},
@@ -67,7 +87,13 @@ class PhysicallyBasedMaterial : public IMaterial
                                                   {MASK_ROUGHNESS, nullptr},
                                                   {METALNESS, nullptr},
                                                   {AO, nullptr},
-                                                  {EMISSIVE, nullptr}};
+                                                  {EMISSIVE, nullptr},
+                                                  {BENT_NORMAL, nullptr},
+                                                  {CURVATURE, nullptr},
+                                                  {SCATTERING, nullptr},
+                                                  {CLOTHES_MASK, nullptr},
+                                                  {DETAIL_NORMAL, nullptr},
+                                                  {DETAIL_CAVITY, nullptr}};
 
     std::unordered_map<int, bool> m_textureBindingState;
 
@@ -285,6 +311,114 @@ class PhysicallyBasedMaterial : public IMaterial
     }
     inline MaskType get_mask_type() const {
         return (MaskType)m_maskType;
+    }
+
+    inline ITexture* get_bent_normal_texture() {
+        return m_textures[BENT_NORMAL];
+    }
+    inline void set_bent_normal_texture(ITexture* t) {
+        m_hasBentNormalTexture           = t ? true : false;
+        m_textureBindingState[BENT_NORMAL] = false;
+        m_textures[BENT_NORMAL]          = t;
+        m_isDirty                        = true;
+    }
+
+    inline ITexture* get_curvature_texture() {
+        return m_textures[CURVATURE];
+    }
+    inline void set_curvature_texture(ITexture* t) {
+        m_hasCurvatureTexture           = t ? true : false;
+        m_textureBindingState[CURVATURE] = false;
+        m_textures[CURVATURE]           = t;
+        m_isDirty                       = true;
+    }
+
+    inline ITexture* get_scattering_texture() {
+        return m_textures[SCATTERING];
+    }
+    inline void set_scattering_texture(ITexture* t) {
+        m_hasScatteringTexture            = t ? true : false;
+        m_textureBindingState[SCATTERING] = false;
+        m_textures[SCATTERING]            = t;
+        m_isDirty                         = true;
+    }
+
+    inline ITexture* get_clothes_mask_texture() {
+        return m_textures[CLOTHES_MASK];
+    }
+    inline void set_clothes_mask_texture(ITexture* t) {
+        m_hasClothesMaskTexture             = t ? true : false;
+        m_textureBindingState[CLOTHES_MASK] = false;
+        m_textures[CLOTHES_MASK]            = t;
+        m_isDirty                           = true;
+    }
+
+    inline ITexture* get_detail_normal_texture() {
+        return m_textures[DETAIL_NORMAL];
+    }
+    inline void set_detail_normal_texture(ITexture* t) {
+        m_hasDetailNormalTexture             = t ? true : false;
+        m_textureBindingState[DETAIL_NORMAL] = false;
+        m_textures[DETAIL_NORMAL]            = t;
+        m_isDirty                            = true;
+    }
+
+    inline float get_detail_tiling() const {
+        return m_detailTiling;
+    }
+    inline void set_detail_tiling(float t) {
+        m_detailTiling = t;
+        m_isDirty      = true;
+    }
+
+    inline float get_detail_normal_strength() const {
+        return m_detailNormalStrength;
+    }
+    inline void set_detail_normal_strength(float s) {
+        m_detailNormalStrength = s;
+        m_isDirty              = true;
+    }
+
+    inline ITexture* get_detail_cavity_texture() {
+        return m_textures[DETAIL_CAVITY];
+    }
+    inline void set_detail_cavity_texture(ITexture* t) {
+        m_hasDetailCavityTexture             = t ? true : false;
+        m_textureBindingState[DETAIL_CAVITY] = false;
+        m_textures[DETAIL_CAVITY]            = t;
+        m_isDirty                            = true;
+    }
+
+    inline float get_cavity_spec_occlusion() const {
+        return m_cavitySpecOcclusion;
+    }
+    inline void set_cavity_spec_occlusion(float w) {
+        m_cavitySpecOcclusion = w;
+        m_isDirty             = true;
+    }
+
+    inline float get_cavity_sss_attenuation() const {
+        return m_cavitySSSAttenuation;
+    }
+    inline void set_cavity_sss_attenuation(float w) {
+        m_cavitySSSAttenuation = w;
+        m_isDirty              = true;
+    }
+
+    inline float get_dual_lobe_mix() const {
+        return m_dualLobeMix;
+    }
+    inline void set_dual_lobe_mix(float m) {
+        m_dualLobeMix = m;
+        m_isDirty     = true;
+    }
+
+    inline float get_dual_lobe_roughness_soft() const {
+        return m_dualLobeRoughnessSoft;
+    }
+    inline void set_dual_lobe_roughness_soft(float r) {
+        m_dualLobeRoughnessSoft = r;
+        m_isDirty               = true;
     }
 };
 } // namespace Core

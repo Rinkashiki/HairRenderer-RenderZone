@@ -5,3 +5,7 @@ resources/neural_head_TONO.ply filter=lfs diff=lfs merge=lfs -text
 resources/models/*.ply filter=lfs diff=lfs merge=lfs -text
 resources/models/*.txt filter=lfs diff=lfs merge=lfs -text
 resources/models/*.hair filter=lfs diff=lfs merge=lfs -text
+resources/**/*.png filter=lfs diff=lfs merge=lfs -text
+resources/**/*.exr filter=lfs diff=lfs merge=lfs -text
+resources/**/*.tga filter=lfs diff=lfs merge=lfs -text
+resources/**/*.hdr filter=lfs diff=lfs merge=lfs -text

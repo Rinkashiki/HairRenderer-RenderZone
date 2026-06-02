@@ -43,18 +43,36 @@
       "scale":          10.0,
       "rotation":       [0.0, 180.0, 0.0],
       "material": {
-        "type":           "pbr",
-        "albedo_texture": "$GLB[0]",
-        "albedo":         [0.8, 0.482353, 0.333333],
-        "metalness":      0.0,
-        "roughness":      0.5
+        "type":              "pbr",
+        "albedo_texture":       "textures/maria/T-Maria_BaseColor.png",
+        "normal_texture":       "textures/maria/T-Maria-Normal.png",
+        "roughness_texture":    "textures/maria/T-Maria-Roughness.png",
+        "occlusion_texture":    "textures/maria/T-Maria-AO.png",
+        "bent_normal_texture":  "textures/maria/T-Maria-BentNormal.png",
+        "curvature_texture":    "textures/maria/T-Maria-Curvature.png",
+        "scattering_texture":   "textures/maria/T-Maria-Scattering.png",
+        "clothes_mask_texture":   "textures/maria/T-Maria_ClothesMask.png",
+        "detail_normal_texture":  "textures/skin/normal_detail.png",
+        "detail_cavity_texture":  "textures/skin/cavity_detail.png",
+        "detail_tiling":          32.0,
+        "detail_normal_strength": 0.4,
+        "cavity_spec_occlusion":    0.5,
+        "cavity_sss_attenuation":   0.4,
+        "dual_lobe_mix":            0.15,
+        "dual_lobe_roughness_soft": 0.55,
+        "albedo":            [1.0, 1.0, 1.0],
+        "albedo_weight":     1.0,
+        "metalness":         0.0,
+        "roughness":         1.0,
+        "roughness_weight":  0.75,
+        "occlusion_weight":  1.0
       }
     },
     {
       "name":      "Hair",
       "type":      "hair",
       "file":      "models/maria/maria.hair",
-      "position":  [-0.011, -0.555, -0.025],
+      "position":  [-0.011, -0.555, -0.04],
       "scale":     0.01,
       "rotation":  [90.0, 180.0, 180.0],
       "material":  "maria_hair",
@@ -64,7 +82,7 @@
       "name":      "Eyebrows",
       "type":      "hair",
       "file":      "models/maria/eyebrows.hair",
-      "position":  [-0.011, -1.557, -0.035],
+      "position":  [-0.011, -1.56, -0.035],
       "scale":     0.01,
       "rotation":  [90.0, 180.0, 180.0],
       "material":  "maria_hair",
@@ -84,10 +102,10 @@
 
   "scene": {
     "ambient_color":     [0.05, 0.05, 0.05],
-    "ambient_intensity": 0.05,
+    "ambient_intensity": 0.01,
     "skybox": {
       "hdri":      "textures/studio_demo.hdr",
-      "intensity": 1.0
+      "intensity": 0.25
     },
     "use_ibl": true,
     "fog":     { "enabled": false }
