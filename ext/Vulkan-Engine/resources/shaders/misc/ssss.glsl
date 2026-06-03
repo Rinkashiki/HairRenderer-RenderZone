@@ -252,8 +252,15 @@ void main() {
 
     // -------------------------------------------------------------------------
     // Combine and output
+    //
+    // The forward pass now writes `diffuseIrr` such that `localDiff` reconstructs
+    // EXACTLY the diffuse contribution that was summed into `hdr` (direct lights
+    // bake in kD; ambient is stored as PI * kD_amb * irradiance * ao). With that
+    // invariant, `hdr - localDiff` is the exact non-diffuse residual (specular +
+    // emission + back-scatter contributions) — no `max(...,0)` clamp needed, and
+    // bright speculars on skin are no longer clipped at high ambient intensity.
     // -------------------------------------------------------------------------
-    vec3 specular = max(hdr.rgb - modulatedDiff, vec3(0.0));
+    vec3 specular = hdr.rgb - localDiff;
     outColor  = vec4((modulatedDiff + modulatedSS + specular) * ao, hdr.a);
     outBright = texture(brightTex, v_uv);
 }

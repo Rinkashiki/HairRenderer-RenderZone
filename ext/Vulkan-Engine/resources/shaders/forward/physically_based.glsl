@@ -416,14 +416,20 @@ void main() {
             // replace the Lambertian diffuse term with a curvature-wrapped per-channel
             // response. Operates at face-curvature scale, so it uses the macro
             // (base-only) normal — independent of the d'Eon micro-blur above.
-            vec3 diffIrrPerLight = NdotL_diff_rgb * radiance * shadowFactor;
+            //
+            // diffIrrPerLight bakes in kD so the SSS pass can reconstruct the
+            // exact diffuse contribution that landed in `color` via
+            //   (albedo / PI) * diffIrr  ==  diffBase   (non-skin)
+            //   (albedo / PI) * diffIrr  ==  diffWrapped (skin, curvature on)
+            // letting `specular = hdr - localDiff` work without a max() clamp.
+            vec3 diffIrrPerLight = kD * NdotL_diff_rgb * radiance * shadowFactor;
             if (material.hasCurvatureTexture && skinMask > 0.0)
             {
                 float curvature   = texture(curvatureTex, v_uv).r;
                 vec3  wrapped     = preIntegratedSkinDiffuse(NdotL_smooth_raw, curvature);
                 vec3  diffWrapped = kD * brdf.albedo / PI * radiance * wrapped * shadowFactor;
                 color += (diffWrapped - diffBase) * skinMask;
-                diffIrrPerLight = mix(diffIrrPerLight, wrapped * radiance * shadowFactor, skinMask);
+                diffIrrPerLight = mix(diffIrrPerLight, kD * wrapped * radiance * shadowFactor, skinMask);
             }
 
             color += lighting;
@@ -486,6 +492,29 @@ void main() {
     color += brdf.emission;
     //Ambient occlusion ___________________________________________________________________
     color += ambient * brdf.ao;
+    // Mirror the direct-light pattern for ambient on skin: the IBL diffuse is in
+    // `color` already (above), and we ALSO push the matching kD-baked irradiance
+    // into diffuseIrr so the SSS post-process subtracts-and-replaces it the same
+    // way it does for direct light. The `PI *` factor restores the 1/PI absorbed
+    // by `localDiff = (albedo/PI)*diffIrr` on the SSS side, making the
+    // reconstruction exact: (albedo/PI) * (PI * kdIrr * ao) == ambient * ao.
+    // When SSS is off the SSS pass takes its early-out and the additive `color +=
+    // ambient` above keeps the ambient visible.
+    if (scene.useIBL && skinMask > 0.0) {
+        vec3 V = normalize(camera.position.xyz - v_modelPos);
+        vec3 kdIrr;
+        if (material.hasBentNormalTexture) {
+            vec3 bentNormalWS = normalize(v_TBN * (texture(bentNormalTex, v_uv).rgb * 2.0 - 1.0));
+            kdIrr = computeAmbientKdIrradianceBent(
+                irradianceMap, scene.envRotation, v_modelNormal, bentNormalWS, V,
+                brdf.F0, brdf.metalness, brdf.roughness, scene.ambientIntensity);
+        } else {
+            kdIrr = computeAmbientKdIrradiance(
+                irradianceMap, scene.envRotation, v_modelNormal, V,
+                brdf.F0, brdf.metalness, brdf.roughness, scene.ambientIntensity);
+        }
+        diffuseIrr += PI * kdIrr * brdf.ao * skinMask;
+    }
     //Fog ___________________________________________________________________
     if(int(object.otherParams.x) == 1 && scene.enableFog) {
         float f = computeFog(gl_FragCoord.z);

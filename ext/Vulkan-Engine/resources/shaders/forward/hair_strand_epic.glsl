@@ -215,14 +215,16 @@ layout(location = 4) out vec4 outDiffuseIrr;
 layout(location = 5) out vec4 outBackIrr;
 layout(location = 6) out vec4 outLinearDepth;
 
-vec3 computeAmbient(vec3 n) {
-
-    // Always initialize: the original IBL branch only computed rotatedNormal
-    // without ever assigning ambient, returning whatever was in the register —
-    // including NaN — which then poisons color += ambient. Fall back to the
-    // simple ambient term in both paths; the IBL branch can be filled in later
-    // without reintroducing the uninitialized-read footgun.
-    vec3 ambient = (scene.ambientIntensity * scene.ambientColor);
+// Hair ambient. Two failure modes the previous flat-ambient version had:
+//  - Dark hair (high eumelanin) brightened just as much as blonde from ambient,
+//    because the term ignored absorption.
+//  - The `if (scene.useIBL)` branch existed but only computed `rotatedNormal`
+//    and dropped it on the floor — `ambient` was never set, so cubemap energy
+//    never reached hair fibers.
+// Both are fixed by sampling the irradiance cubemap along the "head-outward"
+// fake normal and modulating by the hair base color (which already encodes
+// melanin-driven absorption via getAbsorptionFromMelanin → hairAbsorptionToColor).
+vec3 computeAmbient(vec3 n, vec3 hairColor) {
     if (scene.useIBL)
     {
         float rad           = radians(scene.envRotation);
@@ -230,9 +232,10 @@ vec3 computeAmbient(vec3 n) {
         float s             = sin(rad);
         mat3  rotationY     = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
         vec3  rotatedNormal = normalize(rotationY * n);
-        // TODO: sample the irradiance cubemap with rotatedNormal here.
+        vec3  irradiance    = texture(irradianceMap, rotatedNormal).rgb * scene.ambientIntensity;
+        return irradiance * hairColor;
     }
-    return ambient;
+    return scene.ambientIntensity * scene.ambientColor * hairColor;
 }
 
 // Anysotropic. Decoding from a L1 SH
@@ -576,7 +579,7 @@ void main() {
 
     // AMBIENT COMPONENT ..........................................................
 
-    vec3 ambient = computeAmbient(fakeNormal);
+    vec3 ambient = computeAmbient(fakeNormal, epicBaseColor);
     color += ambient;
 
     if (int(object.otherParams.x) == 1 && scene.enableFog)
