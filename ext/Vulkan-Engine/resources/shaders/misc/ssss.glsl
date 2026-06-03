@@ -166,18 +166,9 @@ void main() {
 		vec3 pr = r * Rr(vec3(maxRadius), r);
 		vec3 diffusion = rRr / pr;
 		totalWeight += diffusion;
-
-		// diffuseIrrTex.a is the per-pixel SSS sample weight written by the forward
-		// pass: clothes/hair/sky write 0 (excluded), skin pixels write skinMask *
-		// cavity-attenuation. Multiplying it into each tap's diffusion weight is
-		// the cavity-aware SSS step: light no longer bleeds across pore boundaries
-		// because pore crevices contribute proportionally less to their neighbours.
-		vec4  sampleDiffIrr4 = texture(diffuseIrrTex, sampleUV);
-		vec3  sampleDiffIrr  = sampleDiffIrr4.rgb;
-		float sampleWeight   = sampleDiffIrr4.a;
-		vec3  weighted       = diffusion * sampleWeight;
-		scatteredIrr        += weighted * sampleDiffIrr;
-		totalWeight         += weighted;
+        
+		vec3 sampleDiffIrr = texture(diffuseIrrTex, sampleUV).rgb;
+		scatteredIrr      += diffusion * sampleDiffIrr;
     }
 
     // Normalize per channel

@@ -60,6 +60,12 @@ class ForwardPass : public GraphicPass
     void set_envmap_descriptor(Graphics::Image env, Graphics::Image irr);
 
     void set_hair_scattering_map_descriptor(Graphics::Image frontAtt, Graphics::Image backAtt);
+
+    // Forwards the SSS scatter-distance LUT (binding 14) so physically_based.glsl
+    // can derive the d'Eon per-channel detail-normal blur biases from the same
+    // spectral profile the SSS pass uses. Called from ForwardRenderer when the
+    // scene loader installs the LUT.
+    void set_scatter_lut_descriptor(Graphics::Image lut);
 };
 
 } // namespace Core

@@ -206,16 +206,17 @@ Discriminated by `"type"`:
 
 | Field | Type | Default | Purpose |
 |-------|------|---------|---------|
-| `detail_normal_texture` | texref | (none) | Tileable high-frequency tangent-space normal blended via "whiteout" blend over the base normal in tangent space. |
-| `detail_cavity_texture` | texref | (none) | Tileable grayscale cavity (white = flat, dark = pore). Feeds both per-light specular occlusion and per-pixel SSS sample weight. |
-| `detail_tiling` | float | `8.0` | UV multiplier for both detail textures. Higher = smaller pores. `16`–`32` is typical for face close-ups. |
+| `detail_normal_texture` | texref | (none) | Tileable high-frequency tangent-space normal. Sampled four times per fragment: once sharp (LOD 0) for specular, plus three pre-blurred copies via `textureLod` for the per-channel diffuse normals (d'Eon hybrid normals — see note below). |
+| `detail_cavity_texture` | texref | (none) | Tileable grayscale cavity (white = flat, dark = pore). Feeds the per-light specular occlusion only. SSS is intentionally cavity-agnostic (light still scatters laterally at the bottom of a pore). |
+| `detail_tiling` | float | `8.0` | UV multiplier for both detail textures. Higher = smaller pores. `16`–`48` is typical for face close-ups. |
 | `detail_normal_strength` | float | `0.5` | Strength of the detail-normal blend, `[0, 1]`. `0` = base normal only, `1` = full detail. |
 | `cavity_spec_occlusion` | float | `1.0` | How strongly cavity attenuates the per-light specular term. `0` = no attenuation, `1` = specular zeroed in fully-dark cavity regions. |
-| `cavity_sss_attenuation` | float | `0.0` | How strongly cavity attenuates the per-pixel SSS sample weight written into `outDiffuseIrr.a`. `0` = SSS ignores cavity, `1` = SSS fully scaled by cavity (no scatter in pore crevices). |
 | `dual_lobe_mix` | float | `0.0` | Penner GDC 2011 dual-lobe specular weight. `0` = single (default) GGX lobe, `>0` mixes a softer second lobe at `dual_lobe_roughness_soft`. `0.15` is a subtle skin sheen, `0.3` is strong. Gated by clothes mask. |
 | `dual_lobe_roughness_soft` | float | `0.55` | Roughness of the soft secondary GGX lobe. |
 
 All Layer A and Layer B fields are **optional** and gated by their respective `has*Texture` flags or `>0` checks. Existing non-skin scenes remain visually identical without changes.
+
+**Note — d'Eon hybrid normals.** When a detail normal map is bound on skin (clothesMask gated), each RGB channel of the diffuse term integrates against a *differently-blurred* version of the detail normal, mimicking wavelength-dependent subsurface scattering at pore scale (Penner GDC 2011 + d'Eon/Hanrahan SIGGRAPH 2007). The per-channel mip-LOD biases are derived in-shader from the renderer's `sss_scatter_lut`, so changing the LUT per character automatically retunes the spectral spread of the hybrid normals — no per-material knob to tune. Specular always samples the sharp (LOD 0) detail normal.
 
 ### 6.2 `haircard`
 

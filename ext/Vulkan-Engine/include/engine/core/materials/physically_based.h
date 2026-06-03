@@ -62,7 +62,6 @@ class PhysicallyBasedMaterial : public IMaterial
     float m_detailTiling           = 8.0f;
     float m_detailNormalStrength   = 0.5f;
     float m_cavitySpecOcclusion    = 1.0f;
-    float m_cavitySSSAttenuation   = 0.0f;   // 0 = SSS ignores cavity; 1 = SSS fully scaled by cavity
     float m_dualLobeMix            = 0.0f;   // 0 = single-lobe (default); >0 = blend soft lobe in
     float m_dualLobeRoughnessSoft  = 0.55f;
 
@@ -395,14 +394,6 @@ class PhysicallyBasedMaterial : public IMaterial
     inline void set_cavity_spec_occlusion(float w) {
         m_cavitySpecOcclusion = w;
         m_isDirty             = true;
-    }
-
-    inline float get_cavity_sss_attenuation() const {
-        return m_cavitySSSAttenuation;
-    }
-    inline void set_cavity_sss_attenuation(float w) {
-        m_cavitySSSAttenuation = w;
-        m_isDirty              = true;
     }
 
     inline float get_dual_lobe_mix() const {

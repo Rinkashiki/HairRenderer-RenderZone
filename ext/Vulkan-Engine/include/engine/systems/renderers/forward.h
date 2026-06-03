@@ -106,7 +106,18 @@ class ForwardRenderer : public BaseRenderer
             m_pendingScatterLut = path; // defer until passes are created
             return;
         }
-        if (m_passes[SSS_PASS]) static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->load_scatter_lut(path);
+        if (m_passes[SSS_PASS]) {
+            auto* sss = static_cast<Core::SSSPass*>(m_passes[SSS_PASS]);
+            sss->load_scatter_lut(path);
+            // Forward pass samples the same LUT to derive per-channel detail-normal
+            // blur biases (d'Eon hybrid normals). Keep both pipelines in sync.
+            if (m_passes[FORWARD_PASS]) {
+                if (auto* tex = sss->get_scatter_lut_texture()) {
+                    static_cast<Core::ForwardPass*>(m_passes[FORWARD_PASS])
+                        ->set_scatter_lut_descriptor(*Core::get_image(tex));
+                }
+            }
+        }
     }
     inline float get_sss_extinction_coeff() const {
         if (m_passes[SSS_PASS]) return static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->get_extinction_coeff();

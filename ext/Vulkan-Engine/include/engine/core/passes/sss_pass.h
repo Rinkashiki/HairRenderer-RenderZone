@@ -75,6 +75,13 @@ class SSSPass : public BasePass
 
     Core::Texture* m_scatterDistLUT = nullptr; // 5-pixel thin→thick LUT (binding 8)
 
+  public:
+    // Image handle for the scatter-distance LUT, so other passes (e.g. ForwardPass
+    // for d'Eon hybrid-normals) can sample the same texture without re-uploading it.
+    inline Core::Texture* get_scatter_lut_texture() const { return m_scatterDistLUT; }
+
+  private:
+
     std::vector<Vec4> m_samples; // CPU-side samples, uploaded to UBO
 
     // Parameters

@@ -216,12 +216,14 @@ static Core::IMaterial* build_pbr(const json&                        jm,
         mat->set_detail_normal_strength(jm["detail_normal_strength"].get<float>());
     if (jm.contains("cavity_spec_occlusion"))
         mat->set_cavity_spec_occlusion(jm["cavity_spec_occlusion"].get<float>());
-    if (jm.contains("cavity_sss_attenuation"))
-        mat->set_cavity_sss_attenuation(jm["cavity_sss_attenuation"].get<float>());
     if (jm.contains("dual_lobe_mix"))
         mat->set_dual_lobe_mix(jm["dual_lobe_mix"].get<float>());
     if (jm.contains("dual_lobe_roughness_soft"))
         mat->set_dual_lobe_roughness_soft(jm["dual_lobe_roughness_soft"].get<float>());
+    // Note: per-channel detail-normal blur biases (detail_blur_r/g/b) are
+    // intentionally NOT JSON-driven — they're derived from the renderer's
+    // sss_scatter_lut so the d'Eon hybrid normals stay consistent with the
+    // SSS pass's spectral profile. See `derive_detail_blur_from_lut` below.
 
     warn_unknown(jm,
         {"type", "albedo", "albedo_weight", "albedo_texture",
@@ -234,7 +236,7 @@ static Core::IMaterial* build_pbr(const json&                        jm,
          "bent_normal_texture", "curvature_texture", "scattering_texture", "clothes_mask_texture",
          "detail_normal_texture", "detail_cavity_texture",
          "detail_tiling", "detail_normal_strength",
-         "cavity_spec_occlusion", "cavity_sss_attenuation",
+         "cavity_spec_occlusion",
          "dual_lobe_mix", "dual_lobe_roughness_soft"},
         "material(pbr)");
 

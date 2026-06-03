@@ -26,7 +26,7 @@ Both should come from the same source asset so cavities align with normal-map di
 **Schema additions** (`pbr` material in `SCENE.md`, all optional):
 
 - Layer A: `bent_normal_texture`, `curvature_texture`, `scattering_texture`, `clothes_mask_texture` (each a path or `$GLB[N]`).
-- Layer B: `detail_normal_texture`, `detail_cavity_texture`, `detail_tiling` (float, default `8.0`), `detail_normal_strength` (float `[0,1]`, default `0.5`), `cavity_spec_occlusion` (float `[0,1]`, default `1.0`), `dual_lobe_mix` (float `[0,1]`, default `0.15`), `dual_lobe_roughness_soft` (float, default `0.55`), `cavity_sss_attenuation` (float `[0,1]`, default `0.6`).
+- Layer B: `detail_normal_texture`, `detail_cavity_texture`, `detail_tiling` (float, default `8.0`), `detail_normal_strength` (float `[0,1]`, default `0.5`), `cavity_spec_occlusion` (float `[0,1]`, default `1.0`), `dual_lobe_mix` (float `[0,1]`, default `0.15`), `dual_lobe_roughness_soft` (float, default `0.55`). _(`cavity_sss_attenuation` was originally part of this set; rolled back on 2026-06-03 — see Done entries.)_
 
 **Implementation order** (each step validated before the next):
 
@@ -63,6 +63,33 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### d'Eon hybrid normals + SSS cavity rollback (2026-06-03)
+
+Two related refinements to the skin pipeline, validated together by the user against side-by-side renders of Maria.
+
+**(1) Diffuse/specular normal split with d'Eon hybrid normals.** The detail-normal map was previously sampled once at LOD 0 and used by both diffuse and specular, so pore-scale bumps survived into the diffuse term. The screen-space SSS blur cannot un-bake high-frequency normal variation already shaded into per-pixel color, so the skin read as slightly "dry / 3D-printed" even with strong SSS. Implemented the Penner GDC 2011 + d'Eon/Hanrahan SIGGRAPH 2007 hybrid: specular still samples the sharp detail normal, while each RGB channel of the diffuse term integrates against a per-channel *pre-blurred* detail normal — red widest, blue sharpest — mimicking wavelength-dependent subsurface scattering at pore scale. The per-channel mip-LOD biases are derived in-shader from the SSS scatter-distance LUT (e.g. `monk05.png` for Maria) so the spectral profile of the hybrid normals always matches the SSS pass's profile, and so changing the LUT per character automatically retunes the hybrid normals.
+
+**(2) Cavity-attenuated SSS rolled back.** Step 11 of the original Skin realism initiative wired the cavity map into the SSS kernel via `outDiffuseIrr.a = skinMask * mix(1.0, cavity, cavity_sss_attenuation)`. Visual comparison showed this over-attenuated scatter inside pore crevices and broke the spectral smoothness real skin shows — light physically enters and scatters laterally even at the bottom of a pore. Cavity occlusion now lives only in the specular path (`cavity_spec_occlusion`), where the "no shiny pores" effect belongs. The `outDiffuseIrr.a` channel still carries `skinMask` for the SSS early-out and for the `modulatedDiff` / `modulatedSS` lerp; the per-tap multiplication by the alpha has been removed.
+
+**Changes shipped:**
+
+- `ext/Vulkan-Engine/include/engine/core/passes/sss_pass.h` — exposed `get_scatter_lut_texture()` on `SSSPass` so other passes can sample the same LUT image.
+- `ext/Vulkan-Engine/src/core/passes/forward_pass.cpp` + `forward_pass.h` — added binding 14 (`scatterDistLUT`) to `GLOBAL_LAYOUT` of the forward pass, initialized to the fallback texture, with a `set_scatter_lut_descriptor(Image)` setter so the scene loader can install the real LUT post-construction.
+- `ext/Vulkan-Engine/include/engine/systems/renderers/forward.h` — `load_sss_scatter_lut` now also forwards the LUT image to the forward pass, keeping both pipelines in sync.
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — added `scatterDistLUT` sampler at set=0 binding 14; `setupBRDFProperties` now builds three world-space "diffuse normals" (`diffuseNormalWS_R/G/B`) via `textureLod(detailNormalTex, dUV, bias_c)` with biases derived as `clamp(1.5 * log2(d/d_min), 0, 4)` from the LUT's mid-thickness pixel; the per-light loop's diffuse term became `vec3 NdotL_diff_rgb` consumed by both the lighting recomposition and the SSS irradiance write; `brdf.normal` stays sharp (LOD 0) for specular and the bent-normal/back-light paths; `smoothNormalWS` (base only, no detail) feeds the curvature wrap (Penner pre-integrated diffuse).
+- `ext/Vulkan-Engine/resources/shaders/misc/ssss.glsl` — per-sample loop no longer reads `diffuseIrrTex.a` (skin gate still consumed at the early-out and final combine, just not folded into the per-tap diffusion weight).
+- `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` — `outDiffuseIrr.a` write reduced to plain `skinMask` (cavity factor removed).
+- `ext/Vulkan-Engine/include/engine/core/materials/physically_based.h` + `.cpp` — removed `m_cavitySSSAttenuation` and its getter/setter; `dataSlot10.y` repurposed as padding (writes `0.0f`).
+- `ext/Vulkan-Engine/include/engine/graphics/uniforms.h` — no shape change; the `slot11` field added mid-iteration for explicit per-material blur biases was removed once the LUT-derived path landed.
+- `src/scene_loader.cpp` — removed JSON parsing of `cavity_sss_attenuation` and its `warn_unknown` entry; per-material `detail_blur_r/g/b` keys were never exposed (LUT-derived instead).
+- `resources/scenes/maria.json` — dropped `cavity_sss_attenuation`. (alex/javi/nadia already lacked it.)
+
+**Verified.** User compared two renders of Maria — diffuse-only path with vs. without the cavity multiplier in SSS, plus the hybrid-normals on/off. Confirmed the smoother form (no per-tap alpha gate) closely matches Activision/Weta digital-human references, with pore detail still legible in specular highlights on nose tip / cheekbone.
+
+**Docs.** `SCENE.md` updated to drop `cavity_sss_attenuation` from the Layer B table and to clarify `detail_cavity_texture` is now spec-only. The `## Open` schema additions in this file also patched to mark the param as rolled back.
+
+---
 
 ### Skin realism — regression sweep + latent uniform-buffer offset bug fix (step 13) (2026-06-02)
 

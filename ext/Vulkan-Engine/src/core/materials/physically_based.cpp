@@ -28,13 +28,15 @@ Graphics::MaterialUniforms PhysicallyBasedMaterial::get_uniforms() const {
 
     // Layer B microdetail (steps 8-11).
     //   slot9  = (detailTiling, detailNormalStrength, hasDetailNormal, hasDetailCavity)
-    //   slot10 = (cavitySpecOcclusion, cavitySSSAttenuation, dualLobeMix, dualLobeRoughnessSoft)
+    //   slot10 = (cavitySpecOcclusion, _, dualLobeMix, dualLobeRoughnessSoft)
+    // Per-channel detail-normal blur biases (d'Eon hybrid normals) are derived
+    // in-shader from the scatter-distance LUT (binding 14), not pushed via UBO.
     uniforms.dataSlot9  = Vec4{m_detailTiling,
                                m_detailNormalStrength,
                                m_hasDetailNormalTexture ? 1.0f : 0.0f,
                                m_hasDetailCavityTexture ? 1.0f : 0.0f};
     uniforms.dataSlot10 = Vec4{m_cavitySpecOcclusion,
-                               m_cavitySSSAttenuation,
+                               0.0f, // was cavitySSSAttenuation (removed: SSS now cavity-agnostic)
                                m_dualLobeMix,
                                m_dualLobeRoughnessSoft};
 

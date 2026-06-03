@@ -153,6 +153,7 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
     LayoutBinding hairngt(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 11);
     LayoutBinding hairGI(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 12);
     LayoutBinding hairVoxelsDensity(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 13);
+    LayoutBinding scatterDistLUT(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 14);
     m_descriptorPool.set_layout(GLOBAL_LAYOUT,
                                 {camBufferBinding,
                                  sceneBufferBinding,
@@ -166,7 +167,8 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
                                  hairng,
                                  hairngt,
                                  hairGI,
-                                 hairVoxelsDensity});
+                                 hairVoxelsDensity,
+                                 scatterDistLUT});
 
     // PER-OBJECT SET
     LayoutBinding objectBufferBinding(UNIFORM_DYNAMIC_BUFFER, SHADER_STAGE_VERTEX | SHADER_STAGE_GEOMETRY | SHADER_STAGE_FRAGMENT, 0);
@@ -227,6 +229,11 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
         m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_NG_TRT, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 11);
         m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_GI, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 12);
         m_descriptorPool.set_descriptor_write(&ResourceManager::HAIR_VOXEL_VOLUME, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 13);
+        // Scatter-distance LUT used by physically_based.glsl for d'Eon hybrid normals.
+        // Bound to a fallback white texture until the scene loader installs the real LUT
+        // via ForwardPass::set_scatter_lut_descriptor (triggered by load_sss_scatter_lut).
+        m_descriptorPool.set_descriptor_write(
+            get_image(ResourceManager::FALLBACK_TEXTURE), LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 14);
         // m_descriptorPool.set_descriptor_write( get_image(ResourceManager::HAIR_GI_FALLBACK), LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         // &m_descriptors[i].globalDescritor, 13);
 
@@ -547,6 +554,12 @@ void ForwardPass::set_hair_scattering_map_descriptor(Graphics::Image frontAtt, G
     {
         m_descriptorPool.set_descriptor_write(&frontAtt, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 8);
         m_descriptorPool.set_descriptor_write(&backAtt, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 9);
+    }
+}
+void ForwardPass::set_scatter_lut_descriptor(Graphics::Image lut) {
+    for (size_t i = 0; i < m_descriptors.size(); i++)
+    {
+        m_descriptorPool.set_descriptor_write(&lut, LAYOUT_SHADER_READ_ONLY_OPTIMAL, &m_descriptors[i].globalDescritor, 14);
     }
 }
 void ForwardPass::setup_material_descriptor(IMaterial* mat) {
