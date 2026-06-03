@@ -2,7 +2,7 @@
   "name": "maria",
 
   "camera": {
-    "position": [0.0, 0.0, -16.0],
+    "position": [0.0, 3.1, -4.20],
     "near":     0.1,
     "far":      100.0,
     "fov":      40.0
@@ -44,7 +44,7 @@
       "rotation":       [0.0, 180.0, 0.0],
       "material": {
         "type":              "pbr",
-        "albedo_texture":       "textures/maria/T-Maria_BaseColor.png",
+        "albedo_texture":       "textures/maria/T-Maria_BaseColor_eyes.png",
         "normal_texture":       "textures/maria/T-Maria-Normal.png",
         "roughness_texture":    "textures/maria/T-Maria-Roughness.png",
         "occlusion_texture":    "textures/maria/T-Maria-AO.png",
@@ -65,7 +65,8 @@
         "roughness":         1.0,
         "roughness_weight":  0.75,
         "occlusion_weight":  1.0
-      }
+      },
+      "animation": "animations/test_anim.json"
     },
     {
       "name":      "Hair",
@@ -101,7 +102,7 @@
 
   "scene": {
     "ambient_color":     [0.05, 0.05, 0.05],
-    "ambient_intensity": 0.02,
+    "ambient_intensity": 0.025,
     "skybox": {
       "hdri":      "textures/studio_demo.hdr",
       "intensity": 0.5
