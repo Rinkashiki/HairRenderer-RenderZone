@@ -2,7 +2,7 @@
   "name": "maria",
 
   "camera": {
-    "position": [0.0, 3.1, -4.20],
+    "position": [0.0, 0.0, -16.0],
     "near":     0.1,
     "far":      100.0,
     "fov":      40.0
@@ -10,10 +10,10 @@
 
   "lights": [
     {
-      "type":           "point",
-      "name":           "PointLight",
-      "position":       [-5.0, 1.0, -5.0],
-      "intensity":      1.0,
+      "type":           "directional",
+      "name":           "DirectionalLight",
+      "direction":      [1.0, 1.0, -1.0],
+      "intensity":      5.0,
       "shadow_fov":     120.0,
       "shadow_bias":    0.0002,
       "shadow_near":    0.1,
@@ -63,7 +63,7 @@
         "albedo_weight":     1.0,
         "metalness":         0.0,
         "roughness":         1.0,
-        "roughness_weight":  0.75,
+        "roughness_weight":  0.6,
         "occlusion_weight":  1.0
       },
       "animation": "animations/test_anim.json"
@@ -102,10 +102,11 @@
 
   "scene": {
     "ambient_color":     [0.05, 0.05, 0.05],
-    "ambient_intensity": 0.025,
+    "ambient_intensity": 1.0,
     "skybox": {
-      "hdri":      "textures/studio_demo.hdr",
-      "intensity": 0.5
+      "hdri":      "textures/nature_demo.hdr",
+      "intensity": 1.0,
+      "rotation": 290.0
     },
     "use_ibl": true,
     "fog":     { "enabled": false }
