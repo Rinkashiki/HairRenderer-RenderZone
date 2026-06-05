@@ -121,6 +121,63 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # -----------------------------------------------------------------------------
+# 5b. SLViewer — Embedded SPIR-V (pre-compiled shaders baked into the binary)
+# -----------------------------------------------------------------------------
+# The distributable must not ship GLSL source under resources/shaders/, so
+# tools/precompile_shaders.py runs at build time to:
+#   1. split each unified .glsl into per-stage GLSL (mirroring the engine's
+#      ShaderSource::read_file logic, including #include from shaders/scripts/),
+#   2. compile each stage with glslc -> SPIR-V,
+#   3. run spirv-opt --strip-debug so reconstructed GLSL loses original names,
+#   4. emit a generated embedded_shaders.cpp registering the blobs at static
+#      init via shader_registry.h.
+# The generated source is linked only into SLViewer; HairViewer continues to
+# read .glsl files at runtime and compile via Shaderc.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+# glslc + spirv-opt ship in the Vulkan SDK. find_package(Vulkan) above doesn't
+# locate them on every platform — search next to the validation utility / SDK
+# bin dir explicitly.
+find_program(GLSLC_EXECUTABLE
+    NAMES glslc
+    HINTS "$ENV{VULKAN_SDK}/bin" "$ENV{VULKAN_SDK}/Bin"
+    DOC "glslc — Vulkan SDK GLSL->SPIR-V compiler")
+find_program(SPIRV_OPT_EXECUTABLE
+    NAMES spirv-opt
+    HINTS "$ENV{VULKAN_SDK}/bin" "$ENV{VULKAN_SDK}/Bin"
+    DOC "spirv-opt — SPIR-V optimizer")
+
+if(NOT GLSLC_EXECUTABLE OR NOT SPIRV_OPT_EXECUTABLE)
+    message(FATAL_ERROR
+        "SLViewer requires glslc and spirv-opt for shader embedding "
+        "(install the Vulkan SDK and ensure VULKAN_SDK is set).")
+endif()
+
+set(SLVIEWER_EMBEDDED_SHADERS_CPP "${CMAKE_BINARY_DIR}/generated/embedded_shaders.cpp")
+set(SLVIEWER_SHADER_ROOT          "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/shaders")
+set(SLVIEWER_PRECOMPILE_SCRIPT    "${CMAKE_CURRENT_SOURCE_DIR}/tools/precompile_shaders.py")
+
+# Re-run codegen whenever any .glsl under the engine shader tree changes.
+file(GLOB_RECURSE SLVIEWER_SHADER_INPUTS "${SLVIEWER_SHADER_ROOT}/*.glsl")
+
+add_custom_command(
+    OUTPUT  "${SLVIEWER_EMBEDDED_SHADERS_CPP}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/generated"
+    COMMAND "${Python3_EXECUTABLE}" "${SLVIEWER_PRECOMPILE_SCRIPT}"
+            --shaders-root "${SLVIEWER_SHADER_ROOT}"
+            --output       "${SLVIEWER_EMBEDDED_SHADERS_CPP}"
+            --glslc        "${GLSLC_EXECUTABLE}"
+            --spirv-opt    "${SPIRV_OPT_EXECUTABLE}"
+    DEPENDS ${SLVIEWER_SHADER_INPUTS} "${SLVIEWER_PRECOMPILE_SCRIPT}"
+    COMMENT "[SLViewer] Pre-compiling ${CMAKE_MATCH_COUNT}shaders to embedded SPIR-V"
+    VERBATIM
+)
+
+target_sources(SLViewer PRIVATE "${SLVIEWER_EMBEDDED_SHADERS_CPP}")
+set_source_files_properties("${SLVIEWER_EMBEDDED_SHADERS_CPP}"
+    PROPERTIES GENERATED TRUE)
+
+# -----------------------------------------------------------------------------
 # 6. SLViewer — Bundle static ffmpeg
 # -----------------------------------------------------------------------------
 set(_ffmpeg_bin "")
@@ -235,9 +292,9 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/scenes"
         DESTINATION resources
         FILES_MATCHING PATTERN "*.json")
 
-# Engine resources — shaders (compiled on-the-fly), meshes, and textures (LUTs etc.)
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/shaders"
-        DESTINATION resources)
+# Engine resources — meshes and textures (LUTs etc.). Shaders are NOT installed:
+# SLViewer ships them as embedded SPIR-V (see "5b. Embedded SPIR-V" above), so
+# resources/shaders/ on disk would be dead weight and would leak GLSL source.
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/meshes"
         DESTINATION resources)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/textures"

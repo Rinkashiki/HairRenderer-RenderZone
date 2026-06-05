@@ -222,17 +222,20 @@ The installed layout:
 
 ```
 SLViewer-linux/
-├── SLViewer              # ELF binary
+├── SLViewer              # ELF binary (shaders baked in as SPIR-V)
 ├── ffmpeg                # bundled static ffmpeg GPL build (BtbN linux64)
 ├── THIRD_PARTY_NOTICES.txt
 └── resources/
-    ├── shaders/          # full engine shader tree (compiled on-the-fly)
     ├── meshes/           # engine built-in meshes (sphere, cube)
     ├── textures/         # engine LUTs + IBL maps
     ├── models/alex/      # alex.glb, hair_fauxmohawk.obj
     ├── textures/alex/    # hair data + tangent textures
     └── animations/       # test_anim.json, test_morph.json
 ```
+
+No `resources/shaders/` is shipped — shaders are pre-compiled to SPIR-V at
+build time and linked into the binary. See **Embedded SPIR-V for SLViewer**
+below.
 
 `libvulkan.so.1` is **not bundled**. On Linux the Vulkan loader ships with GPU drivers (`mesa-vulkan-drivers`, `nvidia-driver`, etc.) and is always present on any machine capable of running Vulkan. Bundling an SDK copy of the loader breaks on other machines because the SDK loader looks for ICDs in SDK-specific paths that don't exist there.
 
@@ -254,16 +257,60 @@ The installed layout:
 
 ```
 SLViewer-windows\
-├── SLViewer.exe          # statically linked MSVC runtime (/MT — no VC++ redist needed)
+├── SLViewer.exe          # /MT static MSVC runtime — no VC++ redist. Shaders baked in as SPIR-V.
 ├── ffmpeg.exe            # bundled static ffmpeg GPL build (BtbN win64)
 ├── vulkan-1.dll          # Vulkan loader from %VULKAN_SDK%\Bin\
 ├── THIRD_PARTY_NOTICES.txt
-└── resources\            # same tree as Linux
+└── resources\            # same tree as Linux — no shaders\
 ```
 
 `vulkan-1.dll` is located automatically from `%VULKAN_SDK%\Bin\` at configure time. If the env var is not set, CMake emits a warning and the DLL must be copied manually. The MSVC runtime is compiled in statically (`/MT`), so no VC++ Redistributable is required on the target machine.
 
 **Note**: The ffmpeg `.zip` for Windows is downloaded at configure time (same as Linux). If the download fails, system `ffmpeg` on `PATH` is used as a fallback at runtime.
+
+### Embedded SPIR-V for SLViewer
+
+SLViewer ships with shaders **baked into the binary** as SPIR-V, so no GLSL
+source leaves the build tree in the distributable. HairViewer is unchanged —
+it still reads `.glsl` from disk and compiles via Shaderc at runtime, which
+keeps shader iteration fast for dev work.
+
+**Build pipeline** (driven by `CMakeLists.txt` section 5b):
+1. `tools/precompile_shaders.py` walks `ext/Vulkan-Engine/resources/shaders/`,
+   mirrors `ShaderSource::read_file`'s splitter (unified `#shader` directives
+   with non-recursive `#include` from `scripts/`).
+2. Each stage is compiled with `glslc` (Vulkan 1.3 / SPIR-V 1.4 to match the
+   runtime Shaderc config), then run through `spirv-opt --strip-debug` so
+   reconstructed GLSL loses your original identifiers.
+3. The script emits `build/generated/embedded_shaders.cpp` — a registry of
+   `(path, stage, uint32_t[])` entries plus a static `AutoRegister`
+   constructor that calls `VKFW::set_embedded_shader_registry()`.
+4. That `.cpp` is linked **only** into the SLViewer target.
+
+**Runtime dispatch** (`shaderpass.cpp`):
+- `GraphicShaderPass::build_shader_stages` / `ComputeShaderPass::build_shader_stages`
+  call `VKFW::has_embedded_shader_registry()` first.
+- If a registry is installed (SLViewer), look up the SPIR-V by `(filePath, stage)`
+  and feed it straight to `vkCreateShaderModule` — `read_file` and Shaderc are
+  skipped. A missing entry **hard-fails** with `"[Shader] No embedded SPIR-V for: ..."`.
+- If no registry is installed (HairViewer), the existing GLSL-on-disk +
+  Shaderc path runs unchanged.
+
+**Key files**:
+- `tools/precompile_shaders.py` — codegen
+- `ext/Vulkan-Engine/include/engine/core/shader_registry.h` — registry API
+- `ext/Vulkan-Engine/src/core/shader_registry.cpp` — registry storage + lookup
+- `ext/Vulkan-Engine/src/graphics/shaderpass.cpp` — runtime branch
+
+**Adding / editing a shader**: just edit the `.glsl` under
+`ext/Vulkan-Engine/resources/shaders/`. The custom command in `CMakeLists.txt`
+re-runs the precompile script whenever any `.glsl` changes, so the embedded
+blobs stay in sync. HairViewer picks up the change at next launch (no rebuild
+needed); SLViewer picks it up at next build.
+
+**Skipped shaders**: shaders with missing includes (deferred-renderer dead
+code) or broken signatures are warned and skipped during codegen. If SLViewer
+ever requests one, the hard-fail at startup names the file clearly.
 
 ## SLViewer — Headless Video Export
 

@@ -1,4 +1,5 @@
 #include <engine/graphics/shaderpass.h>
+#include <engine/core/shader_registry.h>
 
 VULKAN_ENGINE_NAMESPACE_BEGIN
 
@@ -105,6 +106,24 @@ ShaderSource::compile_shader(const std::string src, const std::string shaderName
 void GraphicShaderPass::build_shader_stages(shaderc_optimization_level optimization) {
     if (filePath == "")
         return;
+
+    // Embedded path: when SLViewer (or any embed-mode build) has registered a
+    // pre-compiled SPIR-V table, skip read_file + Shaderc entirely. The
+    // registry knows which stages each file declares, so we iterate its hits.
+    if (has_embedded_shader_registry())
+    {
+        auto hits = find_embedded_shaders_for_file(filePath);
+        if (hits.empty())
+            throw std::runtime_error("[Shader] No embedded SPIR-V for: " + filePath);
+
+        for (const auto* e : hits)
+        {
+            std::vector<uint32_t> spirv(e->code, e->code + e->codeWordCount);
+            shaderStages.push_back(ShaderSource::create_shader_stage(device, e->stage, spirv));
+        }
+        return;
+    }
+
     auto shader = ShaderSource::read_file(filePath);
 
     if (shader.vertSource != "")
@@ -141,6 +160,22 @@ void GraphicShaderPass::build_shader_stages(shaderc_optimization_level optimizat
 void ComputeShaderPass::build_shader_stages(shaderc_optimization_level optimization) {
     if (filePath == "")
         return;
+
+    if (has_embedded_shader_registry())
+    {
+        auto hits = find_embedded_shaders_for_file(filePath);
+        for (const auto* e : hits)
+        {
+            if (e->stage == VK_SHADER_STAGE_COMPUTE_BIT)
+            {
+                std::vector<uint32_t> spirv(e->code, e->code + e->codeWordCount);
+                computeStage = ShaderSource::create_shader_stage(device, e->stage, spirv);
+                return;
+            }
+        }
+        throw std::runtime_error("[Shader] No embedded compute SPIR-V for: " + filePath);
+    }
+
     auto shader = ShaderSource::read_file(filePath);
 
     if (shader.computeSource != "")
