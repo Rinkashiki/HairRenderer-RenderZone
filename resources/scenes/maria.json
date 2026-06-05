@@ -80,7 +80,7 @@
           "metalness": 0.0
         }
       ],
-      "primitive_materials": [0, 1, 1, 2],
+      "primitive_materials": [0, 1, 1, 2, 2],
       "animation": "animations/test_anim.json"
     },
     {
@@ -88,26 +88,6 @@
       "type":      "hair",
       "file":      "models/maria/maria.hair",
       "position":  [-0.011, -0.555, -0.04],
-      "scale":     0.01,
-      "rotation":  [90.0, 180.0, 180.0],
-      "material":  "maria_hair",
-      "attach_to": { "mesh": "Maria", "joint": "head" }
-    },
-    {
-      "name":      "Eyebrows",
-      "type":      "hair",
-      "file":      "models/maria/eyebrows.hair",
-      "position":  [-0.011, -1.56, -0.035],
-      "scale":     0.01,
-      "rotation":  [90.0, 180.0, 180.0],
-      "material":  "maria_hair",
-      "attach_to": { "mesh": "Maria", "joint": "head" }
-    },
-    {
-      "name":      "Eyelashes",
-      "type":      "hair",
-      "file":      "models/maria/eyelashes.hair",
-      "position":  [-0.011, -1.557, -0.035],
       "scale":     0.01,
       "rotation":  [90.0, 180.0, 180.0],
       "material":  "maria_hair",

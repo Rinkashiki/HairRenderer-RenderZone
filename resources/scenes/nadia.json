@@ -79,7 +79,7 @@
           "metalness": 0.0
         }
       ],
-      "primitive_materials": [0, 1, 1, 2]
+      "primitive_materials": [0, 1, 1, 2, 2]
     },
     {
       "name":      "Hair0",
@@ -96,26 +96,6 @@
       "type":      "hair",
       "file":      "models/nadia/nadia_1.hair",
       "position":  [-0.011, -0.6, -0.025],
-      "scale":     0.01,
-      "rotation":  [90.0, 180.0, 180.0],
-      "material":  "nadia_hair",
-      "attach_to": { "mesh": "Nadia", "joint": "head" }
-    },
-    {
-      "name":      "Eyebrows",
-      "type":      "hair",
-      "file":      "models/nadia/eyebrows.hair",
-      "position":  [-0.011, -1.557, -0.025],
-      "scale":     0.01,
-      "rotation":  [90.0, 180.0, 180.0],
-      "material":  "nadia_hair",
-      "attach_to": { "mesh": "Nadia", "joint": "head" }
-    },
-    {
-      "name":      "Eyelashes",
-      "type":      "hair",
-      "file":      "models/nadia/eyelashes.hair",
-      "position":  [-0.011, -1.557, -0.025],
       "scale":     0.01,
       "rotation":  [90.0, 180.0, 180.0],
       "material":  "nadia_hair",
