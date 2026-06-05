@@ -10,10 +10,10 @@
 
   "lights": [
     {
-      "type":           "directional",
-      "name":           "DirectionalLight",
-      "direction":      [1.0, 1.0, -1.0],
-      "intensity":      5.0,
+      "type":           "point",
+      "name":           "PointLight",
+      "position":      [7.0, 5.0, -9.0],
+      "intensity":      10.0,
       "shadow_fov":     120.0,
       "shadow_bias":    0.0002,
       "shadow_near":    0.1,
@@ -29,7 +29,11 @@
       "thickness":        0.0015,
       "use_pigmentation": true,
       "eumelanine":       0.4,
-      "pheomelanine":     0.6
+      "pheomelanine":     0.6,
+      "roughness":        0.5,
+      "specular":         0.4,
+      "root_darkening":   0.3,
+      "variability":      0.25
     }
   },
 
