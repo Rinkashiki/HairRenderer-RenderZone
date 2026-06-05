@@ -65,7 +65,7 @@
         "roughness_weight":  0.75,
         "occlusion_weight":  1.0
       },
-      "animation": "animations/test_anim.json"
+      "animation": "animations/fht_test.json"
     },
     {
       "name":      "Hair0",
