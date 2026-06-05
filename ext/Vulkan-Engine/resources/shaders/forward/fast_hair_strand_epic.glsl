@@ -407,6 +407,7 @@ void main() {
             vec3  shadow         = vec3(1.0);
             vec3  spread         = vec3(0.0);
             float directFraction = 1.0;
+            float solidOcclusion = 1.0;
             if (int(object.otherParams.y) == 1 && scene.lights[i].shadowCast == 1)
             {
                 if (scene.lights[i].shadowType == 0) // Classic
@@ -416,7 +417,7 @@ void main() {
 
                 // Layer a Chebyshev VSM occlusion test on top of the hair-fiber transmittance
                 // so that solid casters (head, body, props) fully shadow hair.
-                float solidOcclusion = computeVarianceShadow(shadowMap, scene.lights[i], i, g_modelPos);
+                solidOcclusion  = computeVarianceShadow(shadowMap, scene.lights[i], i, g_modelPos);
                 shadow         *= solidOcclusion;
                 directFraction *= solidOcclusion;
             }
@@ -454,6 +455,9 @@ void main() {
                 // -g_modelPos)));
                 transMask.visibility = computeHairShadowCone(g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz - g_modelPos));
             }
+            // Fold solid-mesh occlusion into the transmittance mask so dual scattering
+            // also sees the head/body — otherwise the scatter lobe lights hair through opaque casters.
+            transMask.visibility *= solidOcclusion;
 
             bsdf          = evalHairMultipleScattering(V, L, T, transMask, hairLUT, bsdf);
             vec3 lighting = evalEpicHairBSDF(L,
