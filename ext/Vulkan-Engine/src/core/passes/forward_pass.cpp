@@ -398,22 +398,26 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
     if (scene->get_active_camera() && scene->get_active_camera()->is_active())
     {
 
-        unsigned int mesh_idx = 0;
+        // draw_idx counts (mesh,geometry) pairs; advanced unconditionally per
+        // geometry below so all passes stay in lock-step with the upload in
+        // ResourceManager::update_object_data.
+        unsigned int draw_idx = 0;
         for (Mesh* m : scene->get_meshes())
         {
+            const size_t numGeoms = m ? m->get_num_geometries() : 0;
             if (m)
             {
-                if (m->is_active() &&              // Check if is active
-                    m->get_num_geometries() > 0 && // Check if has geometry
+                if (m->is_active() &&  // Check if is active
+                    numGeoms > 0 &&    // Check if has geometry
                     (scene->get_active_camera()->get_frustrum_culling() && m->get_bounding_volume()
                          ? m->get_bounding_volume()->is_on_frustrum(scene->get_active_camera()->get_frustrum())
                          : true)) // Check if is inside frustrum
                 {
-                    // Offset calculation
-                    uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * mesh_idx;
-
-                    for (size_t i = 0; i < m->get_num_geometries(); i++)
+                    for (size_t i = 0; i < numGeoms; i++)
                     {
+                        // Per-draw offset so each geometry's MaterialUniforms slot is private.
+                        uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * (draw_idx + i);
+
                         Geometry*  g   = m->get_geometry(i);
                         IMaterial* mat = m->get_material(g->get_material_ID());
 
@@ -443,7 +447,7 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
 
                             uint32_t numSegments   = g->get_properties().vertexIndex.size() * 0.5;
                             float    avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
-                            Vec4     data = Vec4(float(mesh_idx), float(numSegments), static_cast<HairEpicMaterial*>(mat)->get_thickness(), avgHairLength);
+                            Vec4     data = Vec4(float(draw_idx + i), float(numSegments), static_cast<HairEpicMaterial*>(mat)->get_thickness(), avgHairLength);
                             cmd.push_constants(*shaderPass, SHADER_STAGE_VERTEX | SHADER_STAGE_FRAGMENT, &data, sizeof(Vec4));
 
                             cmd.draw_geometry(4, numSegments);
@@ -455,7 +459,7 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
                         if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
                         {
                             float avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
-                            Vec4  data          = Vec4(float(mesh_idx), avgHairLength, 0.0, 0.0);
+                            Vec4  data          = Vec4(float(draw_idx + i), avgHairLength, 0.0, 0.0);
                             cmd.push_constants(*shaderPass, SHADER_STAGE_FRAGMENT, &data, sizeof(Vec4));
                         }
 
@@ -464,7 +468,7 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
                     }
                 }
             }
-            mesh_idx++;
+            draw_idx += numGeoms;
         }
         // Skybox
         if (scene->get_skybox())
@@ -496,12 +500,16 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
 }
 
 void ForwardPass::update_uniforms(uint32_t frameIndex, Scene* const scene) {
-    uint32_t meshIdx = 0;
+    // Bindless SSBO slots are indexed per (mesh,geometry) — same scheme as the
+    // uniform-buffer offsets in render() and ResourceManager so the push
+    // constant `draw_idx + i` resolves to the right VBO/IBO.
+    uint32_t draw_idx = 0;
     for (Mesh* m : scene->get_meshes())
     {
+        const size_t numGeoms = m ? m->get_num_geometries() : 0;
         if (m)
         {
-            for (size_t i = 0; i < m->get_num_geometries(); i++)
+            for (size_t i = 0; i < numGeoms; i++)
             {
                 Geometry*  g   = m->get_geometry(i);
                 IMaterial* mat = m->get_material(g->get_material_ID());
@@ -510,16 +518,17 @@ void ForwardPass::update_uniforms(uint32_t frameIndex, Scene* const scene) {
                 VAO* vao = get_VAO(g);
                 if (vao->loadedOnGPU)
                 {
+                    uint32_t slot = draw_idx + i;
                     // Pos SSBO binding
                     m_descriptorPool.set_descriptor_write(
-                        &vao->posSSBO, vao->posSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 0, meshIdx);
+                        &vao->posSSBO, vao->posSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 0, slot);
                     // IBO binding
                     m_descriptorPool.set_descriptor_write(
-                        &vao->indexSSBO, vao->indexSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 1, meshIdx);
+                        &vao->indexSSBO, vao->indexSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 1, slot);
                 }
             }
         }
-        meshIdx++;
+        draw_idx += numGeoms;
     }
     if (!get_TLAS(scene)->binded)
     {

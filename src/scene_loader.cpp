@@ -541,6 +541,36 @@ static Core::Mesh* build_mesh(const json&                     jm,
         mesh->push_material(mat);
     }
 
+    // Optional extra material slots, used by GLB meshes with multiple primitives
+    // (e.g. body + teeth + tongue). Each entry is resolved like `material` and
+    // appended after the primary material.
+    if (jm.contains("extra_materials")) {
+        if (!jm["extra_materials"].is_array())
+            throw std::runtime_error("scene_loader: 'extra_materials' must be an array");
+        for (const auto& em : jm["extra_materials"])
+            mesh->push_material(resolve_material(em, resourcesPath, glbTextures, lib));
+    }
+
+    // Optional per-primitive material slot mapping. Entry i is the material slot
+    // index used by geometry i (= primitive i in load order). Required when a
+    // mesh has more than one geometry and you want anything other than every
+    // geometry using slot 0.
+    if (jm.contains("primitive_materials")) {
+        if (!jm["primitive_materials"].is_array())
+            throw std::runtime_error("scene_loader: 'primitive_materials' must be an array of slot indices");
+        const auto& pm = jm["primitive_materials"];
+        const size_t numGeoms = mesh->get_num_geometries();
+        const size_t numMats  = mesh->get_num_materials();
+        for (size_t i = 0; i < pm.size() && i < numGeoms; ++i) {
+            size_t slot = pm[i].get<size_t>();
+            if (slot >= numMats)
+                throw std::runtime_error("scene_loader: 'primitive_materials[" + std::to_string(i) +
+                                         "]' references slot " + std::to_string(slot) +
+                                         " but mesh has only " + std::to_string(numMats) + " material slot(s)");
+            mesh->set_material_ID(i, slot);
+        }
+    }
+
     // Name / flags
     if (jm.contains("name"))            mesh->set_name(jm["name"].get<std::string>());
     if (jm.contains("active"))          mesh->set_active(jm["active"].get<bool>());
@@ -568,7 +598,8 @@ static Core::Mesh* build_mesh(const json&                     jm,
         {"name", "type", "file", "glb_mesh_index",
          "preload", "verbose", "calculate_tangents", "save_output",
          "position", "scale", "rotation",
-         "material", "animation", "children", "attach_to",
+         "material", "extra_materials", "primitive_materials",
+         "animation", "children", "attach_to",
          "active", "cast_shadows", "affected_by_fog"},
         "mesh");
 

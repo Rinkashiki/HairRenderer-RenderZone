@@ -130,17 +130,19 @@ void VarianceShadowPass::render(Graphics::Frame& currentFrame, Scene* const scen
     float depthBiasSlope    = 0.0f;
     cmd.set_depth_bias(depthBiasConstant, 0.0f, depthBiasSlope);
 
-    int mesh_idx = 0;
+    // draw_idx counts (mesh,geometry) pairs — see ResourceManager::update_object_data
+    // for the canonical advancement rule (per-geometry on live meshes, 0 on null).
+    int draw_idx = 0;
     for (Mesh* m : scene->get_meshes())
     {
+        const size_t numGeoms = m ? m->get_num_geometries() : 0;
         if (m)
         {
-            if (m->is_active() && m->cast_shadows() && m->get_num_geometries() > 0)
+            if (m->is_active() && m->cast_shadows() && numGeoms > 0)
             {
-                uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * mesh_idx;
-
-                for (size_t i = 0; i < m->get_num_geometries(); i++)
+                for (size_t i = 0; i < numGeoms; i++)
                 {
+                    uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * (draw_idx + i);
 
                     // Setup per object render state
                     Geometry*  g   = m->get_geometry(i);
@@ -162,8 +164,8 @@ void VarianceShadowPass::render(Graphics::Frame& currentFrame, Scene* const scen
                     cmd.draw_geometry(*get_VAO(g));
                 }
             }
-            mesh_idx++;
         }
+        draw_idx += numGeoms;
     }
 
     cmd.end_renderpass(m_renderpass, m_framebuffers[0]);

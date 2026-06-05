@@ -241,12 +241,17 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
 
         std::vector<Graphics::BLASInstance> BLASInstances; // RT Acceleration Structures per instanced mesh
         BLASInstances.reserve(scene->get_meshes().size());
-        unsigned int mesh_idx = 0;
+        // draw_idx counts (mesh,geometry) pairs — one uniform slot per geometry
+        // so multi-material meshes don't clobber each other's MaterialUniforms.
+        // ALL passes must advance this counter identically (per-geometry on
+        // live meshes, by 0 on null meshes) so the slot mapping is stable.
+        unsigned int draw_idx = 0;
         for (Core::Mesh* m : scene->get_meshes())
         {
+            const size_t numGeoms = m ? m->get_num_geometries() : 0;
             if (m) // If mesh exists
             {
-                const bool basicChecks = m->is_active() && m->get_num_geometries() > 0;
+                const bool basicChecks = m->is_active() && numGeoms > 0;
                 const bool inFrustum   = basicChecks && m->get_bounding_volume()->is_on_frustrum(scene->get_active_camera()->get_frustrum());
 
                 // Off-frustum, still-active meshes need their BLAS uploaded and
@@ -255,7 +260,7 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                 // empty, which the RT-enabled pipeline cannot bind.
                 if (basicChecks && enableRT && m->ray_hittable())
                 {
-                    for (size_t i = 0; i < m->get_num_geometries(); i++)
+                    for (size_t i = 0; i < numGeoms; i++)
                     {
                         Core::Geometry* g = m->get_geometry(i);
                         upload_geometry_data(device, g, true);
@@ -266,18 +271,19 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
 
                 // Ray-hittable meshes can momentarily fall out of frustum during
                 // fast camera motion (small bounding sphere + parented transform
-                // chain), but their uniform slot is indexed by mesh_idx and read
-                // unconditionally by the shader. If we skip the upload, the slot
-                // keeps last frame's data — for a hair mesh this manifests as a
-                // pink/magenta flash because the BSDF reads stale or wrong
-                // material params. Force uniform upload for ray-hittable meshes
-                // regardless of frustum, mirroring the BLAS rule above.
+                // chain), but their uniform slot is read unconditionally by the
+                // shader. If we skip the upload, the slot keeps last frame's
+                // data — for a hair mesh this manifests as a pink/magenta flash
+                // because the BSDF reads stale or wrong material params. Force
+                // uniform upload for ray-hittable meshes regardless of frustum,
+                // mirroring the BLAS rule above.
                 const bool forceUniformUpload = basicChecks && m->ray_hittable();
                 if (inFrustum || forceUniformUpload)
                 {
-                    // Offset calculation
-                    uint32_t objectOffset = currentFrame->uniformBuffers[OBJECT_LAYOUT].strideSize * mesh_idx;
-
+                    // ObjectUniforms are per-mesh (model matrix, world AABB);
+                    // computed once and replicated into every draw slot owned
+                    // by this mesh, so each draw can share the per-mesh data
+                    // while still owning a private MaterialUniforms slot.
                     Graphics::ObjectUniforms objectData;
                     objectData.model        = m->get_model_matrix();
                     objectData.otherParams1 = {m->affected_by_fog(), m->receive_shadows(), m->cast_shadows(), false};
@@ -309,10 +315,14 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                     // and g_modelPos is world-space.
                     Vec3 wcenter = (wmin + wmax) * 0.5f;
                     objectData.otherParams2 = {m->is_selected(), wcenter};
-                    currentFrame->uniformBuffers[OBJECT_LAYOUT].upload_data(&objectData, sizeof(Graphics::ObjectUniforms), objectOffset);
 
-                    for (size_t i = 0; i < m->get_num_geometries(); i++)
+                    for (size_t i = 0; i < numGeoms; i++)
                     {
+                        // Per-draw offset — each geometry owns its own uniform slot.
+                        uint32_t objectOffset = currentFrame->uniformBuffers[OBJECT_LAYOUT].strideSize * (draw_idx + i);
+
+                        currentFrame->uniformBuffers[OBJECT_LAYOUT].upload_data(&objectData, sizeof(Graphics::ObjectUniforms), objectOffset);
+
                         // Object vertex buffer setup
                         Core::Geometry* g = m->get_geometry(i);
                         upload_geometry_data(device, g, enableRT && m->ray_hittable());
@@ -331,9 +341,8 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                             }
                         }
 
-                        // ObjectUniforms materialData;
                         Graphics::MaterialUniforms materialData = mat->get_uniforms();
-                        // Material data sits right AFTER the object data inside this mesh's
+                        // Material data sits right AFTER the object data inside this draw's
                         // stride slot. Offset must be pad(ObjectUniforms), not pad(MaterialUniforms).
                         currentFrame->uniformBuffers[OBJECT_LAYOUT].upload_data(
                             &materialData,
@@ -342,7 +351,7 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                     }
                 }
             }
-            mesh_idx++;
+            draw_idx += numGeoms;
         }
         // CREATE TOP LEVEL (STATIC) ACCELERATION STRUCTURE
         if (enableRT)
@@ -412,14 +421,14 @@ void ResourceManager::upload_geometry_data(Graphics::Device* const device, Core:
             positions.push_back(Vec4(v.pos, 1.0));
         size_t positionsSize = sizeof(Vec4) * positions.size();
 
-        const bool animatable = gd.morphTargetData.has_value();
+        const bool animatable = gd.morphTargetData.has_value() || gd.skinData.has_value();
         device->upload_vertex_arrays(
             *rd, vboSize, gd.vertexData.data(), iboSize, gd.vertexIndex.data(), positionsSize, positions.data(), voxelSize, gd.voxelData.data(), animatable);
     }
     /*
-    ACCELERATION STRUCTURE — skip for morph-animated meshes (VBO is CPU_TO_GPU, not BLAS-compatible).
+    ACCELERATION STRUCTURE — skip for deformable meshes (VBO is CPU_TO_GPU, not BLAS-compatible).
     */
-    if (createAccelStructure && !g->get_properties().morphTargetData.has_value())
+    if (createAccelStructure && !g->get_properties().morphTargetData.has_value() && !g->get_properties().skinData.has_value())
     {
         Graphics::BLAS* accel = get_BLAS(g);
         if (!accel->handle)

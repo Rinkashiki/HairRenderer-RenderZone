@@ -296,9 +296,13 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
     if (scene->get_active_camera() && scene->get_active_camera()->is_active())
     {
 
-        unsigned int mesh_idx = 0;
+        // draw_idx counts (mesh,geometry) pairs — see ResourceManager::update_object_data
+        // for the canonical advancement rule. Hair meshes have a single geometry
+        // each so the offset used here is just draw_idx (no inner `+ i`).
+        unsigned int draw_idx = 0;
         for (Mesh* m : scene->get_meshes())
         {
+            const size_t numGeoms = m ? m->get_num_geometries() : 0;
             if (m)
             {
                 if (m->is_active() &&  // Check if is active
@@ -308,7 +312,7 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                     if (mat->get_type() == Core::IMaterial::Type::HAIR_STR_TYPE || mat->get_type() == Core::IMaterial::Type::HAIR_STR_EPIC_TYPE)
                     {
 
-                        uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * mesh_idx;
+                        uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * draw_idx;
 #if DDA_VOXELIZATION == 1 || OPTICAL_DENSITY == 1
 
                         ShaderPass* shPass = m_shaderPasses[0];
@@ -321,7 +325,7 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                             
                             uint32_t numSegments   = m->get_geometry()->get_properties().vertexIndex.size() * 0.5;
                             float fiberThickness = static_cast<HairEpicMaterial*>(mat)->get_thickness();
-                            Vec4     data          = Vec4(float(mesh_idx), float(numSegments), fiberThickness, 0.0);
+                            Vec4     data          = Vec4(float(draw_idx), float(numSegments), fiberThickness, 0.0);
                             cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(Vec4));
                             
                             // Dispatch
@@ -465,7 +469,7 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                     }
                 }
             }
-            mesh_idx++;
+            draw_idx += numGeoms;
         }
     }
 
@@ -495,25 +499,33 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
 
 void HairVoxelizationPass::update_uniforms(uint32_t frameIndex, Scene* const scene) {
 #if DDA_VOXELIZATION == 1 || OPTICAL_DENSITY == 1
-    uint32_t meshIdx = 0;
+    // Bindless SSBO slots indexed per (mesh,geometry) to match the draw_idx used
+    // by render() and the rest of the engine. The voxelization shader only
+    // reads slots for hair meshes, but we must walk every geometry to keep the
+    // indexing aligned with all other passes.
+    uint32_t draw_idx = 0;
     for (Mesh* m : scene->get_meshes())
     {
+        const size_t numGeoms = m ? m->get_num_geometries() : 0;
         if (m)
         {
-            auto g = m->get_geometry();
-
-            VAO* vao = get_VAO(g);
-            if (vao->loadedOnGPU)
+            for (size_t i = 0; i < numGeoms; i++)
             {
-                // Pos SSBO binding
-                m_descriptorPool.set_descriptor_write(
-                    &vao->posSSBO, vao->posSSBO.size, 0, &m_descriptors[frameIndex].bufferDescritor, UNIFORM_STORAGE_BUFFER, 0, meshIdx);
-                // IBO binding
-                m_descriptorPool.set_descriptor_write(
-                    &vao->indexSSBO, vao->indexSSBO.size, 0, &m_descriptors[frameIndex].bufferDescritor, UNIFORM_STORAGE_BUFFER, 1, meshIdx);
+                Geometry* g = m->get_geometry(i);
+                VAO* vao = get_VAO(g);
+                if (vao->loadedOnGPU)
+                {
+                    uint32_t slot = draw_idx + i;
+                    // Pos SSBO binding
+                    m_descriptorPool.set_descriptor_write(
+                        &vao->posSSBO, vao->posSSBO.size, 0, &m_descriptors[frameIndex].bufferDescritor, UNIFORM_STORAGE_BUFFER, 0, slot);
+                    // IBO binding
+                    m_descriptorPool.set_descriptor_write(
+                        &vao->indexSSBO, vao->indexSSBO.size, 0, &m_descriptors[frameIndex].bufferDescritor, UNIFORM_STORAGE_BUFFER, 1, slot);
+                }
             }
         }
-        meshIdx++;
+        draw_idx += numGeoms;
     }
 #endif
 }

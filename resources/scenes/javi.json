@@ -38,7 +38,7 @@
       "name":           "Javi",
       "type":           "glb",
       "file":           "models/javi/javi.glb",
-      "glb_mesh_index": 0,
+      "glb_mesh_index": -1,
       "position":       [0.0, -12.6, 0.2],
       "scale":          10.0,
       "rotation":       [0.0, 180.0, 0.0],
@@ -64,7 +64,34 @@
         "roughness":         1.0,
         "roughness_weight":  0.75,
         "occlusion_weight":  1.0
-      }
+      },
+      "extra_materials": [
+        {
+          "type":      "pbr",
+          "albedo":    [1.0, 0.98, 0.92],
+          "roughness": 0.3,
+          "metalness": 0.0
+        },
+        {
+          "type":      "pbr",
+          "albedo":    [0.8, 0.3, 0.35],
+          "roughness": 0.35,
+          "metalness": 0.0
+        },
+        {
+          "type":      "pbr",
+          "albedo":    [0.85, 0.7, 0.55],
+          "roughness": 0.4,
+          "metalness": 0.0
+        },
+        {
+          "type":      "pbr",
+          "albedo":    [0.12, 0.12, 0.12],
+          "roughness": 0.6,
+          "metalness": 0.0
+        }
+      ],
+      "primitive_materials": [0, 3, 4, 1, 1, 2]
     },
     {
       "name":      "Hair",

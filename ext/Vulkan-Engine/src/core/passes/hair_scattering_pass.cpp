@@ -304,9 +304,13 @@ void HairScatteringPass::render(Graphics::Frame& currentFrame, Scene* const scen
         //                      STAGE_COMPUTE_SHADER);
     }
 
-    unsigned int mesh_idx = 0;
+    // draw_idx counts (mesh,geometry) pairs — see ResourceManager::update_object_data
+    // for the canonical advancement rule. Hair meshes are single-geometry so the
+    // offset is just draw_idx.
+    unsigned int draw_idx = 0;
     for (Mesh* m : scene->get_meshes())
     {
+        const size_t numGeoms = m ? m->get_num_geometries() : 0;
         if (m)
         {
             if (m->is_active() &&  // Check if is active
@@ -318,7 +322,7 @@ void HairScatteringPass::render(Graphics::Frame& currentFrame, Scene* const scen
                 {
 
                     // Offset calculation
-                    uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * mesh_idx;
+                    uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * draw_idx;
 
                     ShaderPass* shaderPass = m_shaderPasses[3];
 
@@ -417,7 +421,7 @@ void HairScatteringPass::render(Graphics::Frame& currentFrame, Scene* const scen
                 }
             }
         }
-        mesh_idx++;
+        draw_idx += numGeoms;
     }
 
     /*

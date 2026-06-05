@@ -218,22 +218,25 @@ void GeometryPass::render(Graphics::Frame& currentFrame, Scene* const scene, uin
 
         ShaderPass* shaderPass = m_shaderPasses[hash_string("geometry")];
 
-        unsigned int mesh_idx = 0;
+        // draw_idx counts (mesh,geometry) pairs — see ResourceManager::update_object_data
+        // for the canonical advancement rule (per-geometry on live meshes, 0 on null).
+        unsigned int draw_idx = 0;
         for (Mesh* m : scene->get_meshes())
         {
+            const size_t numGeoms = m ? m->get_num_geometries() : 0;
             if (m)
             {
-                if (m->is_active() &&              // Check if is active
-                    m->get_num_geometries() > 0 && // Check if has geometry
+                if (m->is_active() &&  // Check if is active
+                    numGeoms > 0 &&    // Check if has geometry
                     (scene->get_active_camera()->get_frustrum_culling() && m->get_bounding_volume()
                          ? m->get_bounding_volume()->is_on_frustrum(scene->get_active_camera()->get_frustrum())
                          : true)) // Check if is inside frustrum
                 {
-                    // Offset calculation
-                    uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * mesh_idx;
-
-                    for (size_t i = 0; i < m->get_num_geometries(); i++)
+                    for (size_t i = 0; i < numGeoms; i++)
                     {
+                        // Per-draw offset so each geometry's MaterialUniforms slot is private.
+                        uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * (draw_idx + i);
+
                         Geometry*  g   = m->get_geometry(i);
                         IMaterial* mat = m->get_material(g->get_material_ID());
 
@@ -261,7 +264,7 @@ void GeometryPass::render(Graphics::Frame& currentFrame, Scene* const scene, uin
                     }
                 }
             }
-            mesh_idx++;
+            draw_idx += numGeoms;
         }
         // Skybox
         if (scene->get_skybox())
