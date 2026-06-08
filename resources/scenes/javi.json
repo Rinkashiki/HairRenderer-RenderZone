@@ -59,7 +59,7 @@
         "dual_lobe_mix":            0.20,
         "dual_lobe_roughness_soft": 0.60,
         "sheen_color":              [1.0, 0.85, 0.78],
-        "sheen_intensity":          0.35,
+        "sheen_intensity":          0.12,
         "albedo":            [1.0, 1.0, 1.0],
         "albedo_weight":     1.0,
         "metalness":         0.0,

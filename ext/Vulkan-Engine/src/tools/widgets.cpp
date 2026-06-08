@@ -1,4 +1,5 @@
 #include <engine/tools/widgets.h>
+#include <unordered_set>
 
 VULKAN_ENGINE_NAMESPACE_BEGIN
 using namespace Core;
@@ -401,14 +402,22 @@ void ObjectExplorerWidget::render() {
         ImGui::BeginTable("Mesh Details", 1, ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoBordersInBody);
         ImGui::TableSetupColumn("Material", ImGuiTableColumnFlags_NoHide);
 
+        // Submesh slots often point to the same IMaterial instance, which produced
+        // duplicated property blocks in the GUI. Skip slots whose material was
+        // already drawn this frame.
+        std::unordered_set<IMaterial*> seenMaterials;
         for (size_t i = 0; i < model->get_num_materials(); i++)
         {
+            IMaterial* slotMat = model->get_material(i);
+            if (!slotMat || !seenMaterials.insert(slotMat).second)
+                continue;
+
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            // std::string str =
-            //     "ID " + std::to_string(i) + " - " + model->get_material(i)->get_shaderpass_ID() + " material";
-            // ImGui::Text(str.c_str());
-            ImGui::Separator();
+            // Without a PushID per slot, identical widget labels across materials
+            // collide in ImGui's ID stack and edits leak between all instances.
+            ImGui::PushID((int)i);
+            ImGui::SeparatorText(("Material slot " + std::to_string(i)).c_str());
 
             bool test = model->get_material(i)->get_parameters().depthTest;
             if (ImGui::Checkbox("Depth Test", &test))
@@ -638,6 +647,18 @@ void ObjectExplorerWidget::render() {
                 if (ImGui::DragFloat("Tile V", &tile_v, 0.5f, -100.0f, 100.0f))
                 {
                     mat->set_tile({mat->get_tile().x, tile_v});
+                }
+
+                ImGui::Separator();
+                Vec3 sheenColor = mat->get_sheen_color();
+                if (ImGui::ColorEdit3("Sheen Color", (float*)&sheenColor))
+                {
+                    mat->set_sheen_color(sheenColor);
+                }
+                float sheenIntensity = mat->get_sheen_intensity();
+                if (ImGui::DragFloat("Sheen Intensity", &sheenIntensity, 0.01f, 0.0f, 1.0f))
+                {
+                    mat->set_sheen_intensity(sheenIntensity);
                 }
 
                 ImGui::Separator();
@@ -1060,6 +1081,7 @@ void ObjectExplorerWidget::render() {
                 // TO DO...
             }
             ImGui::Separator();
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }
