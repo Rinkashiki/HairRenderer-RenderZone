@@ -403,44 +403,74 @@ float bilinear(float v[4], vec2 f) {
 vec3 bilinear(vec3 v[4], vec2 f) {
     return mix(mix(v[0], v[1], f.x), mix(v[2], v[3], f.x), f.y);
 }
-vec3 hairShadow(out vec3 spread, out float directF, vec3 pShad, sampler2DArray shadowMap, int lightId, float density) {
-    ivec2 size = textureSize(shadowMap, 0).xy;
-    vec2  t    = pShad.xy * vec2(size) + 0.5;
-    vec2  f    = t - floor(t);
-    vec2  s    = 0.5 / vec2(size);
-
-    vec2 tcp[4];
-    tcp[0] = pShad.xy + vec2(-s.x, -s.y);
-    tcp[1] = pShad.xy + vec2(s.x, -s.y);
-    tcp[2] = pShad.xy + vec2(-s.x, s.y);
-    tcp[3] = pShad.xy + vec2(s.x, s.y);
-
+// Compute hair-fiber transmittance along the ray from `worldPos` toward the
+// light by cone-tracing the shared hairVoxelsDensity volume. Replaces a prior
+// scheme that treated the VSM depth gap (receiver_depth − closest_caster_depth)
+// as a packed-fiber column — that was fine for a single hair asset but, with
+// two hair assets, interpreted the air gap between them as a wall of fibers
+// and projected a sharp silhouette of the second asset onto the first.
+//
+// The voxel volume is now coherent across multiple hair meshes: ResourceManager
+// substitutes the union world AABB on every strand-hair ObjectUniforms upload,
+// and HairVoxelizationPass dispatches the voxelization compute for every active
+// strand mesh into the same volume via imageAtomicAdd.
+vec3 hairShadow(out vec3 spread, out float directF, vec3 worldPos, vec3 lightWorldPos, float densityScale) {
     const float coverage = 0.05;
     const vec3  a_f      = vec3(0.507475266, 0.465571405, 0.394347166);
     const vec3  w_f      = vec3(0.028135575, 0.027669785, 0.027669785);
-    float       dir[4];
-    vec3        spr[4], t_d[4];
-    for (int i = 0; i < 4; ++i)
-    {
-        float z = texture(shadowMap, vec3(tcp[i], lightId)).r;
-        float h = max(0.0, pShad.z - z);
-        float n = h * density * 10000.0;
-        dir[i]  = pow(1.0 - coverage, n);
-        t_d[i]  = pow(1.0 - coverage * (1.0 - a_f), vec3(n, n, n));
-        spr[i]  = n * coverage * w_f;
+
+    vec3  boundsMin = object.minCoord.xyz;
+    vec3  boundsMax = object.maxCoord.xyz;
+    vec3  boxSize   = boundsMax - boundsMin;
+    float maxBoxDim = max(boxSize.x, max(boxSize.y, boxSize.z));
+
+    ivec3 texDim            = textureSize(hairVoxelsDensity, 0);
+    float maxTexDim         = float(max(texDim.x, max(texDim.y, texDim.z)));
+    float voxelSizeTexSpace = 1.0 / maxTexDim;
+
+    vec3  lightDir     = normalize(lightWorldPos - worldPos);
+    vec3  startTexPos  = (worldPos - boundsMin) / boxSize;
+    float coneAngle    = 0.035;
+    float minStepWorld = length(boxSize) * voxelSizeTexSpace * 0.5;
+    float maxStepWorld = maxBoxDim * 0.1;
+
+    // Accumulate fiber count n along the cone. Empirical scale chosen so single-
+    // asset behavior roughly matches the old `h * density * 10000` magnitude:
+    // the OLD formula was h(NDC) * density(0.7) * 10000 ≈ 7000·h, and a typical
+    // h in self-shadow was ~0.001 giving n ≈ 7. Here per-step contribution is
+    // density_voxel · stepSize · densityScale · FIBER_SCALE; FIBER_SCALE is the
+    // single knob that absorbs voxel-unit conventions.
+    const float FIBER_SCALE = 10.0;
+
+    float n    = 0.0;
+    float t    = minStepWorld * 2.0; // step off the receiver so we don't self-shadow at t=0
+    float tMax = 1.75;
+    const int MAX_STEPS = 64;
+    for (int i = 0; i < MAX_STEPS && t < tMax; i++) {
+        vec3 samplePos = startTexPos + ((lightDir * t) / boxSize);
+        if (any(lessThan(samplePos, vec3(0.0))) || any(greaterThan(samplePos, vec3(1.0))))
+            break;
+
+        float coneRadiusWorld = t * tan(coneAngle);
+        float coneRadiusTex   = coneRadiusWorld / maxBoxDim;
+        float mipLevel        = clamp(log2(max(coneRadiusTex, 1e-6) / voxelSizeTexSpace), 0.0, 3.0);
+        float density         = textureLod(hairVoxelsDensity, samplePos, mipLevel).r;
+        float stepSize        = clamp(coneRadiusWorld * 2.0, minStepWorld, maxStepWorld);
+
+        n += density * stepSize * densityScale * FIBER_SCALE;
+        t += stepSize;
     }
 
-    directF = bilinear(dir, f);
-    spread  = bilinear(spr, f);
-    return bilinear(t_d, f);
+    directF = pow(1.0 - coverage, n);
+    spread  = n * coverage * w_f;
+    return pow(1.0 - coverage * (1.0 - a_f), vec3(n, n, n));
 }
 
 vec3 computeHairShadow(LightUniform light, int lightId, sampler2DArray shadowMap, float density, vec3 pos, out vec3 spread, out float directF) {
-    vec4 posLightSpace = light.viewProj * vec4(pos, 1.0);
-    vec3 projCoords    = posLightSpace.xyz / posLightSpace.w;
-    projCoords.xy      = projCoords.xy * 0.5 + 0.5;
-
-    vec3 transDirect = hairShadow(spread, directF, projCoords, shadowMap, lightId, density);
+    // Light positions in the scene buffer are stored in view space; transform
+    // to world so the cone trace lines up with worldPos = g_modelPos.
+    vec3 lightWorldPos = (camera.invView * vec4(light.position, 1.0)).xyz;
+    vec3 transDirect   = hairShadow(spread, directF, pos, lightWorldPos, density);
     directF *= 0.5;
     return transDirect * 0.5;
 }

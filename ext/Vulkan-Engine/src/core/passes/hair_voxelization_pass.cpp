@@ -296,10 +296,19 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
     if (scene->get_active_camera() && scene->get_active_camera()->is_active())
     {
 
+        // FIRST PASS — voxelize every active strand-hair mesh into the shared
+        // volume via imageAtomicAdd. resource_manager.cpp swaps object.minCoord/
+        // maxCoord on hair meshes for the union AABB, so every dispatch writes
+        // into the same world cube and accumulated densities are coherent.
         // draw_idx counts (mesh,geometry) pairs — see ResourceManager::update_object_data
         // for the canonical advancement rule. Hair meshes have a single geometry
         // each so the offset used here is just draw_idx (no inner `+ i`).
-        unsigned int draw_idx = 0;
+        unsigned int     draw_idx        = 0;
+        bool             anyHair         = false;
+        IMaterial*       firstHairMat    = nullptr;
+        uint32_t         firstHairOffset = 0;
+        Vec3             unionMin( INFINITY,  INFINITY,  INFINITY);
+        Vec3             unionMax(-INFINITY, -INFINITY, -INFINITY);
         for (Mesh* m : scene->get_meshes())
         {
             const size_t numGeoms = m ? m->get_num_geometries() : 0;
@@ -321,155 +330,148 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                         cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0}, BINDING_TYPE_COMPUTE);
                         cmd.bind_descriptor_set(
                             m_descriptors[currentFrame.index].objectDescritor, 1, *shPass, {objectOffset, objectOffset}, BINDING_TYPE_COMPUTE);
-                            cmd.bind_descriptor_set(m_descriptors[currentFrame.index].bufferDescritor, 2, *shPass, {}, BINDING_TYPE_COMPUTE);
-                            
-                            uint32_t numSegments   = m->get_geometry()->get_properties().vertexIndex.size() * 0.5;
-                            float fiberThickness = static_cast<HairEpicMaterial*>(mat)->get_thickness();
-                            Vec4     data          = Vec4(float(draw_idx), float(numSegments), fiberThickness, 0.0);
-                            cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(Vec4));
-                            
-                            // Dispatch
+                        cmd.bind_descriptor_set(m_descriptors[currentFrame.index].bufferDescritor, 2, *shPass, {}, BINDING_TYPE_COMPUTE);
+
+                        uint32_t numSegments   = m->get_geometry()->get_properties().vertexIndex.size() * 0.5;
+                        float    fiberThickness = static_cast<HairEpicMaterial*>(mat)->get_thickness();
+                        Vec4     data           = Vec4(float(draw_idx), float(numSegments), fiberThickness, 0.0);
+                        cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(Vec4));
+
                         uint32_t wg = (numSegments + 31) / 32; // 32 threads
                         cmd.dispatch_compute({wg, 1, 1});
-                        
-                        // Draw triangles of skull and add them to the voxelization
-                        auto skull = static_cast<HairEpicMaterial*>(mat)->get_skull();
-                        if (skull)
-                        {
-                            cmd.begin_renderpass(m_renderpass, m_framebuffers[0]);
-                            
-                            cmd.set_viewport(m_imageExtent);
-                            
-                            shPass = m_shaderPasses[4];
-                            // Bind pipeline
-                            cmd.bind_shaderpass(*shPass);
-                            cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0});
-
-                            // DRAW
-                            VolumeData vol;
-                            vol.model = skull->get_model_matrix();
-                            // Conservative world-space AABB from all 8 corners
-                            // (transforming only min/max is wrong under rotation).
-                            // Must match the bounds in ResourceManager::update_object_data
-                            // so the voxel grid is read back consistently.
-                            {
-                                const Mat4 mm     = m->get_model_matrix();
-                                const Vec3& lmin = m->get_bounding_volume()->minCoords;
-                                const Vec3& lmax = m->get_bounding_volume()->maxCoords;
-                                Vec3 wmin( INFINITY,  INFINITY,  INFINITY);
-                                Vec3 wmax(-INFINITY, -INFINITY, -INFINITY);
-                                for (int ci = 0; ci < 8; ++ci) {
-                                    Vec4 corner(
-                                        (ci & 1) ? lmax.x : lmin.x,
-                                        (ci & 2) ? lmax.y : lmin.y,
-                                        (ci & 4) ? lmax.z : lmin.z,
-                                        1.0f);
-                                    Vec3 wc = Vec3(mm * corner);
-                                    wmin = glm::min(wmin, wc);
-                                    wmax = glm::max(wmax, wc);
-                                }
-                                vol.maxCoord = Vec4(wmax, 1.0f);
-                                vol.minCoord = Vec4(wmin, 1.0f);
-                            }
-                            vol.density = FLT_MAX;  
-                            vol.density = 10000.0;  
-                            cmd.push_constants(*shPass, SHADER_STAGE_FRAGMENT, &vol, sizeof(VolumeData));
-
-                            cmd.draw_geometry(*get_VAO(skull->get_geometry()));
-
-                            cmd.end_renderpass(m_renderpass, m_framebuffers[0]);
-                        }
-
 #else
-                        /*
-                        POPULATE AUXILIAR IMAGES WITH DENSITY
-                        */
                         cmd.begin_renderpass(m_renderpass, m_framebuffers[0]);
-
                         cmd.set_viewport(m_imageExtent);
 
                         ShaderPass* shPass = m_shaderPasses[0];
-                        // Bind pipeline
                         cmd.bind_shaderpass(*shPass);
-                        // GLOBAL LAYOUT BINDING
                         cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0});
-
-                        // PER OBJECT LAYOUT BINDING
                         cmd.bind_descriptor_set(m_descriptors[currentFrame.index].objectDescritor, 1, *shPass, {objectOffset, objectOffset});
 
-                        // DRAW
                         auto g = m->get_geometry();
                         cmd.draw_geometry(*get_VAO(g));
 
                         cmd.end_renderpass(m_renderpass, m_framebuffers[0]);
 #endif
 
-                        /*
-                        COMPUTE MIPMAPS
-                        */
-                        shPass = m_shaderPasses[3];
-                        cmd.bind_shaderpass(*shPass);
-                        for (uint32_t i = 1; i < MIP_LEVELS; i++)
-                        {
-
-                            cmd.pipeline_barrier(m_voxelMips[i],
-                                                 LAYOUT_GENERAL,
-                                                 LAYOUT_GENERAL,
-                                                 ACCESS_SHADER_READ,
-                                                 ACCESS_SHADER_WRITE,
-                                                 STAGE_COMPUTE_SHADER,
-                                                 STAGE_COMPUTE_SHADER);
-
-                            Vec4 data = Vec4(i, 0.0, 0.0, 0.0);
-                            cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(data));
-                            cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0}, BINDING_TYPE_COMPUTE);
-
-                            // Dispatch the compute shader
-                            const uint32_t WORK_GROUP_SIZE = 8;
-                            uint32_t       mipSize         = std::max(1u, m_imageExtent.width >> i);
-                            cmd.dispatch_compute({(mipSize + WORK_GROUP_SIZE - 1) / WORK_GROUP_SIZE,
-                                                  (mipSize + WORK_GROUP_SIZE - 1) / WORK_GROUP_SIZE,
-                                                  (mipSize + WORK_GROUP_SIZE - 1) / WORK_GROUP_SIZE});
-
-                            cmd.pipeline_barrier(m_voxelMips[i],
-                                                 LAYOUT_GENERAL,
-                                                 LAYOUT_GENERAL,
-                                                 ACCESS_SHADER_WRITE,
-                                                 ACCESS_SHADER_READ,
-                                                 STAGE_COMPUTE_SHADER,
-                                                 STAGE_COMPUTE_SHADER);
+                        // Accumulate union AABB so the skull renderpass below pushes
+                        // bounds that match resource_manager's hair-mesh override.
+                        const Mat4  mm   = m->get_model_matrix();
+                        const Vec3& lmin = m->get_bounding_volume()->minCoords;
+                        const Vec3& lmax = m->get_bounding_volume()->maxCoords;
+                        for (int ci = 0; ci < 8; ++ci) {
+                            Vec4 corner(
+                                (ci & 1) ? lmax.x : lmin.x,
+                                (ci & 2) ? lmax.y : lmin.y,
+                                (ci & 4) ? lmax.z : lmin.z,
+                                1.0f);
+                            Vec3 wc = Vec3(mm * corner);
+                            unionMin = glm::min(unionMin, wc);
+                            unionMax = glm::max(unionMax, wc);
                         }
-
-                        /*
-                        DISPATCH COMPUTE FOR POPULATING FINAL PERCEIVED DENSITY IMAGE
-                        */
-
-                        cmd.pipeline_barrier(ResourceManager::HAIR_VOXEL_VOLUME,
-                                             LAYOUT_GENERAL,
-                                             LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                             ACCESS_SHADER_WRITE,
-                                             ACCESS_SHADER_READ,
-                                             STAGE_FRAGMENT_SHADER,
-                                             STAGE_COMPUTE_SHADER);
-
-                        shPass = m_shaderPasses[1];
-                        cmd.bind_shaderpass(*shPass);
-
-                        cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0}, BINDING_TYPE_COMPUTE);
-                        cmd.bind_descriptor_set(
-                            m_descriptors[currentFrame.index].objectDescritor, 1, *shPass, {objectOffset, objectOffset}, BINDING_TYPE_COMPUTE);
-
-                        // Dispatch the compute shader
-                        const uint32_t WORK_GROUP_SIZE_2 = 8;
-                        uint32_t       gridSize2         = std::max(1u, m_imageExtent.width >> 2);
-                        gridSize2                        = (gridSize2 + WORK_GROUP_SIZE_2 - 1) / WORK_GROUP_SIZE_2;
-                        cmd.dispatch_compute({gridSize2, gridSize2, gridSize2});
-
-                        break;
+                        if (!anyHair) {
+                            firstHairMat    = mat;
+                            firstHairOffset = objectOffset;
+                            anyHair         = true;
+                        }
                     }
                 }
             }
             draw_idx += numGeoms;
+        }
+
+        // SECOND PASS — run skull voxelization, mipmap chain, and SH encode
+        // ONCE on the merged volume. (Previously these ran per-hair-mesh inside
+        // the loop with a `break;` at the end, which restricted the scene to a
+        // single hair mesh.) Skull bounds and SH encode must use the union AABB,
+        // which matches resource_manager.cpp's override on hair-mesh uniforms.
+        if (anyHair)
+        {
+            // 5% padding (mirror resource_manager.cpp)
+            const Vec3 pad      = (unionMax - unionMin) * 0.05f;
+            const Vec3 paddedMn = unionMin - pad;
+            const Vec3 paddedMx = unionMax + pad;
+
+            // Draw triangles of skull and add them to the voxelization
+            auto skull = static_cast<HairEpicMaterial*>(firstHairMat)->get_skull();
+            if (skull)
+            {
+                cmd.begin_renderpass(m_renderpass, m_framebuffers[0]);
+                cmd.set_viewport(m_imageExtent);
+
+                ShaderPass* shPass = m_shaderPasses[4];
+                cmd.bind_shaderpass(*shPass);
+                cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0});
+
+                VolumeData vol;
+                vol.model    = skull->get_model_matrix();
+                vol.maxCoord = Vec4(paddedMx, 1.0f);
+                vol.minCoord = Vec4(paddedMn, 1.0f);
+                vol.density  = 10000.0;
+                cmd.push_constants(*shPass, SHADER_STAGE_FRAGMENT, &vol, sizeof(VolumeData));
+
+                cmd.draw_geometry(*get_VAO(skull->get_geometry()));
+                cmd.end_renderpass(m_renderpass, m_framebuffers[0]);
+            }
+
+            /*
+            COMPUTE MIPMAPS
+            */
+            ShaderPass* shPass = m_shaderPasses[3];
+            cmd.bind_shaderpass(*shPass);
+            for (uint32_t i = 1; i < MIP_LEVELS; i++)
+            {
+
+                cmd.pipeline_barrier(m_voxelMips[i],
+                                     LAYOUT_GENERAL,
+                                     LAYOUT_GENERAL,
+                                     ACCESS_SHADER_READ,
+                                     ACCESS_SHADER_WRITE,
+                                     STAGE_COMPUTE_SHADER,
+                                     STAGE_COMPUTE_SHADER);
+
+                Vec4 data = Vec4(i, 0.0, 0.0, 0.0);
+                cmd.push_constants(*shPass, SHADER_STAGE_COMPUTE, &data, sizeof(data));
+                cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0}, BINDING_TYPE_COMPUTE);
+
+                const uint32_t WORK_GROUP_SIZE = 8;
+                uint32_t       mipSize         = std::max(1u, m_imageExtent.width >> i);
+                cmd.dispatch_compute({(mipSize + WORK_GROUP_SIZE - 1) / WORK_GROUP_SIZE,
+                                      (mipSize + WORK_GROUP_SIZE - 1) / WORK_GROUP_SIZE,
+                                      (mipSize + WORK_GROUP_SIZE - 1) / WORK_GROUP_SIZE});
+
+                cmd.pipeline_barrier(m_voxelMips[i],
+                                     LAYOUT_GENERAL,
+                                     LAYOUT_GENERAL,
+                                     ACCESS_SHADER_WRITE,
+                                     ACCESS_SHADER_READ,
+                                     STAGE_COMPUTE_SHADER,
+                                     STAGE_COMPUTE_SHADER);
+            }
+
+            /*
+            DISPATCH COMPUTE FOR POPULATING FINAL PERCEIVED DENSITY IMAGE
+            */
+
+            cmd.pipeline_barrier(ResourceManager::HAIR_VOXEL_VOLUME,
+                                 LAYOUT_GENERAL,
+                                 LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                 ACCESS_SHADER_WRITE,
+                                 ACCESS_SHADER_READ,
+                                 STAGE_FRAGMENT_SHADER,
+                                 STAGE_COMPUTE_SHADER);
+
+            shPass = m_shaderPasses[1];
+            cmd.bind_shaderpass(*shPass);
+
+            cmd.bind_descriptor_set(m_descriptors[currentFrame.index].globalDescritor, 0, *shPass, {0, 0}, BINDING_TYPE_COMPUTE);
+            cmd.bind_descriptor_set(
+                m_descriptors[currentFrame.index].objectDescritor, 1, *shPass, {firstHairOffset, firstHairOffset}, BINDING_TYPE_COMPUTE);
+
+            const uint32_t WORK_GROUP_SIZE_2 = 8;
+            uint32_t       gridSize2         = std::max(1u, m_imageExtent.width >> 2);
+            gridSize2                        = (gridSize2 + WORK_GROUP_SIZE_2 - 1) / WORK_GROUP_SIZE_2;
+            cmd.dispatch_compute({gridSize2, gridSize2, gridSize2});
         }
     }
 

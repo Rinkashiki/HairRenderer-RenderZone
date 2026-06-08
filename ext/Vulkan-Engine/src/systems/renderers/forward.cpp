@@ -6,11 +6,16 @@ namespace Systems {
 void ForwardRenderer::on_before_render(Core::Scene* const scene) {
     BaseRenderer::on_before_render(scene);
 
-    // Flush deferred scatter LUT load (queued before renderer was initialized)
+    // Flush deferred scatter LUT load (queued before renderer was initialized).
+    // Route through the unified loader so BOTH consumers are wired: the SSS pass
+    // (binding 8) and the forward pass (binding 14, used by physically_based.glsl
+    // for d'Eon hybrid detail-normals and the peach-fuzz sheen tint). The old
+    // flush only updated the SSS pass, leaving forward binding 14 on the garbage
+    // FALLBACK_TEXTURE — which made the LUT-derived sheen sample junk.
     if (!m_pendingScatterLut.empty()) {
-        if (m_passes[SSS_PASS])
-            static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->load_scatter_lut(m_pendingScatterLut);
-        m_pendingScatterLut.clear();
+        const std::string path = m_pendingScatterLut;
+        m_pendingScatterLut.clear(); // clear first; passes now exist so no re-defer
+        load_sss_scatter_lut(path);
     }
 
     if (scene->get_skybox())

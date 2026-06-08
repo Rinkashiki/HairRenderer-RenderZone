@@ -338,6 +338,19 @@ void main() {
     bool  hasClothesMaskTexture = (flags & 4) != 0;
     float skinMask = hasClothesMaskTexture ? (1.0 - texture(clothesMaskTex, v_uv).r) : 1.0;
 
+    // Peach-fuzz sheen tint, derived from the SSS scatter-distance LUT instead of
+    // an authored color: average the entire thin→thick ramp so the rim inherits
+    // skin's overall subsurface character. Texels are linearized from sRGB and
+    // averaged in linear space (averaging sRGB would bias the hue). Computed once
+    // per fragment and only when the sheen is actually enabled.
+    vec3 sheenTint = vec3(0.0);
+    if (material.sheenIntensity > 0.0 && skinMask > 0.0) {
+        for (int s = 0; s < 5; ++s)
+            sheenTint += pow(texture(scatterDistLUT, vec2((float(s) + 0.5) / 5.0, 0.5)).rgb,
+                             vec3(2.2));
+        sheenTint *= 0.2; // average of the 5 LUT texels
+    }
+
     //Compute all lights ___________________________________________________________________
     vec3 color = vec3(0.0);
     vec3 diffuseIrr = vec3(0.0);
@@ -410,7 +423,8 @@ void main() {
 
             // Jimenez-style peach-fuzz sheen (Activision Digital Human, GDC 2013).
             // Additive view-grazing rim lobe:
-            //   sheen = sheenColor * intensity * (1-NoV)^3 * NoL_smooth
+            //   sheen = sheenTint * intensity * (1-NoV)^3 * NoL_smooth
+            // sheenTint is the averaged SSS scatter-distance LUT color (above).
             // View-grazing (NoV) is what produces the silhouette glaze regardless
             // of light direction — half-angle Fresnel (Disney sheen) collapses to
             // zero whenever light and view are roughly aligned, which is the usual
@@ -426,7 +440,7 @@ void main() {
                 float fuzzMask = material.hasCurvatureTexture
                     ? mix(0.3, 1.0, texture(curvatureTex, v_uv).r)
                     : 1.0;
-                vec3  sheen = material.sheenColor * material.sheenIntensity
+                vec3  sheen = sheenTint * material.sheenIntensity
                             * FV * NoL_s * fuzzMask * skinMask
                             * radiance * shadowFactor;
                 specPart += sheen;

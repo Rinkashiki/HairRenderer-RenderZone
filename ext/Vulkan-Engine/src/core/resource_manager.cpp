@@ -241,6 +241,54 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
 
         std::vector<Graphics::BLASInstance> BLASInstances; // RT Acceleration Structures per instanced mesh
         BLASInstances.reserve(scene->get_meshes().size());
+
+        // Hair voxel volume is a single shared 3D texture, written via imageAtomicAdd
+        // from every strand mesh and sampled by every hair shader for self-occlusion.
+        // Writers AND readers map world position into the volume using object.minCoord
+        // /maxCoord, so all hair meshes must agree on the same world cube — otherwise
+        // Hair1's contributions land at the wrong voxels when Hair0 reads them back.
+        // Compute the union of world AABBs across all active strand-hair meshes once,
+        // then substitute it for minCoord/maxCoord on hair-mesh uniform uploads below.
+        auto isStrandHairMesh = [](Core::Mesh* mesh) {
+            if (!mesh) return false;
+            for (size_t gi = 0; gi < mesh->get_num_geometries(); ++gi) {
+                Core::Geometry*  g = mesh->get_geometry(gi);
+                Core::IMaterial* mat = mesh->get_material(g ? g->get_material_ID() : 0);
+                if (mat && (mat->get_type() == Core::IMaterial::Type::HAIR_STR_TYPE ||
+                            mat->get_type() == Core::IMaterial::Type::HAIR_STR_EPIC_TYPE))
+                    return true;
+            }
+            return false;
+        };
+        Vec3 hairUnionMin( INFINITY,  INFINITY,  INFINITY);
+        Vec3 hairUnionMax(-INFINITY, -INFINITY, -INFINITY);
+        bool hasHair = false;
+        for (Core::Mesh* m : scene->get_meshes()) {
+            if (!m || !m->is_active() || m->get_num_geometries() == 0) continue;
+            if (!isStrandHairMesh(m)) continue;
+            const Mat4  model = m->get_model_matrix();
+            const Vec3& lmin  = m->get_bounding_volume()->minCoords;
+            const Vec3& lmax  = m->get_bounding_volume()->maxCoords;
+            for (int ci = 0; ci < 8; ++ci) {
+                Vec4 corner(
+                    (ci & 1) ? lmax.x : lmin.x,
+                    (ci & 2) ? lmax.y : lmin.y,
+                    (ci & 4) ? lmax.z : lmin.z,
+                    1.0f);
+                Vec3 wc = Vec3(model * corner);
+                hairUnionMin = glm::min(hairUnionMin, wc);
+                hairUnionMax = glm::max(hairUnionMax, wc);
+            }
+            hasHair = true;
+        }
+        if (hasHair) {
+            // 5% padding so cone traces stepping just past a strand don't bail
+            // immediately at the volume boundary.
+            const Vec3 pad = (hairUnionMax - hairUnionMin) * 0.05f;
+            hairUnionMin -= pad;
+            hairUnionMax += pad;
+        }
+
         // draw_idx counts (mesh,geometry) pairs — one uniform slot per geometry
         // so multi-material meshes don't clobber each other's MaterialUniforms.
         // ALL passes must advance this counter identically (per-geometry on
@@ -315,6 +363,16 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                     // and g_modelPos is world-space.
                     Vec3 wcenter = (wmin + wmax) * 0.5f;
                     objectData.otherParams2 = {m->is_selected(), wcenter};
+
+                    // For strand-hair meshes, swap in the shared union AABB so
+                    // voxel writes from this mesh and voxel reads in this mesh's
+                    // hair shader use the same world cube as every other hair
+                    // mesh in the scene. volumeCenter stays per-mesh — only the
+                    // hair-volume lookup math depends on min/maxCoord.
+                    if (hasHair && isStrandHairMesh(m)) {
+                        objectData.minCoord = Vec4(hairUnionMin, 1.0f);
+                        objectData.maxCoord = Vec4(hairUnionMax, 1.0f);
+                    }
 
                     for (size_t i = 0; i < numGeoms; i++)
                     {

@@ -650,11 +650,8 @@ void ObjectExplorerWidget::render() {
                 }
 
                 ImGui::Separator();
-                Vec3 sheenColor = mat->get_sheen_color();
-                if (ImGui::ColorEdit3("Sheen Color", (float*)&sheenColor))
-                {
-                    mat->set_sheen_color(sheenColor);
-                }
+                // Sheen color is no longer authored — it is derived in-shader from
+                // the averaged SSS scatter-distance LUT. Only intensity is exposed.
                 float sheenIntensity = mat->get_sheen_intensity();
                 if (ImGui::DragFloat("Sheen Intensity", &sheenIntensity, 0.01f, 0.0f, 1.0f))
                 {
