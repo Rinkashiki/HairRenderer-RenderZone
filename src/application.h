@@ -16,6 +16,10 @@ using namespace Core;
 
 class HairViewer
 {
+    // Single source of truth for the loaded scene. Referenced by both
+    // init() (to peek renderer.msaa before constructing the renderer) and
+    // setup() (to actually load the scene).
+    static constexpr const char* SCENE_PATH = RESOURCES_PATH "scenes/nadia.json";
 
     UserInterface m_interface{};
 

@@ -330,7 +330,8 @@ Setting a skybox implicitly enables IBL.
 ```json
 "renderer": {
   "clear_color":     [0.0, 0.0, 0.0, 1.0],
-  "sss_scatter_lut": "textures/scatterDistance.png"
+  "sss_scatter_lut": "textures/scatterDistance.png",
+  "msaa":            8
 }
 ```
 
@@ -338,6 +339,7 @@ Setting a skybox implicitly enables IBL.
 |-------|-------|
 | `clear_color` | Returned in `LoadResult.clearColor`; the application is responsible for applying it during renderer construction (HairViewer sets it in `init()` before `setup()`; SLViewer does the same). |
 | `sss_scatter_lut` | Path applied to `ForwardRenderer::load_sss_scatter_lut` if `renderer` is non-null. Deferred internally if the renderer hasn't initialized yet. |
+| `msaa` | Hardware MSAA sample count baked into the renderpasses. Valid values: `1` (off), `4`, `8`. (Higher counts exist in the engine enum but the forward HDR target is `R32G32B32A32_SFLOAT`, which caps at 8× on most GPUs — values >8 are rejected with a warning.) Read via `scene_loader::peek_msaa()` *before* the renderer is constructed (it can't be changed live since MSAA is baked into renderpass attachment descriptions and pipelines). HairViewer honors it automatically; SLViewer keeps `--msaa` from the CLI authoritative. The GUI shows the active value read-only in the Forward Renderer panel. |
 
 ---
 

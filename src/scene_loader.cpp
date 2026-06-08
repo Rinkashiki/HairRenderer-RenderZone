@@ -791,12 +791,42 @@ LoadResult load_scene_json(const std::string&     scenePath,
             if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(renderer))
                 fwd->load_sss_scatter_lut(resourcesPath + jr["sss_scatter_lut"].get<std::string>());
         }
-        warn_unknown(jr, {"clear_color", "sss_scatter_lut"}, "renderer");
+        // 'msaa' is read separately by peek_msaa() before the renderer exists;
+        // tolerate it here so warn_unknown doesn't flag a legitimate field.
+        warn_unknown(jr, {"clear_color", "sss_scatter_lut", "msaa"}, "renderer");
     }
 
     warn_unknown(root, {"name", "camera", "lights", "materials", "meshes", "scene", "renderer"}, "root");
 
     return result;
+}
+
+std::optional<MSAASamples> peek_msaa(const std::string& scenePath) {
+    std::ifstream file(scenePath);
+    if (!file.is_open())
+        return std::nullopt;
+
+    json root;
+    try { file >> root; }
+    catch (const std::exception&) { return std::nullopt; }
+
+    if (!root.contains("renderer") || !root["renderer"].contains("msaa"))
+        return std::nullopt;
+
+    // ForwardPass uses R32G32B32A32_SFLOAT, which most GPUs cap at 8× MSAA.
+    // 16/32 are in the MSAASamples enum but produce a validation error at
+    // vkCreateImage time, so they're rejected here.
+    int v = root["renderer"]["msaa"].get<int>();
+    switch (v) {
+        case 1:  return MSAASamples::x1;
+        case 4:  return MSAASamples::x4;
+        case 8:  return MSAASamples::x8;
+        default:
+            LOG_WARN("scene_loader: renderer.msaa = " + std::to_string(v) +
+                     " is not one of 1/4/8 — ignoring (HDR target format "
+                     "doesn't support higher sample counts on most GPUs)");
+            return std::nullopt;
+    }
 }
 
 } // namespace scene_loader

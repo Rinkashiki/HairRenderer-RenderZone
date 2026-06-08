@@ -93,6 +93,16 @@ void Tools::ForwardRendererWidget::render() {
             break;
         }
     }
+
+    // MSAA is baked into renderpasses + pipelines at create_passes() and can't
+    // be changed live. Set "renderer.msaa" in the scene JSON (1/4/8/16/32) and
+    // relaunch to change it.
+    int msaaSamples = (int)m_renderer->get_settings().samplesMSAA;
+    if (msaaSamples == 1)
+        ImGui::Text("MSAA: off (x1)");
+    else
+        ImGui::Text("MSAA: x%d", msaaSamples);
+
     ImGui::Separator();
 
     float bloomIntensity = m_renderer->get_bloom_strength();

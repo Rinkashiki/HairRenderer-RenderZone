@@ -4,6 +4,7 @@
 #include <engine/core.h>
 #include <engine/systems.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,13 @@ struct LoadResult {
     Core::Mesh*   primaryAnimated = nullptr; // first mesh that received an animation
     Vec4          clearColor      = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
 };
+
+// MSAA is baked into renderpasses/pipelines at create_passes(), so it has to be
+// known BEFORE the renderer is constructed. This light-weight peek opens the
+// scene JSON and reads only "renderer.msaa" — caller applies it to
+// RendererSettings before instancing the renderer. Returns nullopt when the
+// field is absent (caller should keep its default).
+std::optional<MSAASamples> peek_msaa(const std::string& scenePath);
 
 /*
   Load a scene from JSON. See SCENE.md for the schema.

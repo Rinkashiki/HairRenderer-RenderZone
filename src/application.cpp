@@ -15,6 +15,12 @@ void HairViewer::init(Systems::RendererSettings settings) {
         std::bind(&HairViewer::keyboard_callback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 
     settings.clearColor = Vec4(0.0, 0.0, 0.0, 1.0);
+
+    // MSAA has to be known before create_passes(); peek the scene JSON for an
+    // explicit renderer.msaa override. Falls back to whatever main.cpp set.
+    if (auto sceneMSAA = scene_loader::peek_msaa(SCENE_PATH))
+        settings.samplesMSAA = *sceneMSAA;
+
     m_renderer          = new Systems::ForwardRenderer(m_window, ShadowResolution::HIGH, settings); // TODO: Optimize properly to be able to use Ultra
 
     setup();
@@ -42,7 +48,7 @@ void HairViewer::run(Systems::RendererSettings settings) {
 void HairViewer::setup() {
     // JSON-driven scene path (default). See SCENE.md.
     auto result   = scene_loader::load_scene_json(
-        RESOURCES_PATH "scenes/maria.json",
+        SCENE_PATH,
         RESOURCES_PATH,
         VKFW::get_engine_resources_path(),
         /*animationOverride*/ "",
