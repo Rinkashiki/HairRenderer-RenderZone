@@ -40,6 +40,12 @@ Graphics::MaterialUniforms PhysicallyBasedMaterial::get_uniforms() const {
                                m_dualLobeMix,
                                m_dualLobeRoughnessSoft};
 
+    // slot11 = (sheenColor.rgb, sheenIntensity). Disney/Burley peach-fuzz sheen,
+    // gated in-shader by the clothes mask and modulated by curvature so vellus
+    // hair distribution reads correctly (more sheen on nose/cheekbones/ears).
+    uniforms.dataSlot11 = Vec4{m_sheenColor.x, m_sheenColor.y, m_sheenColor.z,
+                               m_sheenIntensity};
+
     return uniforms;
 }
 } // namespace Core

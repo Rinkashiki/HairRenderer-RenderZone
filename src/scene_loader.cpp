@@ -220,6 +220,12 @@ static Core::IMaterial* build_pbr(const json&                        jm,
         mat->set_dual_lobe_mix(jm["dual_lobe_mix"].get<float>());
     if (jm.contains("dual_lobe_roughness_soft"))
         mat->set_dual_lobe_roughness_soft(jm["dual_lobe_roughness_soft"].get<float>());
+    if (jm.contains("sheen_color")) {
+        auto c = jm["sheen_color"];
+        mat->set_sheen_color({c[0].get<float>(), c[1].get<float>(), c[2].get<float>()});
+    }
+    if (jm.contains("sheen_intensity"))
+        mat->set_sheen_intensity(jm["sheen_intensity"].get<float>());
     // Note: per-channel detail-normal blur biases (detail_blur_r/g/b) are
     // intentionally NOT JSON-driven — they're derived from the renderer's
     // sss_scatter_lut so the d'Eon hybrid normals stay consistent with the
@@ -237,7 +243,8 @@ static Core::IMaterial* build_pbr(const json&                        jm,
          "detail_normal_texture", "detail_cavity_texture",
          "detail_tiling", "detail_normal_strength",
          "cavity_spec_occlusion",
-         "dual_lobe_mix", "dual_lobe_roughness_soft"},
+         "dual_lobe_mix", "dual_lobe_roughness_soft",
+         "sheen_color", "sheen_intensity"},
         "material(pbr)");
 
     return mat;

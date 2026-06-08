@@ -45,7 +45,7 @@ void HairViewer::setup() {
         RESOURCES_PATH "scenes/maria.json",
         RESOURCES_PATH,
         VKFW::get_engine_resources_path(),
-        /*animationOverride*/ "C:/Users/diegs/Documents/GitHub/HairRenderer-RenderZone/resources/animations/fht_test.json",
+        /*animationOverride*/ "",
         m_renderer);
     m_scene  = result.scene;
     camera   = result.camera;

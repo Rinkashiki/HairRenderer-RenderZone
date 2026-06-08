@@ -213,6 +213,8 @@ Discriminated by `"type"`:
 | `cavity_spec_occlusion` | float | `1.0` | How strongly cavity attenuates the per-light specular term. `0` = no attenuation, `1` = specular zeroed in fully-dark cavity regions. |
 | `dual_lobe_mix` | float | `0.0` | Penner GDC 2011 dual-lobe specular weight. `0` = single (default) GGX lobe, `>0` mixes a softer second lobe at `dual_lobe_roughness_soft`. `0.15` is a subtle skin sheen, `0.3` is strong. Gated by clothes mask. |
 | `dual_lobe_roughness_soft` | float | `0.55` | Roughness of the soft secondary GGX lobe. |
+| `sheen_color` | vec3 | `[1, 1, 1]` | Tint of the Jimenez-style Disney sheen lobe (peach fuzz / vellus hair). A warm pinkish tint like `[1.0, 0.85, 0.78]` reads correctly on light skin; tune toward `[1.0, 0.75, 0.6]` for darker skin. |
+| `sheen_intensity` | float | `0.0` | Strength of the sheen lobe. `0` = off (default). `0.2`–`0.4` is a subtle peach-fuzz glaze; `>0.6` reads as cloth. Additive grazing-only term, modulated by the curvature texture (more sheen on nose/cheekbones/ears), gated by clothes mask, and cavity-occluded. |
 
 All Layer A and Layer B fields are **optional** and gated by their respective `has*Texture` flags or `>0` checks. Existing non-skin scenes remain visually identical without changes.
 

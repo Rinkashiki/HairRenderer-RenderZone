@@ -58,6 +58,9 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     float   _slot10_pad;          // was cavitySSSAttenuation; SSS is cavity-agnostic now
     float   dualLobeMix;
     float   dualLobeRoughnessSoft;
+    // slot11: Jimenez-style Disney sheen (peach fuzz)
+    vec3    sheenColor;
+    float   sheenIntensity;
 } material;
 
 void main() {
@@ -170,6 +173,9 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     float   _slot10_pad;          // was cavitySSSAttenuation; SSS is cavity-agnostic now
     float   dualLobeMix;
     float   dualLobeRoughnessSoft;
+    // slot11: Jimenez-style Disney sheen (peach fuzz)
+    vec3    sheenColor;
+    float   sheenIntensity;
 } material;
 layout(set = 2, binding = 0) uniform sampler2D albedoTex;
 layout(set = 2, binding = 1) uniform sampler2D normalTex;
@@ -400,6 +406,30 @@ void main() {
                 // evaluations share brdf.normal, so their embedded diffuse matches.
                 vec3 specSoft = lightingSoft - diffSpecPath;
                 specPart = mix(specPart, specSoft, effectiveDualMix);
+            }
+
+            // Jimenez-style peach-fuzz sheen (Activision Digital Human, GDC 2013).
+            // Additive view-grazing rim lobe:
+            //   sheen = sheenColor * intensity * (1-NoV)^3 * NoL_smooth
+            // View-grazing (NoV) is what produces the silhouette glaze regardless
+            // of light direction — half-angle Fresnel (Disney sheen) collapses to
+            // zero whenever light and view are roughly aligned, which is the usual
+            // inspection setup. NoL is taken against the macro (smooth) normal so
+            // pore-level detail doesn't slice the sheen up. Gated by skinMask and
+            // modulated by a curvature-derived fuzz mask so vellus distribution
+            // reads correctly (more on nose/cheekbones/ears). Added into specPart
+            // before the cavity multiply so pore crevices also dim the sheen.
+            if (material.sheenIntensity > 0.0 && skinMask > 0.0) {
+                float NoV      = max(dot(smoothNormalWS, wo), 0.0);
+                float FV       = pow(1.0 - NoV, 3.0);
+                float NoL_s    = max(dot(smoothNormalWS, wi), 0.0);
+                float fuzzMask = material.hasCurvatureTexture
+                    ? mix(0.3, 1.0, texture(curvatureTex, v_uv).r)
+                    : 1.0;
+                vec3  sheen = material.sheenColor * material.sheenIntensity
+                            * FV * NoL_s * fuzzMask * skinMask
+                            * radiance * shadowFactor;
+                specPart += sheen;
             }
 
             // Cavity → specular occlusion: pore crevices receive less specular

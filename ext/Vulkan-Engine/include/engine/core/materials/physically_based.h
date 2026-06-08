@@ -65,6 +65,13 @@ class PhysicallyBasedMaterial : public IMaterial
     float m_dualLobeMix            = 0.0f;   // 0 = single-lobe (default); >0 = blend soft lobe in
     float m_dualLobeRoughnessSoft  = 0.55f;
 
+    // Peach-fuzz sheen (Jimenez-style Disney sheen). Additive grazing lobe gated
+    // by the clothes mask and modulated by a fuzz mask derived from curvature
+    // (high-curvature regions sheen more — matches real vellus distribution).
+    // sheenIntensity = 0 disables the effect.
+    Vec3  m_sheenColor     = {1.0f, 1.0f, 1.0f};
+    float m_sheenIntensity = 0.0f;
+
     enum Textures
     {
         ALBEDO         = 0,
@@ -410,6 +417,22 @@ class PhysicallyBasedMaterial : public IMaterial
     inline void set_dual_lobe_roughness_soft(float r) {
         m_dualLobeRoughnessSoft = r;
         m_isDirty               = true;
+    }
+
+    inline Vec3 get_sheen_color() const {
+        return m_sheenColor;
+    }
+    inline void set_sheen_color(Vec3 c) {
+        m_sheenColor = c;
+        m_isDirty    = true;
+    }
+
+    inline float get_sheen_intensity() const {
+        return m_sheenIntensity;
+    }
+    inline void set_sheen_intensity(float i) {
+        m_sheenIntensity = i;
+        m_isDirty        = true;
     }
 };
 } // namespace Core
