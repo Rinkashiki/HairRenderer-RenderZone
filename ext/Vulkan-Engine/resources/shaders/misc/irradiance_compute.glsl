@@ -52,13 +52,28 @@ layout(location = 0) out vec4 li;
 
 layout(set = 0, binding = 0) uniform samplerCube u_envMap;
 
+// Per-face direction reconstruction. Must match panorama_converter.glsl::uvToXYZ
+// EXACTLY so this irradiance cube shares the env cubemap's (and the hardware's)
+// face convention. The cube is drawn untransformed (gl_Position = vec4(pos,1)),
+// so for every covered pixel _pos.xy equals the screen NDC, which is identical to
+// the panorama baker's texCoordNew — feeding it here yields the same mapping.
+// (The previous `normalize(proj * views[gl_Layer] * pos)` was wrong: it inverted
+// the ±X faces and warped up to 90° toward face edges. capture.proj/views are now
+// unused for the direction but left bound to avoid a descriptor-layout change.)
+vec3 uvToXYZ(int face, vec2 uv)
+{
+	if(face == 0)      return vec3(  1.0,  uv.y, -uv.x);
+	else if(face == 1) return vec3( -1.0,  uv.y,  uv.x);
+	else if(face == 2) return vec3( uv.x,  -1.0,  uv.y);
+	else if(face == 3) return vec3( uv.x,   1.0, -uv.y);
+	else if(face == 4) return vec3( uv.x,  uv.y,   1.0);
+	else               return vec3(-uv.x,  uv.y,  -1.0);
+}
 
 void main()
-{		
+{
 
-    vec4 worldPos = vec4(_pos,1.0); 
-    vec4 viewProjPos = capture.proj * capture.views[gl_Layer] * worldPos;
-    vec3 n = normalize(viewProjPos.xyz);
+    vec3 n = normalize(uvToXYZ(gl_Layer, _pos.xy));
 
     vec3 irradiance = vec3(0.0);   
     

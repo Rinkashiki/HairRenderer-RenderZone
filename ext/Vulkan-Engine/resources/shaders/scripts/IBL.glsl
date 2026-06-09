@@ -1,9 +1,14 @@
+// NOTE: handedness must match skybox.glsl::rotationY so the diffuse ambient is
+// lit from the same direction as the visible sky. skybox builds R_y(-angle);
+// this column-major constructor produces the same R_y(-angle). A previous
+// version flipped the sign of `s`, giving R_y(+angle) — that rotated the IBL
+// lighting opposite to the skybox whenever envRotation != 0 (e.g. maria @ 290°).
 mat3 rotationY(float angle) {
     float c = cos(angle);
     float s = sin(angle);
-    return mat3(c, 0.0, -s,
+    return mat3(c, 0.0, s,
                 0.0, 1.0, 0.0,
-                s, 0.0, c);
+                -s, 0.0, c);
 }
 
 vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
@@ -15,7 +20,10 @@ vec3 computeAmbient(samplerCube irradianceMap, float envRotation ,vec3 worldNorm
     mat3 rotY = rotationY(radians(envRotation));
     vec3 rotatedNormal = normalize(rotY * worldNormal);
 
-    vec3 specularity = fresnelSchlickRoughness(max(dot(rotatedNormal, camPos), 0.0), F0,roughness);
+    // Fresnel/kD depends on the real surface geometry (N,V) in world space and is
+    // independent of how the environment is rotated. Use the UNROTATED normal here;
+    // only the irradiance lookup direction is rotated.
+    vec3 specularity = fresnelSchlickRoughness(max(dot(worldNormal, camPos), 0.0), F0,roughness);
     vec3 aDiffuse = vec3(1.0)  - specularity;
     aDiffuse *= 1.0 - metalness;
     vec3 irradiance = texture(irradianceMap, rotatedNormal).rgb*intensity;
@@ -32,7 +40,8 @@ vec3 computeAmbient(samplerCube irradianceMap, float envRotation ,vec3 worldNorm
 vec3 computeAmbientKdIrradiance(samplerCube irradianceMap, float envRotation, vec3 worldNormal, vec3 camPos, vec3 F0, float metalness, float roughness, float intensity){
     mat3 rotY = rotationY(radians(envRotation));
     vec3 rotatedNormal = normalize(rotY * worldNormal);
-    vec3 specularity = fresnelSchlickRoughness(max(dot(rotatedNormal, camPos), 0.0), F0, roughness);
+    // Fresnel uses the unrotated world normal (see computeAmbient).
+    vec3 specularity = fresnelSchlickRoughness(max(dot(worldNormal, camPos), 0.0), F0, roughness);
     vec3 aDiffuse = (vec3(1.0) - specularity) * (1.0 - metalness);
     vec3 irradiance = texture(irradianceMap, rotatedNormal).rgb * intensity;
     return aDiffuse * irradiance;
@@ -41,9 +50,9 @@ vec3 computeAmbientKdIrradiance(samplerCube irradianceMap, float envRotation, ve
 // Bent variant: Fresnel uses the geometric normal (matches computeAmbientBentNormal).
 vec3 computeAmbientKdIrradianceBent(samplerCube irradianceMap, float envRotation, vec3 worldNormal, vec3 bentNormal, vec3 camPos, vec3 F0, float metalness, float roughness, float intensity){
     mat3 rotY = rotationY(radians(envRotation));
-    vec3 rotatedNormal     = normalize(rotY * worldNormal);
     vec3 rotatedBentNormal = normalize(rotY * bentNormal);
-    vec3 specularity = fresnelSchlickRoughness(max(dot(rotatedNormal, camPos), 0.0), F0, roughness);
+    // Fresnel uses the unrotated geometric normal (see computeAmbient).
+    vec3 specularity = fresnelSchlickRoughness(max(dot(worldNormal, camPos), 0.0), F0, roughness);
     vec3 aDiffuse = (vec3(1.0) - specularity) * (1.0 - metalness);
     vec3 irradiance = texture(irradianceMap, rotatedBentNormal).rgb * intensity;
     return aDiffuse * irradiance;
@@ -56,10 +65,10 @@ vec3 computeAmbientKdIrradianceBent(samplerCube irradianceMap, float envRotation
 vec3 computeAmbientBentNormal(samplerCube irradianceMap, float envRotation, vec3 worldNormal, vec3 bentNormal, vec3 camPos, vec3 albedo, vec3 F0, float metalness, float roughness, float intensity){
 
     mat3 rotY = rotationY(radians(envRotation));
-    vec3 rotatedNormal     = normalize(rotY * worldNormal);
     vec3 rotatedBentNormal = normalize(rotY * bentNormal);
 
-    vec3 specularity = fresnelSchlickRoughness(max(dot(rotatedNormal, camPos), 0.0), F0, roughness);
+    // Fresnel uses the unrotated geometric normal (see computeAmbient).
+    vec3 specularity = fresnelSchlickRoughness(max(dot(worldNormal, camPos), 0.0), F0, roughness);
     vec3 aDiffuse = vec3(1.0) - specularity;
     aDiffuse *= 1.0 - metalness;
     vec3 irradiance = texture(irradianceMap, rotatedBentNormal).rgb * intensity;
