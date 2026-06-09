@@ -26,14 +26,15 @@
   "materials": {
     "javi_hair": {
       "type":             "hairepic",
-      "thickness":        0.0015,
+      "thickness":        0.001,
       "use_pigmentation": true,
-      "eumelanine":       0.3,
+      "eumelanine":       0.9,
       "pheomelanine":     0.25,
       "roughness":        0.5,
       "specular":         0.4,
       "root_darkening":   0.3,
-      "variability":      0.25
+      "variability":      0.25,
+      "scatter_boost":    1.0
     }
   },
 

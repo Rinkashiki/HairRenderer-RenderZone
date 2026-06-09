@@ -9,7 +9,7 @@
 #define ONE_OVER_PI (1.0 / PI)
 #define ONE_OVER_PI_HALF (2.0 / PI)
 #define DEG2RAD(x) ((x) / 180.0 * PI)
-#define HAIR_GLOBAL_SCALE 4.0
+#define HAIR_GLOBAL_SCALE 2.0
 
 // #define TRANS_MARSHNER
 #define TRANS_EPIC

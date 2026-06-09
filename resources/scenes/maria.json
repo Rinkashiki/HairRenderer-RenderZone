@@ -2,7 +2,7 @@
   "name": "maria",
 
   "camera": {
-    "position": [0.0, 2.5, -10.0],
+    "position": [0.0, 3.15, -3.9],
     "near":     0.1,
     "far":      100.0,
     "fov":      40.0
@@ -26,14 +26,15 @@
   "materials": {
     "maria_hair": {
       "type":             "hairepic",
-      "thickness":        0.0015,
+      "thickness":        0.001,
       "use_pigmentation": true,
       "eumelanine":       0.4,
       "pheomelanine":     0.6,
       "roughness":        0.5,
       "specular":         0.4,
       "root_darkening":   0.3,
-      "variability":      0.25
+      "variability":      0.25,
+      "scatter_boost":    0.1
     }
   },
 

@@ -493,6 +493,46 @@ void applyNaturalVariation(inout float m, inout float r, float uv_length, float 
     r = clamp(r, 0.0, 1.0);
 }
 
+// Environment specular sheen (option D). Real hair outdoors picks up a broad, soft
+// highlight from the whole sky — not just the single point light. Hair here previously
+// had only diffuse ambient (computeAmbient) plus one sharp direct specular, so it read
+// crisp and unlike the skylit skin. This adds a view-dependent specular sheen sampled
+// from the irradiance cube: because that cube is cosine-convolved it is inherently soft,
+// so the sheen is a gentle skylit band that CANNOT clip into a hard white streak the way
+// the direct R lobe does. It is purely additive lighting (no geometry/alpha/depth), so
+// it cannot reintroduce the scalp bleed the coverage-alpha experiment caused.
+vec3 computeEnvSheen(vec3 Tworld, vec3 Vworld, vec3 hairColor, float specular, float roughness) {
+    if (!scene.useIBL)
+        return vec3(0.0);
+
+    // Strand-aware view-facing normal (perpendicular to the strand, toward the camera),
+    // then reflect the view around it for the anisotropic specular lookup direction.
+    vec3 N, B;
+    buildBasis(Tworld, Vworld, N, B);
+    vec3 R = reflect(-Vworld, N);
+
+    // Match skybox / computeAmbient handedness so the sheen rotates with the sky.
+    float rad  = radians(scene.envRotation);
+    float c    = cos(rad);
+    float s    = sin(rad);
+    mat3  rotY = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+
+    vec3 env = texture(irradianceMap, normalize(rotY * R)).rgb * scene.ambientIntensity;
+
+    // Grazing Fresnel (Schlick from the hair IOR): sheen strongest at glancing angles.
+    float NoV  = clamp(dot(N, Vworld), 0.0, 1.0);
+    float fres = fresnel(NoV, material.ior);
+
+    // White primary highlight blended toward the hair colour (TRT-like tint), and a
+    // small gloss boost so lower-roughness hair concentrates the sheen a touch more.
+    vec3  tint  = mix(vec3(1.0), hairColor, 0.5);
+    float gloss = clamp(1.0 - roughness, 0.0, 1.0);
+
+    const float SHEEN_SCALE = 1.5; // overall strength knob for the env sheen
+
+    return env * tint * (specular * fres) * (0.5 + 0.5 * gloss) * SHEEN_SCALE;
+}
+
 void main() {
 
     // BSDF setup ............................................................
@@ -615,6 +655,11 @@ void main() {
 
     vec3 ambient = computeAmbient(fakeNormal, epicBaseColor);
     color += ambient;
+
+    // Environment specular sheen (option D): broad, soft skylit highlight so hair is
+    // lit by the whole environment like the skin, not just the single point light.
+    vec3 Vworld = normalize(camera.position.xyz - g_modelPos);
+    color += computeEnvSheen(normalize(g_modelDir), Vworld, epicBaseColor, material.specular, material.roughness);
 
     if (int(object.otherParams.x) == 1 && scene.enableFog)
     {
