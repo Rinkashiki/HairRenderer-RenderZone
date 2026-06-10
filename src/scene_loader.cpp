@@ -204,6 +204,9 @@ static Core::IMaterial* build_pbr(const json&                        jm,
     if (jm.contains("clothes_mask_texture"))
         mat->set_clothes_mask_texture(resolve_texture(jm["clothes_mask_texture"], resourcesPath, glbTextures,
                                                       TEXTURE_FORMAT_TYPE_LINEAR));
+    if (jm.contains("eye_mask_texture"))
+        mat->set_eye_mask_texture(resolve_texture(jm["eye_mask_texture"], resourcesPath, glbTextures,
+                                                  TEXTURE_FORMAT_TYPE_LINEAR));
     if (jm.contains("detail_normal_texture"))
         mat->set_detail_normal_texture(resolve_texture(jm["detail_normal_texture"], resourcesPath, glbTextures,
                                                        TEXTURE_FORMAT_TYPE_NORMAL));
@@ -240,6 +243,7 @@ static Core::IMaterial* build_pbr(const json&                        jm,
          "emissive_color", "emissive_weight", "emission_intensity", "emissive_texture",
          "normal_texture", "reflective",
          "bent_normal_texture", "curvature_texture", "scattering_texture", "clothes_mask_texture",
+         "eye_mask_texture",
          "detail_normal_texture", "detail_cavity_texture",
          "detail_tiling", "detail_normal_strength",
          "cavity_spec_occlusion",

@@ -16,10 +16,12 @@ Graphics::MaterialUniforms PhysicallyBasedMaterial::get_uniforms() const {
     //   bit 0: isReflective       (SSR cast)
     //   bit 1: hasScatteringTexture
     //   bit 2: hasClothesMaskTexture
+    //   bit 3: hasEyeMaskTexture
     int materialFlags = 0;
     if (m_isReflective)           materialFlags |= (1 << 0);
     if (m_hasScatteringTexture)   materialFlags |= (1 << 1);
     if (m_hasClothesMaskTexture)  materialFlags |= (1 << 2);
+    if (m_hasEyeMaskTexture)      materialFlags |= (1 << 3);
 
     uniforms.dataSlot8 = Vec4{m_emissionIntensity,
                               float(materialFlags),

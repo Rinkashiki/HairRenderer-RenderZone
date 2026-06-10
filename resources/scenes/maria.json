@@ -57,6 +57,7 @@
         "curvature_texture":    "textures/maria/T-Maria-Curvature.png",
         "scattering_texture":   "textures/maria/T-Maria-Scattering.png",
         "clothes_mask_texture":   "textures/maria/T-Maria_ClothesMask.png",
+        "eye_mask_texture":       "textures/maria/T-Maria-EyeMask.png",
         "detail_normal_texture":  "textures/skin/normal_detail.png",
         "detail_cavity_texture":  "textures/skin/cavity_detail.png",
         "detail_tiling":          48.0,

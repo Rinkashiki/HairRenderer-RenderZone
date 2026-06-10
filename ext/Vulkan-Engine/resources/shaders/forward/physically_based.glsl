@@ -45,7 +45,7 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     vec3    emissiveColor;
     float   emissiveWeight;
     float   emissionIntensity;
-    float   materialFlags;        // bit 0 = isReflective, bit 1 = hasScatteringTexture, bit 2 = hasClothesMaskTexture
+    float   materialFlags;        // bit 0 = isReflective, bit 1 = hasScatteringTexture, bit 2 = hasClothesMaskTexture, bit 3 = hasEyeMaskTexture
     bool    hasCurvatureTexture;
     bool    hasBentNormalTexture;
     // slot9: detail params (tiling shared by normal & cavity, plus has-flags)
@@ -160,7 +160,7 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     vec3    emissiveColor;
     float   emissiveWeight;
     float   emissionIntensity;
-    float   materialFlags;        // bit 0 = isReflective, bit 1 = hasScatteringTexture, bit 2 = hasClothesMaskTexture
+    float   materialFlags;        // bit 0 = isReflective, bit 1 = hasScatteringTexture, bit 2 = hasClothesMaskTexture, bit 3 = hasEyeMaskTexture
     bool    hasCurvatureTexture;
     bool    hasBentNormalTexture;
     // slot9: detail params (tiling shared by normal & cavity, plus has-flags)
@@ -189,6 +189,7 @@ layout(set = 2, binding = 8) uniform sampler2D scatteringTex;
 layout(set = 2, binding = 9) uniform sampler2D clothesMaskTex;
 layout(set = 2, binding = 10) uniform sampler2D detailNormalTex;
 layout(set = 2, binding = 11) uniform sampler2D detailCavityTex;
+layout(set = 2, binding = 12) uniform sampler2D eyeMaskTex;
 
 
 //BRDF Definiiton
@@ -206,6 +207,13 @@ vec3 diffuseNormalWS_B;
 // skin wrap and back-lighting — both operate at face-curvature scale where
 // pore-level variation is meaningless.
 vec3 smoothNormalWS;
+
+// Skin coverage mask in [0,1]. 1 = skin, 0 = non-skin (clothes / eyes).
+// Combines the clothes mask and the eye mask (white = excluded in both).
+// Gates all skin-specific shading (microdetail, pre-integrated diffuse, SSS,
+// sheen, dual-lobe, bent-normal IBL). Computed once in setupBRDFProperties()
+// so the detail-normal build can also key off it.
+float skinMask = 1.0;
 
 const float distortion = 0.2;
 const float backRadiancePower = 5.0;
@@ -228,6 +236,19 @@ vec3 preIntegratedSkinDiffuse(float NdotL, float curvature) {
 
 
 void setupBRDFProperties(){
+    // Skin coverage. Clothes mask and eye mask both use the white = excluded
+    // convention, so skin survives only where BOTH are black. This gates the
+    // microdetail build below and every skin-specific lighting term in main().
+    int   _flags         = int(material.materialFlags);
+    bool  _hasClothesMask = (_flags & 4) != 0;
+    bool  _hasEyeMask     = (_flags & 8) != 0;
+    skinMask = (_hasClothesMask ? (1.0 - texture(clothesMaskTex, v_uv).r) : 1.0)
+             * (_hasEyeMask     ? (1.0 - texture(eyeMaskTex,     v_uv).r) : 1.0);
+
+    // Microdetail (pore normal + cavity) is skin-only: fade its strength out on
+    // clothes and eyes so brdf.normal collapses to the base/eye normal there.
+    float effDetailStrength = material.detailNormalStrength * skinMask;
+
   //Setting input surface properties
     brdf.albedo = material.hasAlbdoTexture ? mix(material.albedo.rgb, texture(albedoTex, v_uv).rgb, material.albedoWeight) : material.albedo.rgb;
     brdf.opacity =  material.hasAlbdoTexture ?  mix(material.opacity, texture(albedoTex, v_uv).a, material.opacityWeight) :material.opacity;
@@ -250,7 +271,7 @@ void setupBRDFProperties(){
             vec2 dUV = v_uv * material.detailTiling;
             // Sharp detail for specular (LOD 0).
             vec3 dN_spec = texture(detailNormalTex, dUV).rgb * 2.0 - 1.0;
-            dN_spec.xy *= material.detailNormalStrength;
+            dN_spec.xy *= effDetailStrength;
             dN_spec.z   = max(dN_spec.z, 0.01);
             detailTangentN = normalize(vec3(baseTangentN.xy + dN_spec.xy,
                                             baseTangentN.z   * dN_spec.z));
@@ -268,9 +289,9 @@ void setupBRDFProperties(){
             vec3 dN_r = textureLod(detailNormalTex, dUV, detailBlurRGB.r).rgb * 2.0 - 1.0;
             vec3 dN_g = textureLod(detailNormalTex, dUV, detailBlurRGB.g).rgb * 2.0 - 1.0;
             vec3 dN_b = textureLod(detailNormalTex, dUV, detailBlurRGB.b).rgb * 2.0 - 1.0;
-            dN_r.xy *= material.detailNormalStrength; dN_r.z = max(dN_r.z, 0.01);
-            dN_g.xy *= material.detailNormalStrength; dN_g.z = max(dN_g.z, 0.01);
-            dN_b.xy *= material.detailNormalStrength; dN_b.z = max(dN_b.z, 0.01);
+            dN_r.xy *= effDetailStrength; dN_r.z = max(dN_r.z, 0.01);
+            dN_g.xy *= effDetailStrength; dN_g.z = max(dN_g.z, 0.01);
+            dN_b.xy *= effDetailStrength; dN_b.z = max(dN_b.z, 0.01);
 
             vec3 tN_r = normalize(vec3(baseTangentN.xy + dN_r.xy, baseTangentN.z * dN_r.z));
             vec3 tN_g = normalize(vec3(baseTangentN.xy + dN_g.xy, baseTangentN.z * dN_g.z));
@@ -331,12 +352,11 @@ void main() {
     if(material.alphaTest)
         if(brdf.opacity<1-EPSILON)discard;
 
-    // Clothes mask gates all skin-specific effects (pre-integrated diffuse,
-    // bent-normal IBL, screen-space SSS). Convention: white = clothes, black = skin.
+    // skinMask (clothes + eye masks combined, white = excluded) was computed in
+    // setupBRDFProperties() and gates all skin-specific effects below
+    // (pre-integrated diffuse, bent-normal IBL, screen-space SSS, sheen).
     int   flags = int(material.materialFlags);
     bool  hasScatteringTexture  = (flags & 2) != 0;
-    bool  hasClothesMaskTexture = (flags & 4) != 0;
-    float skinMask = hasClothesMaskTexture ? (1.0 - texture(clothesMaskTex, v_uv).r) : 1.0;
 
     // Peach-fuzz sheen tint, derived from the SSS scatter-distance LUT instead of
     // an authored color: average the entire thin→thick ramp so the rim inherits
@@ -450,7 +470,8 @@ void main() {
             // (no shiny pores). Diffuse and SSS irradiance untouched.
             if (material.hasDetailCavityTexture) {
                 float cavity = texture(detailCavityTex, v_uv * material.detailTiling).r;
-                float cavOcc = mix(1.0, cavity, material.cavitySpecOcclusion);
+                // skinMask fades the pore occlusion out on clothes and eyes.
+                float cavOcc = mix(1.0, cavity, material.cavitySpecOcclusion * skinMask);
                 specPart *= cavOcc;
             }
 

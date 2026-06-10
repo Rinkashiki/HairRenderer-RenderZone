@@ -56,6 +56,7 @@
         "curvature_texture":    "textures/nadia/T-Nadia-Curvature.png",
         "scattering_texture":   "textures/nadia/T-Nadia-Scattering.png",
         "clothes_mask_texture": "textures/nadia/T-Nadia-ClothesMask.png",
+        "eye_mask_texture":     "textures/nadia/T-Nadia-EyeMask.png",
         "detail_normal_texture":  "textures/skin/normal_detail.png",
         "detail_cavity_texture":  "textures/skin/cavity_detail.png",
         "detail_tiling":          48.0,

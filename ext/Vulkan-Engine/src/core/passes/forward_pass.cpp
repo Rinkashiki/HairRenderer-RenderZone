@@ -188,11 +188,12 @@ void ForwardPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
     LayoutBinding textureBinding10(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 9);
     LayoutBinding textureBinding11(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 10);
     LayoutBinding textureBinding12(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 11);
+    LayoutBinding textureBinding13(UNIFORM_COMBINED_IMAGE_SAMPLER, SHADER_STAGE_FRAGMENT, 12);
     m_descriptorPool.set_layout(
         OBJECT_TEXTURE_LAYOUT,
         {textureBinding1, textureBinding2, textureBinding3, textureBinding4, textureBinding5,
          textureBinding6, textureBinding7, textureBinding8, textureBinding9, textureBinding10,
-         textureBinding11, textureBinding12});
+         textureBinding11, textureBinding12, textureBinding13});
 
     // BINDLESS SETs
     LayoutBinding bindlessVAOs(UNIFORM_STORAGE_BUFFER, SHADER_STAGE_VERTEX, 0, ENGINE_MAX_OBJECTS);

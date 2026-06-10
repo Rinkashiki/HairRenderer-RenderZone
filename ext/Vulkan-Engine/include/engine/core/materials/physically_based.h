@@ -56,6 +56,7 @@ class PhysicallyBasedMaterial : public IMaterial
     bool m_hasClothesMaskTexture  = false;
     bool m_hasDetailNormalTexture = false;
     bool m_hasDetailCavityTexture = false;
+    bool m_hasEyeMaskTexture      = false;
     int  m_maskType               = -1;
 
     // Layer B microdetail (pore-scale realism)
@@ -86,6 +87,7 @@ class PhysicallyBasedMaterial : public IMaterial
         CLOTHES_MASK   = 9,
         DETAIL_NORMAL  = 10,
         DETAIL_CAVITY  = 11,
+        EYE_MASK       = 12,
     };
 
     std::unordered_map<int, ITexture*> m_textures{{ALBEDO, nullptr},
@@ -99,7 +101,8 @@ class PhysicallyBasedMaterial : public IMaterial
                                                   {SCATTERING, nullptr},
                                                   {CLOTHES_MASK, nullptr},
                                                   {DETAIL_NORMAL, nullptr},
-                                                  {DETAIL_CAVITY, nullptr}};
+                                                  {DETAIL_CAVITY, nullptr},
+                                                  {EYE_MASK, nullptr}};
 
     std::unordered_map<int, bool> m_textureBindingState;
 
@@ -357,6 +360,16 @@ class PhysicallyBasedMaterial : public IMaterial
         m_textureBindingState[CLOTHES_MASK] = false;
         m_textures[CLOTHES_MASK]            = t;
         m_isDirty                           = true;
+    }
+
+    inline ITexture* get_eye_mask_texture() {
+        return m_textures[EYE_MASK];
+    }
+    inline void set_eye_mask_texture(ITexture* t) {
+        m_hasEyeMaskTexture             = t ? true : false;
+        m_textureBindingState[EYE_MASK] = false;
+        m_textures[EYE_MASK]            = t;
+        m_isDirty                       = true;
     }
 
     inline ITexture* get_detail_normal_texture() {

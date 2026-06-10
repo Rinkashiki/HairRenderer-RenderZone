@@ -56,6 +56,7 @@
         "curvature_texture":    "textures/alex/T-Alex-Curvature.png",
         "scattering_texture":   "textures/alex/T-Alex-Scattering.png",
         "clothes_mask_texture": "textures/alex/T-Alex-ClothesMask.png",
+        "eye_mask_texture":     "textures/alex/T-Alex-EyeMask.png",
         "detail_normal_texture":  "textures/skin/normal_detail.png",
         "detail_cavity_texture":  "textures/skin/cavity_detail.png",
         "detail_tiling":          48.0,

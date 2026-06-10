@@ -56,6 +56,7 @@
         "curvature_texture":    "textures/javi/T-Javi-Curvature.png",
         "scattering_texture":   "textures/javi/T-Javi-Scattering.png",
         "clothes_mask_texture": "textures/javi/T-Javi-ClothesMask.png",
+        "eye_mask_texture":     "textures/javi/EyeMask.png",
         "detail_normal_texture":  "textures/skin/normal_detail.png",
         "detail_cavity_texture":  "textures/skin/cavity_detail.png",
         "detail_tiling":          48.0,
