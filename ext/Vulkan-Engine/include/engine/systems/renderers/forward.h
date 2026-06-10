@@ -2,6 +2,7 @@
 #define FORWARD_H
 
 #include <engine/core/passes/bloom_pass.h>
+#include <engine/core/passes/dof_pass.h>
 #include <engine/core/passes/forward_pass.h>
 #include <engine/core/passes/hair_scattering_pass.h>
 #include <engine/core/passes/hair_voxelization_pass.h>
@@ -31,13 +32,26 @@ class ForwardRenderer : public BaseRenderer
         SSAO_PASS              = 4,
         SSS_PASS               = 5,
         BLOOM_PASS             = 6,
-        TONEMAPPIN_PASS        = 7,
-        FXAA_PASS              = 8,
+        DOF_PASS               = 7,
+        TONEMAPPIN_PASS        = 8,
+        FXAA_PASS              = 9,
     };
 
     ShadowResolution m_shadowQuality      = ShadowResolution::MEDIUM;
     bool             m_updateShadows      = false;
     std::string      m_pendingScatterLut;  // deferred until renderer is initialized
+
+    // Deferred DoF config — scene JSON is parsed before passes exist, so the
+    // requested settings are stashed and flushed in on_before_render().
+    struct PendingDoF {
+        bool  set = false;
+        bool  enabled;
+        float focusDistance;
+        float focusRange;
+        float nearBlurScale;
+        float farBlurScale;
+        float maxCoC;
+    } m_pendingDoF;
 
   public:
     ForwardRenderer(Core::IWindow* window)
@@ -125,6 +139,65 @@ class ForwardRenderer : public BaseRenderer
     }
     inline void set_sss_extinction_coeff(float e) {
         if (m_passes[SSS_PASS]) static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->set_extinction_coeff(e);
+    }
+
+    // Depth of Field parameters
+    inline bool get_dof_active() const {
+        if (m_passes[DOF_PASS]) return static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->is_dof_enabled();
+        return false;
+    }
+    inline void set_dof_active(bool v) {
+        if (m_passes[DOF_PASS]) m_passes[DOF_PASS]->set_active(v);
+    }
+    inline float get_dof_focus_distance() const {
+        if (m_passes[DOF_PASS]) return static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->get_focus_distance();
+        return 3.0f;
+    }
+    inline void set_dof_focus_distance(float d) {
+        if (m_passes[DOF_PASS]) static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->set_focus_distance(d);
+    }
+    inline float get_dof_focus_range() const {
+        if (m_passes[DOF_PASS]) return static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->get_focus_range();
+        return 0.5f;
+    }
+    inline void set_dof_focus_range(float r) {
+        if (m_passes[DOF_PASS]) static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->set_focus_range(r);
+    }
+    inline float get_dof_near_blur_scale() const {
+        if (m_passes[DOF_PASS]) return static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->get_near_blur_scale();
+        return 6.0f;
+    }
+    inline void set_dof_near_blur_scale(float s) {
+        if (m_passes[DOF_PASS]) static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->set_near_blur_scale(s);
+    }
+    inline float get_dof_far_blur_scale() const {
+        if (m_passes[DOF_PASS]) return static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->get_far_blur_scale();
+        return 6.0f;
+    }
+    inline void set_dof_far_blur_scale(float s) {
+        if (m_passes[DOF_PASS]) static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->set_far_blur_scale(s);
+    }
+    inline float get_dof_max_coc() const {
+        if (m_passes[DOF_PASS]) return static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->get_max_coc();
+        return 16.0f;
+    }
+    inline void set_dof_max_coc(float c) {
+        if (m_passes[DOF_PASS]) static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS])->set_max_coc(c);
+    }
+    // One-shot configuration (used by the scene loader). Applies immediately if the
+    // passes already exist, otherwise defers until the renderer is initialized.
+    inline void configure_dof(bool enabled, float focusDistance, float focusRange, float nearBlurScale, float farBlurScale, float maxCoC) {
+        if (m_passes.size() > DOF_PASS && m_passes[DOF_PASS]) {
+            auto* dof = static_cast<Core::DepthOfFieldPass*>(m_passes[DOF_PASS]);
+            dof->set_focus_distance(focusDistance);
+            dof->set_focus_range(focusRange);
+            dof->set_near_blur_scale(nearBlurScale);
+            dof->set_far_blur_scale(farBlurScale);
+            dof->set_max_coc(maxCoC);
+            dof->set_active(enabled);
+        } else {
+            m_pendingDoF = {true, enabled, focusDistance, focusRange, nearBlurScale, farBlurScale, maxCoC};
+        }
     }
 
     // Pass enable/disable

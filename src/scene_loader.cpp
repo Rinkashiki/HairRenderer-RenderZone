@@ -791,9 +791,25 @@ LoadResult load_scene_json(const std::string&     scenePath,
             if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(renderer))
                 fwd->load_sss_scatter_lut(resourcesPath + jr["sss_scatter_lut"].get<std::string>());
         }
+        // Depth of Field — artistic focus model (see DepthOfFieldPass). Deferred
+        // through configure_dof so it survives being parsed before passes exist.
+        if (renderer && jr.contains("dof")) {
+            if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(renderer)) {
+                const auto& jd = jr["dof"];
+                fwd->configure_dof(jd.value("enabled", true),
+                                   jd.value("focus_distance", 3.0f),
+                                   jd.value("focus_range", 0.5f),
+                                   jd.value("near_blur_scale", 6.0f),
+                                   jd.value("far_blur_scale", 6.0f),
+                                   jd.value("max_blur", 16.0f));
+                warn_unknown(jd,
+                             {"enabled", "focus_distance", "focus_range", "near_blur_scale", "far_blur_scale", "max_blur"},
+                             "renderer.dof");
+            }
+        }
         // 'msaa' is read separately by peek_msaa() before the renderer exists;
         // tolerate it here so warn_unknown doesn't flag a legitimate field.
-        warn_unknown(jr, {"clear_color", "sss_scatter_lut", "msaa"}, "renderer");
+        warn_unknown(jr, {"clear_color", "sss_scatter_lut", "msaa", "dof"}, "renderer");
     }
 
     warn_unknown(root, {"name", "camera", "lights", "materials", "meshes", "scene", "renderer"}, "root");

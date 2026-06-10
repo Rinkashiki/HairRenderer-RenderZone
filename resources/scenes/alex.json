@@ -125,6 +125,14 @@
   "renderer": {
     "clear_color":     [0.0, 0.0, 0.0, 1.0],
     "sss_scatter_lut": "textures/scatterDistance/monk03.png",
-    "msaa": 8
+    "msaa": 8,
+    "dof": {
+      "enabled":         true,
+      "focus_distance":  8.0,
+      "focus_range":     6.0,
+      "near_blur_scale": 1.0,
+      "far_blur_scale":  2.0,
+      "max_blur":        8.0
+    }
   }
 }

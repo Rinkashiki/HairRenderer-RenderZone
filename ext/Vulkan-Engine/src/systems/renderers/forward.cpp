@@ -18,6 +18,13 @@ void ForwardRenderer::on_before_render(Core::Scene* const scene) {
         load_sss_scatter_lut(path);
     }
 
+    // Flush deferred DoF config (queued from the scene JSON before passes existed).
+    if (m_pendingDoF.set) {
+        const PendingDoF p = m_pendingDoF;
+        m_pendingDoF.set   = false; // clear first; passes now exist so apply directly
+        configure_dof(p.enabled, p.focusDistance, p.focusRange, p.nearBlurScale, p.farBlurScale, p.maxCoC);
+    }
+
     if (scene->get_skybox())
     {
         if (scene->get_skybox()->update_enviroment())
@@ -53,7 +60,7 @@ void ForwardRenderer::create_passes() {
 
     const bool msaa = m_settings.samplesMSAA > MSAASamples::x1;
 
-    m_passes.resize(9, nullptr);
+    m_passes.resize(10, nullptr);
     // Shadow Pass
     m_passes[SHADOW_PASS] = new Core::VarianceShadowPass(m_device, {SHADOW_RES, SHADOW_RES}, ENGINE_MAX_LIGHTS, m_settings.depthFormat);
 
@@ -87,6 +94,18 @@ void ForwardRenderer::create_passes() {
     m_passes[BLOOM_PASS] = new Core::BloomPass(m_device, m_window->get_extent(), Core::ResourceManager::VIGNETTE);
     m_passes[BLOOM_PASS]->set_image_dependace_table({{iVec2(SSS_PASS, 0), {0u, 1u}}});
 
+    // Depth of Field Pass — HDR bokeh on the bloom output, using the forward pass'
+    // depth. connect_pass() sorts source images by ascending pass index, so the
+    // FORWARD depth attachment arrives before the BLOOM color attachment:
+    //   images[0] = depth  (FORWARD_PASS att 13 MSAA / 6 non-MSAA — LinearDepth)
+    //   images[1] = color  (BLOOM_PASS  att 0 — HDR scene color)
+    // Always active in the chain; an internal UBO flag toggles the effect, so
+    // tonemapping below always reads a valid image (default: effect off).
+    m_passes[DOF_PASS] = new Core::DepthOfFieldPass(m_device, m_window->get_extent(), Core::ResourceManager::VIGNETTE);
+    m_passes[DOF_PASS]->set_image_dependace_table(
+        {{iVec2(FORWARD_PASS, 0), {msaa ? 13u : 6u}},
+         {iVec2(BLOOM_PASS, 0),   {0u}}});
+
     // Use the actual swapchain format for default (swapchain-backed) passes.
     // The driver may select a different format (e.g. B8G8R8A8_UNORM) when the
     // requested colorFormat (R8G8B8A8_SRGB) is not available.
@@ -101,7 +120,7 @@ void ForwardRenderer::create_passes() {
                                                           get_engine_resources_path() + "shaders/misc/tonemapping.glsl",
                                                           "TONEMAPPING",
                                                           m_settings.softwareAA ? false : true);
-    m_passes[TONEMAPPIN_PASS]->set_image_dependace_table({{iVec2(BLOOM_PASS, 0), {0}}});
+    m_passes[TONEMAPPIN_PASS]->set_image_dependace_table({{iVec2(DOF_PASS, 0), {0}}});
 
     // FXAA Pass
     m_passes[FXAA_PASS] = new Core::PostProcessPass(m_device,

@@ -138,6 +138,30 @@ void Tools::ForwardRendererWidget::render() {
             m_renderer->set_sss_max_scatter(maxScatter);
     }
 
+    ImGui::Separator();
+    ImGui::SeparatorText("Depth of Field");
+    bool dofEnabled = m_renderer->get_dof_active();
+    if (ImGui::Checkbox("Enable DoF", &dofEnabled))
+        m_renderer->set_dof_active(dofEnabled);
+    if (dofEnabled)
+    {
+        float focusDistance = m_renderer->get_dof_focus_distance();
+        if (ImGui::DragFloat("Focus Distance", &focusDistance, 0.01f, 0.0f, 100.0f))
+            m_renderer->set_dof_focus_distance(focusDistance);
+        float focusRange = m_renderer->get_dof_focus_range();
+        if (ImGui::DragFloat("Focus Range", &focusRange, 0.01f, 0.0f, 50.0f))
+            m_renderer->set_dof_focus_range(focusRange);
+        float nearBlur = m_renderer->get_dof_near_blur_scale();
+        if (ImGui::DragFloat("Near Blur Scale", &nearBlur, 0.1f, 0.0f, 50.0f))
+            m_renderer->set_dof_near_blur_scale(nearBlur);
+        float farBlur = m_renderer->get_dof_far_blur_scale();
+        if (ImGui::DragFloat("Far Blur Scale", &farBlur, 0.1f, 0.0f, 50.0f))
+            m_renderer->set_dof_far_blur_scale(farBlur);
+        float maxCoC = m_renderer->get_dof_max_coc();
+        if (ImGui::DragFloat("Max Blur (px)", &maxCoC, 0.5f, 0.0f, 64.0f))
+            m_renderer->set_dof_max_coc(maxCoC);
+    }
+
     if (m_animateLight != nullptr)
     {
         ImGui::Separator();
