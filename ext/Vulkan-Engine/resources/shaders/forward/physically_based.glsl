@@ -18,6 +18,8 @@ layout(location = 3) out vec2 v_uv;
 layout(location = 4) out vec3 v_modelPos;
 layout(location = 5) out vec2 v_screenExtent;
 layout(location = 6) out mat3 v_TBN;
+// Pure object-space normal (no model matrix) — anchor for eye.glsl occlusion.
+layout(location = 9) out vec3 v_objNormal;
 
 //Uniforms
 layout(set = 1, binding = 1) uniform MaterialUniforms {
@@ -83,6 +85,7 @@ void main() {
 
     v_modelPos = (object.model * vec4(pos, 1.0)).xyz;
     v_modelNormal = normalize(mat3(transpose(inverse(object.model))) * normal);
+    v_objNormal = normalize(normal);
 
     v_screenExtent = camera.screenExtent;
 
@@ -106,6 +109,7 @@ void main() {
 #include BRDFs/schlick_smith_BRDF.glsl
 #include warp.glsl
 #include raytracing.glsl
+#include eye.glsl
 
 //Input
 layout(location = 0) in vec3 v_pos;
@@ -115,6 +119,7 @@ layout(location = 3) in vec2 v_uv;
 layout(location = 4) in vec3 v_modelPos;
 layout(location = 5) in vec2 v_screenExtent;
 layout(location = 6) in mat3 v_TBN;
+layout(location = 9) in vec3 v_objNormal;
 
 //Output
 layout(location = 0) out vec4 outColor;
@@ -580,6 +585,11 @@ void main() {
         }
         diffuseIrr += PI * kdIrr * brdf.ao * skinMask;
     }
+    //Eye socket occlusion (eye.glsl) — eye-mask fragments only _____________
+    float eyeAmount = ((int(material.materialFlags) & 8) != 0) ? texture(eyeMaskTex, v_uv).r : 0.0;
+    if (eyeAmount > 0.0)
+        color *= mix(1.0, eye_occlusion(v_objNormal), eyeAmount);
+
     //Fog ___________________________________________________________________
     if(int(object.otherParams.x) == 1 && scene.enableFog) {
         float f = computeFog(gl_FragCoord.z);
