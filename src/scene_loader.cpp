@@ -504,9 +504,17 @@ struct PendingAttachment {
     std::string jointName;      // joint inside that skeleton
 };
 
+// Hair mesh that declared bind_to (surface binding). Resolved in a second pass.
+struct PendingBind {
+    Core::Mesh* hair;           // the strand-hair mesh
+    std::string headName;       // name of the mesh to bind onto
+    std::string bindingPath;    // absolute sidecar path, empty if none
+};
+
 static Core::Mesh* build_mesh(const json&                     jm,
                               const std::string&              resourcesPath,
                               std::vector<PendingAttachment>& pending,
+                              std::vector<PendingBind>&       pendingBinds,
                               MaterialLibrary&                lib) {
     require(jm, "type", "mesh");
     require(jm, "file", "mesh");
@@ -591,7 +599,7 @@ static Core::Mesh* build_mesh(const json&                     jm,
     // Child meshes — transforms are inherited from this parent.
     if (jm.contains("children")) {
         for (const auto& jc : jm["children"])
-            mesh->add_child(build_mesh(jc, resourcesPath, pending, lib));
+            mesh->add_child(build_mesh(jc, resourcesPath, pending, pendingBinds, lib));
     }
 
     // Joint attachment — resolved after every top-level mesh is built so the
@@ -605,12 +613,23 @@ static Core::Mesh* build_mesh(const json&                     jm,
                            ja["joint"].get<std::string>()});
     }
 
+    // Surface binding — bind this strand-hair mesh onto another mesh's skin.
+    // `binding` (optional) is a sidecar path relative to resourcesPath. Resolved
+    // in a second pass; the application constructs the HairBinder.
+    if (jm.contains("bind_to")) {
+        pendingBinds.push_back({mesh,
+                                jm["bind_to"].get<std::string>(),
+                                jm.contains("binding")
+                                    ? (resourcesPath + jm["binding"].get<std::string>())
+                                    : std::string()});
+    }
+
     warn_unknown(jm,
         {"name", "type", "file", "glb_mesh_index",
          "preload", "verbose", "calculate_tangents", "save_output",
          "position", "scale", "rotation",
          "material", "extra_materials", "primitive_materials",
-         "animation", "children", "attach_to",
+         "animation", "children", "attach_to", "bind_to", "binding",
          "active", "cast_shadows", "affected_by_fog"},
         "mesh");
 
@@ -705,10 +724,11 @@ LoadResult load_scene_json(const std::string&     scenePath,
     Core::Mesh* firstSkinned = nullptr;
 
     std::vector<PendingAttachment> pendingAttachments;
+    std::vector<PendingBind>       pendingBinds;
 
     if (root.contains("meshes")) {
         for (const auto& jm : root["meshes"]) {
-            Core::Mesh* mesh = build_mesh(jm, resourcesPath, pendingAttachments, materialLib);
+            Core::Mesh* mesh = build_mesh(jm, resourcesPath, pendingAttachments, pendingBinds, materialLib);
             result.scene->add(mesh);
 
             if (jm.contains("animation") && firstWithAnimField == nullptr) {
@@ -738,6 +758,22 @@ LoadResult load_scene_json(const std::string&     scenePath,
         anchor->set_name(pa.child->get_name() + "_attach_" + pa.jointName);
         source->add_child(anchor);
         pa.child->set_parent(anchor);
+    }
+
+    // ── resolve hair surface bindings ─────────────────────────────────────────
+    // Look up the head mesh by name; the application turns these into HairBinders
+    // (and reparents the hair onto the head when the binding is applied).
+    for (const auto& pb : pendingBinds) {
+        Core::Mesh* head = nullptr;
+        for (Core::Mesh* m : result.scene->get_meshes()) {
+            if (m && m->get_name() == pb.headName) { head = m; break; }
+        }
+        if (!head) {
+            LOG_ERROR("scene_loader: bind_to references unknown mesh '" +
+                      pb.headName + "' — '" + pb.hair->get_name() + "' will not be bound");
+            continue;
+        }
+        result.hairBindings.push_back({pb.hair, head, pb.bindingPath});
     }
 
     // ── animation: override beats scene field ───────────────────────────────

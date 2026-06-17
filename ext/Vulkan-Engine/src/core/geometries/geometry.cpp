@@ -149,7 +149,30 @@ void Geometry::apply_deformation(const std::vector<float>& morphWeights, const s
         }
     }
 
+    // Retain the deformed buffer so surface-bound hair can read the animated
+    // head surface this frame (see GeometricData::deformedVertexData).
+    m_properties.deformedVertexData = deformed;
+
     m_VAO.vbo.upload_data(deformed.data(), numVerts * sizeof(Graphics::Vertex));
+}
+
+bool Geometry::upload_vertices(const std::vector<Graphics::Vertex>& verts) {
+    if (!m_VAO.loadedOnGPU || verts.empty()) return false;
+    m_VAO.vbo.upload_data(verts.data(), verts.size() * sizeof(Graphics::Vertex));
+    return true;
+}
+
+void Geometry::update_bounds(const std::vector<Graphics::Vertex>& verts) {
+    if (verts.empty()) return;
+    Vec3 mn(INFINITY, INFINITY, INFINITY);
+    Vec3 mx(-INFINITY, -INFINITY, -INFINITY);
+    for (const Graphics::Vertex& v : verts) {
+        mn = glm::min(mn, v.pos);
+        mx = glm::max(mx, v.pos);
+    }
+    m_properties.minCoords = mn;
+    m_properties.maxCoords = mx;
+    m_properties.center    = (mn + mx) * 0.5f;
 }
 
 Graphics::VertexArrays* const get_VAO(Geometry* g) {

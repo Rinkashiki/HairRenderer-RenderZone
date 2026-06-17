@@ -9,6 +9,7 @@
 
 #include "gui.h"
 #include "hair_loader.h"
+#include "scene_loader.h"
 
 USING_VULKAN_ENGINE_NAMESPACE
 
@@ -19,7 +20,7 @@ class HairViewer
     // Single source of truth for the loaded scene. Referenced by both
     // init() (to peek renderer.msaa before constructing the renderer) and
     // setup() (to actually load the scene).
-    static constexpr const char* SCENE_PATH = RESOURCES_PATH "scenes/maria.json";
+    static constexpr const char* SCENE_PATH = RESOURCES_PATH "scenes/nadia.json";
 
     UserInterface m_interface{};
 
@@ -28,6 +29,9 @@ class HairViewer
     Scene*                 m_scene;
     Camera*                camera;
     Tools::Controller*     m_controller;
+
+    // Surface binders for strand-hair meshes (scalp hair, brows, lashes).
+    std::vector<hair_binding::HairBinder*> m_binders;
 
     bool animateLight{false};
 
@@ -50,6 +54,12 @@ class HairViewer
 
   private:
     void setup();
+
+    // Create hair surface binders. If the scene declared bind_to requests, use
+    // them (and their explicit head + sidecar); otherwise auto-discover the head
+    // and strand-hair meshes. Auto-loads a sidecar (<hair file>.hbnd or the
+    // declared path) when present.
+    void setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests);
 
     void tick();
 

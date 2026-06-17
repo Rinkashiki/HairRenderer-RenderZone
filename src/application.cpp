@@ -27,6 +27,11 @@ void HairViewer::init(Systems::RendererSettings settings) {
 
     m_interface.init(m_window, m_scene, m_renderer, &animateLight);
     // m_renderer->set_gui_overlay(m_interface.overlay);
+
+    // Bind-mode panel (below the explorer). Drives the hair surface binders.
+    auto* bindPanel = new Tools::Panel("HAIR BINDING", 0.0f, 0.7f, 0.2f, 0.3f, PanelWidgetFlags::NoMove, true);
+    bindPanel->add_child(new HairBindWidget(&m_binders));
+    m_interface.overlay->add_panel(bindPanel);
 }
 
 void HairViewer::run(Systems::RendererSettings settings) {
@@ -57,6 +62,46 @@ void HairViewer::setup() {
     camera   = result.camera;
 
     m_controller = new Tools::Controller(camera, m_window, ControllerMovementType::ORBITAL);
+
+    setup_hair_binding(result.hairBindings);
+}
+
+// Build a binder for one hair/head pair, auto-loading a sidecar: the explicitly
+// declared path if given, otherwise <hair file>.hbnd next to the asset.
+static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::string& declaredPath) {
+    auto* binder = new hair_binding::HairBinder(hair, head);
+    std::string side = !declaredPath.empty() ? declaredPath : (hair->get_file_route() + ".hbnd");
+    if (std::filesystem::exists(side))
+        binder->load(side);
+    return binder;
+}
+
+void HairViewer::setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests) {
+    // Scene declared explicit bindings — use them verbatim.
+    if (!requests.empty()) {
+        for (const auto& r : requests) {
+            if (r.hair && r.head)
+                m_binders.push_back(make_binder(r.hair, r.head, r.bindingPath));
+        }
+        return;
+    }
+
+    // Otherwise auto-discover: head = first mesh with skin/morph data.
+    Mesh* head = nullptr;
+    for (Mesh* m : m_scene->get_meshes()) {
+        Geometry* g = m ? m->get_geometry(0) : nullptr;
+        if (!g) continue;
+        const auto& props = g->get_properties();
+        if (props.skinData.has_value() || props.morphTargetData.has_value()) { head = m; break; }
+    }
+    if (!head) return; // nothing to bind to
+
+    // Hair = every mesh whose geometry exposes per-strand ranges (.hair).
+    for (Mesh* m : m_scene->get_meshes()) {
+        Geometry* g = m ? m->get_geometry(0) : nullptr;
+        if (!g || g->get_strand_offsets().empty() || m == head) continue;
+        m_binders.push_back(make_binder(m, head, ""));
+    }
 }
 
 void HairViewer::update() {
@@ -65,6 +110,10 @@ void HairViewer::update() {
 
     for (Mesh* mesh : m_scene->get_meshes())
         mesh->advance_animation(m_time.delta);
+
+    // Reconstruct surface-bound hair from the (now-deformed) head surface.
+    for (auto* binder : m_binders)
+        binder->update();
 
     // Rotate the vector around the ZX plane
     auto light = m_scene->get_lights()[0];

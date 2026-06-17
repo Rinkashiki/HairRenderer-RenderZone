@@ -479,14 +479,14 @@ void ResourceManager::upload_geometry_data(Graphics::Device* const device, Core:
             positions.push_back(Vec4(v.pos, 1.0));
         size_t positionsSize = sizeof(Vec4) * positions.size();
 
-        const bool animatable = gd.morphTargetData.has_value() || gd.skinData.has_value();
+        const bool animatable = gd.morphTargetData.has_value() || gd.skinData.has_value() || gd.forceAnimatable;
         device->upload_vertex_arrays(
             *rd, vboSize, gd.vertexData.data(), iboSize, gd.vertexIndex.data(), positionsSize, positions.data(), voxelSize, gd.voxelData.data(), animatable);
     }
     /*
     ACCELERATION STRUCTURE — skip for deformable meshes (VBO is CPU_TO_GPU, not BLAS-compatible).
     */
-    if (createAccelStructure && !g->get_properties().morphTargetData.has_value() && !g->get_properties().skinData.has_value())
+    if (createAccelStructure && !g->get_properties().morphTargetData.has_value() && !g->get_properties().skinData.has_value() && !g->get_properties().forceAnimatable)
     {
         Graphics::BLAS* accel = get_BLAS(g);
         if (!accel->handle)

@@ -1112,11 +1112,20 @@ void VKFW::Tools::Loaders::load_hair(Core::Mesh* const mesh, const char* fileNam
     vertices.reserve(header.point_count * 3);
     std::vector<uint32_t> indices;
 
+    // Start vertex index of each strand (root = first vertex). A trailing
+    // sentinel equal to the total vertex count is appended after the loop so
+    // strand s spans [strandOffsets[s], strandOffsets[s+1]). Used by the hair
+    // surface binder to locate roots and rigidly transform whole strands.
+    std::vector<uint32_t> strandOffsets;
+    strandOffsets.reserve(header.hair_count + 1);
+
     size_t index                  = 0;
     size_t pointId                = 0;
     float  totalFiberLengthGlobal = 0.0f;
     for (size_t hair = 0; hair < header.hair_count; hair++) // Hair Fiber
     {
+        strandOffsets.push_back(static_cast<uint32_t>(index)); // first vertex of this strand
+
         size_t    max_segments   = segments ? segments[hair] : header.d_segments;
         float     strandRandomID = ((float)rand()) / RAND_MAX;
         glm::vec3 color          = {strandRandomID, ((float)rand()) / RAND_MAX, ((float)rand()) / RAND_MAX};
@@ -1181,8 +1190,15 @@ void VKFW::Tools::Loaders::load_hair(Core::Mesh* const mesh, const char* fileNam
         index++;
     }
 
+    strandOffsets.push_back(static_cast<uint32_t>(index)); // sentinel == total vertex count
+
     Core::Geometry* g = new Core::Geometry();
     g->fill(vertices, indices);
+    g->set_strand_offsets(std::move(strandOffsets));
+    // Strand hair is surface-bindable: force a CPU-writable VBO so the hair
+    // surface binder can re-upload deformed strands per frame. Excludes hair
+    // from the RT BLAS (the forward hair path doesn't use it).
+    g->set_animatable(true);
 
     // Calcular media global
     float avgFiberLength = (header.hair_count > 0) ? (totalFiberLengthGlobal / header.hair_count) : 0.0f;

@@ -12,11 +12,21 @@ USING_VULKAN_ENGINE_NAMESPACE
 
 namespace scene_loader {
 
+// A hair mesh that declared `bind_to` (and optionally `binding`). The scene
+// loader only resolves the head pointer + sidecar path; the application builds
+// the actual HairBinder (so hair_binding stays out of SLViewer's link).
+struct HairBindRequest {
+    Core::Mesh* hair        = nullptr;
+    Core::Mesh* head        = nullptr;
+    std::string bindingPath; // absolute sidecar path, empty if none declared
+};
+
 struct LoadResult {
     Core::Scene*  scene           = nullptr;
     Core::Camera* camera          = nullptr;
     Core::Mesh*   primaryAnimated = nullptr; // first mesh that received an animation
     Vec4          clearColor      = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    std::vector<HairBindRequest> hairBindings; // meshes declaring bind_to
 };
 
 // MSAA is baked into renderpasses/pipelines at create_passes(), so it has to be

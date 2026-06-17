@@ -99,13 +99,33 @@
         }
       ],
       "primitive_materials": [0, 3, 4, 1, 1, 2, 2],
-      "animation": "animations/test_anim.json"
+      "animation": "animations/face_anim.json"
     },
     {
       "name":      "Hair",
       "type":      "hair",
       "file":      "models/javi/javi.hair",
       "position":  [-0.011, -0.73, -0.025],
+      "scale":     0.01,
+      "rotation":  [90.0, 180.0, 180.0],
+      "material":  "javi_hair",
+      "attach_to": { "mesh": "Javi", "joint": "head" }
+    },
+    {
+      "name":      "Eyebrows",
+      "type":      "hair",
+      "file":      "models/javi/eyebrows.hair",
+      "position":  [-0.01, -0.61, -0.032],
+      "scale":     0.01,
+      "rotation":  [90.0, 180.0, 180.0],
+      "material":  "javi_hair",
+      "attach_to": { "mesh": "Javi", "joint": "head" }
+    },
+    {
+      "name":      "Eyelashes",
+      "type":      "hair",
+      "file":      "models/nadia/eyelashes.hair",
+      "position":  [-0.01, -0.61, -0.032],
       "scale":     0.01,
       "rotation":  [90.0, 180.0, 180.0],
       "material":  "javi_hair",

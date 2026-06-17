@@ -1,4 +1,56 @@
 #include "gui.h"
+#include <glm/gtc/type_ptr.hpp>
+
+void HairBindWidget::render() {
+    ImGui::TextUnformatted("HAIR → SCALP BINDING");
+    ImGui::Separator();
+
+    if (!m_binders || m_binders->empty()) {
+        ImGui::TextDisabled("No strand hair / head mesh found.");
+        return;
+    }
+
+    auto& binders = *m_binders;
+    if (m_active >= (int)binders.size()) m_active = 0;
+
+    // Hair selector.
+    const std::string activeName = binders[m_active]->hair_mesh()->get_name();
+    if (ImGui::BeginCombo("Hair", activeName.c_str())) {
+        for (int i = 0; i < (int)binders.size(); ++i) {
+            const std::string n = binders[i]->hair_mesh()->get_name();
+            if (ImGui::Selectable(n.c_str(), i == m_active)) m_active = i;
+        }
+        ImGui::EndCombo();
+    }
+
+    hair_binding::HairBinder* binder = binders[m_active];
+    Core::Mesh*               hair   = binder->hair_mesh();
+
+    ImGui::Text("Head: %s", binder->head_mesh() ? binder->head_mesh()->get_name().c_str() : "<none>");
+    ImGui::Text("Status: %s", binder->is_bound() ? "BOUND" : "unbound");
+    ImGui::Spacing();
+
+    // Gross alignment (edits the hair mesh's local transform; bind reads it).
+    Vec3 p = hair->get_position();
+    if (ImGui::DragFloat3("Position", glm::value_ptr(p), 0.01f)) hair->set_position(p);
+    Vec3 r = hair->get_rotation();
+    if (ImGui::DragFloat3("Rotation", glm::value_ptr(r), 0.5f)) hair->set_rotation(r);
+    Vec3 s = hair->get_scale();
+    if (ImGui::DragFloat3("Scale", glm::value_ptr(s), 0.01f)) hair->set_scale(s);
+
+    ImGui::Spacing();
+    ImGui::DragFloat("Normal offset", &m_normalOffset, 0.001f);
+    ImGui::Checkbox("Declip to scalp", &m_declip);
+
+    ImGui::Spacing();
+    const std::string side = hair->get_file_route() + ".hbnd";
+    if (ImGui::Button("Bind")) binder->bind(m_normalOffset, m_declip);
+    ImGui::SameLine();
+    if (ImGui::Button("Save")) binder->save(side);
+    ImGui::SameLine();
+    if (ImGui::Button("Load")) binder->load(side);
+    ImGui::TextDisabled("%s", side.c_str());
+}
 
 void UserInterface::init(Core::IWindow* window, Core::Scene* scene, Systems::BaseRenderer* renderer, bool* animateLight) {
 

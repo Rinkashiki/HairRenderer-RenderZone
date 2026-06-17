@@ -152,6 +152,8 @@ All fields optional. `fov` is vertical field-of-view in degrees.
 | `affected_by_fog` | bool | `true` | |
 | `children` | array | `[]` | Nested meshes. Transforms inherited from this parent. |
 | `attach_to` | object | (none) | Parent this mesh to a specific joint of another mesh's skeleton — useful for hair/glasses/hats that should follow an animated bone. Shape: `{ "mesh": "<top-level mesh name>", "joint": "<joint name>" }`. The mesh's `position` / `rotation` / `scale` then act as **local offset relative to that joint**, so existing values may need re-tuning after attaching. Resolved after every mesh is built, so forward references are fine. Requires the referenced mesh to carry skinning data (i.e. a GLB with a skeleton). |
+| `bind_to` | string | (none) | **Strand `.hair` only.** Surface-bind this hair onto another mesh's skin so it sits on the scalp and follows **morph + skeletal** deformation (not just a bone). Value = the target head mesh's `name`. Replaces `attach_to` for bound hair (binding reparents the hair onto the head). See CLAUDE.md "Hair-to-Scalp Surface Binding". |
+| `binding` | string | `<hair file>.hbnd` | Sidecar binding file path (relative to `resourcesPath`) for `bind_to`. Optional; defaults to the `.hbnd` next to the hair asset. Created in HairViewer's **HAIR BINDING** panel (align → Bind → Save). If absent, the hair loads unbound until bound interactively. |
 
 ---
 

@@ -60,6 +60,21 @@ struct GeometricData {
     std::optional<SkinData>       skinData;
     std::optional<MorphTargetData> morphTargetData;
 
+    // CPU copy of the last deformed vertex buffer (positions/normals/tangents
+    // after morph + skin), retained by apply_deformation() so surface-bound hair
+    // can read the head's animated surface. Empty until deformation runs at least
+    // once; consumers should fall back to vertexData (rest pose) when empty.
+    std::vector<Graphics::Vertex> deformedVertexData;
+
+    // For strand (.hair) geometry: start vertex index of each strand, with a
+    // trailing sentinel equal to the total vertex count, so strand s spans
+    // [strandVertexOffsets[s], strandVertexOffsets[s+1]). Empty for non-hair.
+    std::vector<uint32_t> strandVertexOffsets;
+
+    // Force a CPU-writable (CPU_TO_GPU) VBO even without skin/morph data, so the
+    // buffer can be re-uploaded per frame (surface-bound hair). Disables BLAS.
+    bool forceAnimatable = false;
+
     void compute_statistics();
 };
 
@@ -110,6 +125,33 @@ class Geometry
     inline void set_morph_target_data(MorphTargetData md) {
         m_properties.morphTargetData = std::move(md);
     }
+    // CPU copy of the last deformed vertex buffer (empty if never deformed).
+    inline const std::vector<Graphics::Vertex>& get_deformed_vertices() const {
+        return m_properties.deformedVertexData;
+    }
+    // Per-strand vertex ranges for .hair geometry (see GeometricData).
+    inline void set_strand_offsets(std::vector<uint32_t> offsets) {
+        m_properties.strandVertexOffsets = std::move(offsets);
+    }
+    inline const std::vector<uint32_t>& get_strand_offsets() const {
+        return m_properties.strandVertexOffsets;
+    }
+    // Force a CPU-writable VBO (for surface-bound hair re-uploaded per frame).
+    inline void set_animatable(bool op) {
+        m_properties.forceAnimatable = op;
+    }
+    inline bool is_animatable() const {
+        return m_properties.forceAnimatable || m_properties.skinData.has_value() || m_properties.morphTargetData.has_value();
+    }
+    // Re-upload an externally deformed vertex buffer to the GPU. VBO must be
+    // animatable (see set_animatable). Used by the hair surface binder. Returns
+    // false (no-op) if the VBO is not yet on the GPU or the buffer is empty.
+    bool upload_vertices(const std::vector<Graphics::Vertex>& verts);
+
+    // Recompute the cached AABB stats (min/max/center) from an external vertex
+    // set. Used after surface-binding moves hair into a new space so the mesh
+    // bounding volume (and frustum culling) reflects the bound positions.
+    void update_bounds(const std::vector<Graphics::Vertex>& verts);
     /*
     Use Voxel Acceleration Structure
     */

@@ -48,6 +48,32 @@ As each step completes, move the relevant write-up into `## Done` with a date (m
 
 ---
 
+### Hair-to-scalp surface binding (`.hair`)
+
+Attach `.hair` assets (scalp hair, eyebrows, eyelashes) to the character head so they (1) don't clip into the skin, (2) don't float above it, (3) follow face **morph-target** animation (not just the head bone), and (4) keep their overall silhouette. Scope: `.hair` only — the neural `.ply` path is deprecated/unused.
+
+**Core idea — bind in head-local space, drop the joint attachment.** The head's deformed vertex positions are computed CPU-side every frame (`Geometry::apply_deformation`, `geometry.cpp:83`), so we bind hair to the head *surface* in head-local space instead of riding the `"head"` bone via `JointAttachment`. The bound hair inherits the head's base model matrix; all skeletal **and** morph motion flows in through the deformed surface verts. The head's untouched `vertexData` is always the rest pose (deformation runs on a copy), so it's available for binding for free.
+
+**Technique — barycentric groom binding.** Per strand root: nearest head triangle + barycentric `(u,v)` + a bind-pose root frame (interpolated normal + tangent basis); strand points stored in that frame. Static fit (snap root to surface, small normal epsilon) solves clip/float. Per-frame: rebuild the root frame from the *deformed* triangle and apply the rigid delta `T = M_frame_deformed · M_frame_bind⁻¹` to the strand (rigid-per-strand preserves silhouette). Static head → computed once.
+
+`.hair` layout (`loaders.cpp:1118-1182`): vertices are strand-contiguous, `segments[i]+1` verts per strand, root = first vert of each strand.
+
+**Decisions (locked):** grossly-misaligned assets → interactive gross alignment needed; in-engine bind mode writing a per-asset sidecar; CPU per-frame deform (compute-pass optimization deferred); alignment UI = transform sliders + live preview (3D gizmo deferred).
+
+**Implementation order** (each phase verified with `HairViewer --frames N --log-level warn`, then a manual visual check):
+
+1. ~~*Phase 0 — plumbing.*~~ **Done.** Retained deformed CPU vertex buffer on `Geometry` (+ `get_deformed_vertices`); per-strand `strandOffsets` captured in `load_hair`; opt-in `set_animatable` flag wired into the upload/BLAS decision (`.hair` marked animatable in `load_hair`). Added `upload_vertices` + `update_bounds`.
+2. ~~*Phase 1 — binder core.*~~ **Done.** `src/hair_binding.{h,cpp}` — `HairBinder`: nearest-triangle projection (brute force, one-time), bary + bind-pose root frame, strand points in local frame, root snap + tangent-plane **declip**. Verified: shadow proved roots land on the scalp.
+3. *Phase 2 — runtime follow (CPU).* **Implemented, not yet visually validated** — `update()` rebuilds the frame from the deformed head surface and rigidly transforms each strand; needs a morph/skeletal animation to confirm follow (user deferred wiring a test anim).
+4. ~~*Phase 3 — bind mode + sidecar.*~~ **Done.** `HairBindWidget` panel (align sliders, normal offset, declip toggle, Bind/Save/Load + bind report). `.hbnd` binary sidecar (auto-loaded next to asset). Scene schema `"bind_to"` / `"binding"` → `LoadResult::hairBindings`; app builds binders (kept out of SLViewer's link). Auto-detect fallback when no `bind_to`.
+5. *Phase 4 — roll out + docs.* **Docs done** (`CLAUDE.md` "Hair-to-Scalp Surface Binding", `SCENE.md` `bind_to`/`binding`). **Remaining:** validate Phase 2 follow under animation; consider full surface-collision declip for long drapes; SLViewer headless binder support; then move this entry to `## Done`.
+
+**Known issues / notes:**
+- Declip is a tangent-plane clamp (per root triangle) — short hairs good, long drapes far from their root may still clip.
+- SLViewer build currently fails at a **pre-existing** embedded-shader codegen error (`evalEpicHairBSDF` overload in `forward_fast_hair_strand_epic.glsl`), unrelated to this work; SLViewer also doesn't drive binders yet.
+
+---
+
 ### SLViewer — Windows clean-machine deploy validation
 
 Local Windows smoke test now passes (see Done below). **Still not validated on a clean Windows host** (no Vulkan SDK, no VS), and there is a known blocker for that step:

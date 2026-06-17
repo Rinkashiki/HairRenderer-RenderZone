@@ -106,6 +106,35 @@ All loading goes through `Tools::Loaders::load_3D_file()` (`ext/Vulkan-Engine/sr
 
 Loaded data flows: `Vertex[]` + `uint32_t[]` → `Core::Geometry::fill()` → `Core::Mesh::push_geometry()` → scene.
 
+### Hair-to-Scalp Surface Binding
+
+Strand hair (`.hair` — scalp hair, eyebrows, eyelashes) can be bound to a character head's surface so it sits on the skin (no clip / no float), follows the head's **morph + skeletal** animation, and keeps each strand's silhouette. Neural `.ply` hair is out of scope (deprecated).
+
+**How it works.** Each strand root is projected onto the nearest head triangle (rest pose); per strand we store the triangle, the barycentric coords, and every strand vertex expressed in the bind-pose root frame. Each frame the frame is rebuilt from the head's *deformed* surface vertices and the rigid delta is applied to the whole strand (rigid-per-strand → silhouette preserved). The head's deformed vertices are produced CPU-side every frame by `Geometry::apply_deformation`, so binding follows both morphs and skinning. On bind the hair is reparented under the head with an identity local transform (its model matrix equals the head's); all deformation arrives through the surface, not a joint attachment.
+
+**Interactive bind mode (HairViewer "HAIR BINDING" panel):**
+1. Pick the hair mesh in the dropdown (head = first morph/skinned mesh, auto-detected).
+2. Seat the hair with the **Position / Rotation / Scale** sliders (live preview). Assets are usually grossly misaligned, so this gross alignment is required before binding.
+3. **Normal offset** lifts roots along the surface normal (0 = on the skin).
+4. **Declip to scalp** (default on) clamps strand vertices to the root's scalp plane so bodies don't sink into a head fatter than the groom (cheap, baked at bind time; accurate for short hairs, approximate for long drapes).
+5. **Bind** projects + snaps roots and reparents the hair. Re-bind freely; the console prints a report (`root->surface dist`, `snap`).
+6. **Save** writes a sidecar next to the asset (`<hair file>.hbnd`); **Load** re-applies it.
+
+**Sidecar (`.hbnd`).** Binary: header (`HBND`, version, strand/vertex counts, normal offset) + per-strand (triangle indices + barycentric) + per-vertex (local position + tangent). Validated against the hair geometry on load (counts must match) and auto-loaded at startup when present.
+
+**Scene JSON** (a hair mesh entry; see @SCENE.md):
+- `"bind_to": "<head mesh name>"` — bind onto that mesh's surface (replaces `attach_to` for bound hair).
+- `"binding": "<path.hbnd>"` — optional sidecar path (relative to resources); defaults to `<hair file>.hbnd`.
+
+When no mesh declares `bind_to`, HairViewer auto-discovers the head (first morph/skinned mesh) and binds every `.hair` mesh, loading each `<hair file>.hbnd` if present. The scene loader only records the request (`LoadResult::hairBindings`); the application builds the `HairBinder`, so `hair_binding` is **not** linked into SLViewer.
+
+**Engine notes / limitations.**
+- `.hair` geometry is marked animatable (CPU-writable VBO) in `load_hair`, which excludes it from the RT BLAS (the forward hair path doesn't use it).
+- Per-frame reconstruction is CPU-side (mirrors `apply_deformation`); fine for moderate strand counts (GPU compute path is possible future work). A static (non-animated) head reconstructs once.
+- Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export does not yet drive the binders (HairViewer only).
+
+**Key files:** `src/hair_binding.{h,cpp}` (`HairBinder`: bind / update / sidecar IO), `src/gui.{h,cpp}` (`HairBindWidget`), `src/application.cpp` (`setup_hair_binding()` + per-frame `binder->update()`), `src/scene_loader.{h,cpp}` (`bind_to`/`binding` → `LoadResult::hairBindings`), and engine hooks `Geometry::{get_deformed_vertices,get_strand_offsets,set_animatable,upload_vertices,update_bounds}` + strand-offset capture in `Tools::Loaders::load_hair`.
+
 ### Animation format
 
 The animations loaded are in json format. The specifics of this format and its structure are defined in detail in @ANIMATION.md
