@@ -588,7 +588,7 @@ void main() {
     //Eye socket occlusion (eye.glsl) — eye-mask fragments only _____________
     float eyeAmount = ((int(material.materialFlags) & 8) != 0) ? texture(eyeMaskTex, v_uv).r : 0.0;
     if (eyeAmount > 0.0)
-        color *= mix(1.0, eye_occlusion(v_objNormal), eyeAmount);
+        color = eye_shade(color, brdf.albedo, v_objNormal, eyeAmount);
 
     //Fog ___________________________________________________________________
     if(int(object.otherParams.x) == 1 && scene.enableFog) {
