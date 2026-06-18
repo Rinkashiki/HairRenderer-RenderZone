@@ -6,7 +6,9 @@
 #include <engine/core.h>
 #include <engine/systems.h>
 
+#include "../hair_binding.h"
 #include "../hair_loader.h"
+#include "../scene_loader.h"
 #include "frame_capture.h"
 #include "video_encoder.h"
 
@@ -38,6 +40,11 @@ class SLApplication
     FrameCapture          m_capture;
     std::filesystem::path m_tempDir;
 
+    // Surface binders that snap .hair strands onto the head and reconstruct them
+    // from the deformed surface each frame (mirrors HairViewer). Without these the
+    // strand hair stays at its raw, unbound groom position and renders off-frame.
+    std::vector<hair_binding::HairBinder*> m_binders;
+
   public:
     void run(const std::string& animPath,
              const std::string& scenePath,
@@ -52,5 +59,6 @@ class SLApplication
   private:
     void init();
     void setup();
+    void setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests);
     void tick();
 };

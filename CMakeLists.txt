@@ -77,14 +77,17 @@ endif()
 file(GLOB_RECURSE SLVIEWER_SOURCES "src/slviewer/*.cpp")
 file(GLOB_RECURSE SLVIEWER_HEADERS "src/slviewer/*.h")
 
-# Pull in the shared scene loader and hair loader from the application layer.
+# Pull in the shared scene loader, hair loader, and hair surface binder from the
+# application layer (binder needed so headless export places .hair on the scalp).
 list(APPEND SLVIEWER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_loader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_loader.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_binding.cpp"
 )
 list(APPEND SLVIEWER_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_loader.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_loader.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_binding.h"
 )
 
 add_executable(SLViewer ${SLVIEWER_SOURCES} ${SLVIEWER_HEADERS})

@@ -143,6 +143,11 @@ void SLApplication::setup() {
     m_camera    = result.camera;
     m_character = result.primaryAnimated;  // may be null if scene had no animated mesh
 
+    // Place strand (.hair) meshes on the scalp. Headless export must drive the
+    // surface binders just like HairViewer, otherwise the hair renders at its raw
+    // unbound groom position (off-frame) and the video comes out bald.
+    setup_hair_binding(result.hairBindings);
+
     // Derive frame budget by re-reading the animation header (fps + duration).
     // Cheap: the JSON header is a few hundred bytes regardless of track count.
     m_totalFrames = 1;
@@ -164,9 +169,52 @@ void SLApplication::setup() {
     }
 }
 
+// Build a binder for one hair/head pair, auto-loading a sidecar: the explicitly
+// declared path if given, otherwise <hair file>.hbnd next to the asset.
+// (Mirrors HairViewer's make_binder.)
+static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::string& declaredPath) {
+    auto*       binder = new hair_binding::HairBinder(hair, head);
+    std::string side   = !declaredPath.empty() ? declaredPath : (hair->get_file_route() + ".hbnd");
+    if (std::filesystem::exists(side))
+        binder->load(side);
+    return binder;
+}
+
+void SLApplication::setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests) {
+    // Scene declared explicit bindings — use them verbatim.
+    if (!requests.empty()) {
+        for (const auto& r : requests) {
+            if (r.hair && r.head)
+                m_binders.push_back(make_binder(r.hair, r.head, r.bindingPath));
+        }
+        return;
+    }
+
+    // Otherwise auto-discover: head = first mesh with skin/morph data.
+    Mesh* head = nullptr;
+    for (Mesh* m : m_scene->get_meshes()) {
+        Geometry* g = m ? m->get_geometry(0) : nullptr;
+        if (!g) continue;
+        const auto& props = g->get_properties();
+        if (props.skinData.has_value() || props.morphTargetData.has_value()) { head = m; break; }
+    }
+    if (!head) return; // nothing to bind to
+
+    // Hair = every mesh whose geometry exposes per-strand ranges (.hair).
+    for (Mesh* m : m_scene->get_meshes()) {
+        Geometry* g = m ? m->get_geometry(0) : nullptr;
+        if (!g || g->get_strand_offsets().empty() || m == head) continue;
+        m_binders.push_back(make_binder(m, head, ""));
+    }
+}
+
 void SLApplication::tick() {
     for (Mesh* mesh : m_scene->get_meshes())
         mesh->advance_animation(m_animDt);
+
+    // Reconstruct surface-bound hair from the (now-deformed) head surface.
+    for (auto* binder : m_binders)
+        binder->update();
 
     m_renderer->render(m_scene);
 

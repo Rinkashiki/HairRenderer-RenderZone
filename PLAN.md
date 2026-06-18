@@ -90,6 +90,16 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### SLViewer exports video with no hair — binders not driven headless (2026-06-18)
+
+`SLViewer` produced videos with the character bald, while HairViewer (same scene) showed the hair. The `.hair` meshes *were* in the scene (the loader adds them and records `bind_to` requests in `result.hairBindings`), but `SLApplication::setup()` ignored `hairBindings` — no `HairBinder` was built and `tick()` had no `binder->update()`. So the strand hair stayed at its raw, unbound groom-space coordinates (grossly misaligned / off-camera) and never appeared in the framed video. `hair_binding.cpp` was historically not even linked into SLViewer.
+
+**Fix shipped:** port the hair surface-binding pipeline into SLViewer, reusing the exact same module HairViewer uses.
+- `CMakeLists.txt` — add `src/hair_binding.{cpp,h}` to `SLVIEWER_SOURCES`/`SLVIEWER_HEADERS`.
+- `src/slviewer/application_sl.{h,cpp}` — `m_binders` + a `setup_hair_binding()` that mirrors HairViewer (explicit `bind_to` requests, else auto-discover head = first skin/morph mesh and bind every `.hair`; auto-loads the `<hair file>.hbnd` sidecar via `make_binder`). Called from `setup()` after `load_scene_json`; `tick()` runs `binder->update()` for each binder before `render()`.
+
+**Verified:** user confirmed the headless export now renders the hair on the scalp. CLAUDE.md updated (removed the "SLViewer does not drive the binders / hair_binding not linked into SLViewer" limitations).
+
 ### Flickering black "strand" lines on animated skin — VBO race under frames-in-flight (2026-06-18)
 
 With `test_anim.json` playing, thin dark flickering lines appeared on the **animated** skin (right arm, face) and nowhere else. They tracked four conditions: present only on animated geometry, present at HIGH shadow quality (gone at lower), present when hair cast shadows, and — the confusing one — they **disappeared when several hair meshes were loaded**.

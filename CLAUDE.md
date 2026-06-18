@@ -126,12 +126,12 @@ Strand hair (`.hair` — scalp hair, eyebrows, eyelashes) can be bound to a char
 - `"bind_to": "<head mesh name>"` — bind onto that mesh's surface (replaces `attach_to` for bound hair).
 - `"binding": "<path.hbnd>"` — optional sidecar path (relative to resources); defaults to `<hair file>.hbnd`.
 
-When no mesh declares `bind_to`, HairViewer auto-discovers the head (first morph/skinned mesh) and binds every `.hair` mesh, loading each `<hair file>.hbnd` if present. The scene loader only records the request (`LoadResult::hairBindings`); the application builds the `HairBinder`, so `hair_binding` is **not** linked into SLViewer.
+When no mesh declares `bind_to`, both viewers auto-discover the head (first morph/skinned mesh) and bind every `.hair` mesh, loading each `<hair file>.hbnd` if present. The scene loader only records the request (`LoadResult::hairBindings`); each application builds the `HairBinder`. Both **HairViewer** (`src/application.cpp`) and **SLViewer** (`src/slviewer/application_sl.cpp`) run the same `setup_hair_binding()` + per-frame `binder->update()` logic, so `hair_binding.cpp` is linked into both targets (added to `SLVIEWER_SOURCES` in `CMakeLists.txt`). Without this the strand hair renders at its raw unbound groom position (off-frame).
 
 **Engine notes / limitations.**
 - `.hair` geometry is marked animatable (CPU-writable VBO) in `load_hair`, which excludes it from the RT BLAS (the forward hair path doesn't use it).
 - Per-frame reconstruction is CPU-side (mirrors `apply_deformation`); fine for moderate strand counts (GPU compute path is possible future work). A static (non-animated) head reconstructs once.
-- Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export does not yet drive the binders (HairViewer only).
+- Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export now drives the binders too (same `setup_hair_binding()` + per-frame `binder->update()` as HairViewer), so exported video matches the interactive view.
 
 **Key files:** `src/hair_binding.{h,cpp}` (`HairBinder`: bind / update / sidecar IO), `src/gui.{h,cpp}` (`HairBindWidget`), `src/application.cpp` (`setup_hair_binding()` + per-frame `binder->update()`), `src/scene_loader.{h,cpp}` (`bind_to`/`binding` → `LoadResult::hairBindings`), and engine hooks `Geometry::{get_deformed_vertices,get_strand_offsets,set_animatable,upload_vertices,update_bounds}` + strand-offset capture in `Tools::Loaders::load_hair`.
 
