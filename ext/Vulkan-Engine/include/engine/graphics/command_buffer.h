@@ -65,7 +65,8 @@ struct CommandBuffer {
                           AccessFlags   srcMask   = ACCESS_COLOR_ATTACHMENT_WRITE,
                           AccessFlags   dstMask   = ACCESS_SHADER_READ,
                           PipelineStage srcStage  = STAGE_COLOR_ATTACHMENT_OUTPUT,
-                          PipelineStage dstStage  = STAGE_FRAGMENT_SHADER);
+                          PipelineStage dstStage  = STAGE_FRAGMENT_SHADER,
+                          ImageAspect   aspect    = ASPECT_COLOR);
     void pipeline_barrier(Image&        img,
                           uint32_t      baseMipLevel,
                           uint32_t      mipLevels,

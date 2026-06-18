@@ -153,12 +153,29 @@ void Geometry::apply_deformation(const std::vector<float>& morphWeights, const s
     // head surface this frame (see GeometricData::deformedVertexData).
     m_properties.deformedVertexData = deformed;
 
-    m_VAO.vbo.upload_data(deformed.data(), numVerts * sizeof(Graphics::Vertex));
+    cycle_animatable_upload(deformed.data(), numVerts * sizeof(Graphics::Vertex));
+}
+
+void Geometry::cycle_animatable_upload(const void* data, size_t size) {
+    if (m_VAO.vboCopies > 1)
+    {
+        // Advance to the next ring region and write there; the draw binds this
+        // region via vboFrameOffset, so the GPU never reads a region the CPU is
+        // mid-write on for another in-flight frame.
+        m_VAO.vboWriteIndex   = (m_VAO.vboWriteIndex + 1) % m_VAO.vboCopies;
+        const size_t offset   = static_cast<size_t>(m_VAO.vboWriteIndex) * m_VAO.vboCopyStride;
+        m_VAO.vbo.upload_data(data, size, offset);
+        m_VAO.vboFrameOffset  = static_cast<uint32_t>(offset);
+    }
+    else
+    {
+        m_VAO.vbo.upload_data(data, size);
+    }
 }
 
 bool Geometry::upload_vertices(const std::vector<Graphics::Vertex>& verts) {
     if (!m_VAO.loadedOnGPU || verts.empty()) return false;
-    m_VAO.vbo.upload_data(verts.data(), verts.size() * sizeof(Graphics::Vertex));
+    cycle_animatable_upload(verts.data(), verts.size() * sizeof(Graphics::Vertex));
     return true;
 }
 

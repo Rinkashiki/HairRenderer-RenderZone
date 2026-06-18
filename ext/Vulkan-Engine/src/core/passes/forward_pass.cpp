@@ -393,6 +393,33 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
     PROFILING_EVENT()
 
     CommandBuffer cmd = currentFrame.commandBuffer;
+
+    // Cross-frame serialization of the (single-buffered) depth attachment. Same
+    // hazard class as the shadow pass: the renderer runs frames in flight but this
+    // depth target is one shared image, so frame N+1 would clear/write it while
+    // frame N's depth (and the post-passes that sample it: SSAO/SSS/DoF) are still
+    // in flight. Make this frame's depth write wait for the previous frame's.
+    // (Depth is the last attachment pushed in setup_attachments.)
+    Image& depthImg = m_framebuffers[0].attachmentImages.back();
+    if (depthImg.currentLayout == LAYOUT_UNDEFINED)
+        cmd.pipeline_barrier(depthImg,
+                             LAYOUT_UNDEFINED,
+                             LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                             ACCESS_NONE,
+                             ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+                             STAGE_TOP_OF_PIPE,
+                             STAGE_EARLY_FRAGMENT_TESTS,
+                             ASPECT_DEPTH);
+    else
+        cmd.pipeline_barrier(depthImg,
+                             LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                             LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                             ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+                             ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+                             STAGE_LATE_FRAGMENT_TESTS,
+                             STAGE_EARLY_FRAGMENT_TESTS,
+                             ASPECT_DEPTH);
+
     cmd.begin_renderpass(m_renderpass, m_framebuffers[0]);
     cmd.set_viewport(m_imageExtent);
 

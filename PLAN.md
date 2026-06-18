@@ -90,6 +90,23 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Flickering black "strand" lines on animated skin — VBO race under frames-in-flight (2026-06-18)
+
+With `test_anim.json` playing, thin dark flickering lines appeared on the **animated** skin (right arm, face) and nowhere else. They tracked four conditions: present only on animated geometry, present at HIGH shadow quality (gone at lower), present when hair cast shadows, and — the confusing one — they **disappeared when several hair meshes were loaded**.
+
+**Misdirections (ruled out, but left useful changes):** First suspected a missing shadow-map read barrier, then self-shadow acne. Enabling **synchronization validation** (temporarily, via `VkValidationFeaturesEXT` in `bootstrap.cpp`) surfaced real cross-frame `WRITE_AFTER_WRITE` hazards on the single-buffered **shadow depth** and **forward depth** attachments. Serializing those (added barriers in `variance_shadow_pass.cpp` and `forward_pass.cpp`, plus an `aspect` param on `CommandBuffer::pipeline_barrier`) eliminated the hazards (56→0) **but not the visible lines** — so they were real bugs, just not this one. A freeze-pose toggle (P) showed the lines **vanish when the pose is frozen**, and a forced `vkDeviceWaitIdle`-before-deform toggle showed them **vanish with animation still playing** → a CPU/GPU data race, confirmed.
+
+**Root cause:** `Geometry::apply_deformation` / `upload_vertices` re-`memcpy` the deformed vertices into a **single host-mapped VBO** every frame (`geometry.cpp`), but the renderer runs `BufferingType::DOUBLE` (2 frames in flight) with **no per-frame copy and no fence gating the write**. The CPU overwrote the VBO while the GPU was still reading it for an in-flight frame — and even within one frame the shadow pass and forward pass could fetch different poses → the body's depth no longer matched its own shadow map → flickering self-shadow lines on exactly the vertices that moved. Invisible to sync-validation because it's a host `memcpy` racing GPU reads on persistently-mapped memory, not a GPU-command hazard. ("More hair meshes → gone" was just extra GPU work shifting the race window.)
+
+**Fix shipped:** double-buffer animatable VBOs. The VBO now allocates `RING = 3` (≥ frames-in-flight + 1) back-to-back copies of the vertex data; each re-upload advances a ring cursor, writes a different region, and records its byte offset, which the draw binds. CPU writes and GPU reads never touch the same region, and the shadow/forward passes read the same region within a frame.
+- `ext/Vulkan-Engine/include/engine/graphics/vao.h` — `vboCopies`/`vboCopyStride`/`vboWriteIndex`/`vboFrameOffset` on `VertexArrays`.
+- `ext/Vulkan-Engine/src/graphics/device.cpp::upload_vertex_arrays` — allocate `vboSize * RING` for animatable VBOs (seed region 0).
+- `ext/Vulkan-Engine/src/core/geometries/geometry.cpp` — `cycle_animatable_upload()` ring cursor, used by `apply_deformation` (skin/morph) and `upload_vertices` (surface-bound hair).
+- `ext/Vulkan-Engine/src/graphics/command_buffer.cpp::draw_geometry` — bind `vao.vboFrameOffset` (0 for static geometry).
+- **Note:** `RING = 3` assumes DOUBLE buffering; raise to `framesInFlight + 1` (4) if the renderer is ever switched to `TRIPLE`.
+
+Also added a runtime **freeze-animation toggle (key P)** in `HairViewer` (kept as a feature). **Verified:** user confirmed the lines are gone with animation at full speed.
+
 ### d'Eon hybrid normals + SSS cavity rollback (2026-06-03)
 
 Two related refinements to the skin pipeline, validated together by the user against side-by-side renders of Maria.

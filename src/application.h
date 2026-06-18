@@ -34,6 +34,7 @@ class HairViewer
     std::vector<hair_binding::HairBinder*> m_binders;
 
     bool animateLight{false};
+    bool freezeAnimation{false}; // Press P to freeze/unfreeze the animation pose
 
     int m_maxFrames{0};
     int m_frameCount{0};
@@ -83,6 +84,10 @@ class HairViewer
         if (glfwGetKey(glfwWindow, GLFW_KEY_L) == GLFW_PRESS)
         {
             animateLight = animateLight ? false : true;
+        }
+        if (glfwGetKey(glfwWindow, GLFW_KEY_P) == GLFW_PRESS)
+        {
+            freezeAnimation = freezeAnimation ? false : true;
         }
     }
 

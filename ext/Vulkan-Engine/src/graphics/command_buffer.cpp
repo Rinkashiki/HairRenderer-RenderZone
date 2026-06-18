@@ -141,7 +141,9 @@ void CommandBuffer::draw_geometry(VertexArrays& vao, uint32_t instanceCount, uin
     PROFILING_EVENT()
 
     VkBuffer     vertexBuffers[] = {vao.vbo.handle};
-    VkDeviceSize offsets[]       = {0};
+    // Animatable geometry double-buffers its vertex data across several regions of
+    // one VBO; bind the region written for this frame (0 for static geometry).
+    VkDeviceSize offsets[]       = {vao.vboFrameOffset};
     vkCmdBindVertexBuffers(handle, 0, 1, vertexBuffers, offsets);
 
     if (vao.indexCount > 0)
@@ -213,7 +215,8 @@ void Graphics::CommandBuffer::pipeline_barrier(Image&        img,
                                                AccessFlags   srcMask,
                                                AccessFlags   dstMask,
                                                PipelineStage srcStage,
-                                               PipelineStage dstStage) {
+                                               PipelineStage dstStage,
+                                               ImageAspect   aspect) {
 
     VkImageMemoryBarrier barrier            = {};
     barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -222,7 +225,7 @@ void Graphics::CommandBuffer::pipeline_barrier(Image&        img,
     barrier.srcAccessMask                   = Translator::get(srcMask);
     barrier.dstAccessMask                   = Translator::get(dstMask);
     barrier.image                           = img.handle;
-    barrier.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.aspectMask     = Translator::get(aspect);
     barrier.subresourceRange.baseMipLevel   = img.baseMipLevel;
     barrier.subresourceRange.levelCount     = img.mipLevels;
     barrier.subresourceRange.baseArrayLayer = 0;

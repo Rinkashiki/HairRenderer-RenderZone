@@ -467,10 +467,19 @@ void Device::upload_vertex_arrays(VertexArrays& vao,
     // Should be executed only once if geometry data is not changed
 
     if (animatableVBO) {
-        // Host-visible VBO: per-frame CPU writes via upload_data(), no staging needed.
-        vao.vbo = create_buffer_VMA(vboSize,
+        // Host-visible VBO re-uploaded per frame. Allocate RING back-to-back copies
+        // so a CPU re-upload never overwrites a region an in-flight frame is still
+        // reading (see VertexArrays comment). RING must be >= frames-in-flight + 1;
+        // the engine uses DOUBLE buffering (2 frames), so 3 is sufficient.
+        constexpr uint32_t RING = 3;
+        vao.vboCopies      = RING;
+        vao.vboCopyStride  = static_cast<uint32_t>(vboSize);
+        vao.vboWriteIndex  = 0;
+        vao.vboFrameOffset = 0;
+        vao.vbo            = create_buffer_VMA(vboSize * RING,
                                     BUFFER_USAGE_VERTEX_BUFFER | BUFFER_USAGE_SHADER_DEVICE_ADDRESS | BUFFER_USAGE_STORAGE_BUFFER,
                                     VMA_MEMORY_USAGE_CPU_TO_GPU);
+        // Seed region 0 so the very first frame (before any deformation) is valid.
         vao.vbo.upload_data(vboData, vboSize);
     } else {
         Buffer vboStagingBuffer = create_buffer_VMA(vboSize, BUFFER_USAGE_TRANSFER_SRC, VMA_MEMORY_USAGE_CPU_ONLY);

@@ -26,6 +26,20 @@ struct VertexArrays {
     Buffer   ibo         = {};
     uint32_t indexCount  = 0;
 
+    // Animatable VBO double-buffering. For deformable geometry the VBO is
+    // re-uploaded by the CPU every frame, but the renderer keeps several frames
+    // in flight — so the buffer holds `vboCopies` back-to-back copies of the
+    // vertex data and each frame writes/binds a *different* region. This keeps a
+    // CPU re-upload from overwriting a region the GPU is still reading for an
+    // in-flight frame (which produced flickering self-shadow lines on animated
+    // skin). `vboFrameOffset` is the byte offset of the region drawn this frame;
+    // it stays 0 for static geometry (vboCopies == 1). Must be >= frames-in-flight
+    // + 1 (engine uses DOUBLE buffering = 2, so 3 copies).
+    uint32_t vboCopies      = 1;
+    uint32_t vboCopyStride  = 0; // bytes per copy (== one vertex-data block)
+    uint32_t vboWriteIndex  = 0; // ring cursor advanced on each re-upload
+    uint32_t vboFrameOffset = 0; // byte offset bound by the draw this frame
+
     Buffer   posSSBO;
     Buffer   indexSSBO;
     /*

@@ -108,8 +108,11 @@ void HairViewer::update() {
     if (!m_interface.overlay->wants_to_handle_input())
         m_controller->handle_keyboard(0, 0, m_time.delta);
 
+    // Press P to freeze the pose: delta 0 holds the animation and the bound hair.
+    const float animDelta = freezeAnimation ? 0.0f : m_time.delta;
+
     for (Mesh* mesh : m_scene->get_meshes())
-        mesh->advance_animation(m_time.delta);
+        mesh->advance_animation(animDelta);
 
     // Reconstruct surface-bound hair from the (now-deformed) head surface.
     for (auto* binder : m_binders)

@@ -94,6 +94,12 @@ class Geometry
     friend Graphics::VertexArrays* const get_VAO(Geometry* g);
     friend Graphics::BLAS* const         get_BLAS(Geometry* g);
 
+    // Upload per-frame vertex data into the animatable VBO's next ring region
+    // (advancing the cursor and recording the byte offset to bind this frame), or
+    // straight into a static VBO. Prevents the CPU from overwriting a region the
+    // GPU is still reading for an in-flight frame.
+    void cycle_animatable_upload(const void* data, size_t size);
+
   public:
     Geometry() {
     }

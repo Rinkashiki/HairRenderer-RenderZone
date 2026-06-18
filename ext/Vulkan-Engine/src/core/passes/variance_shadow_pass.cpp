@@ -122,6 +122,38 @@ void VarianceShadowPass::render(Graphics::Frame& currentFrame, Scene* const scen
         return;
 
     CommandBuffer cmd = currentFrame.commandBuffer;
+
+    // Cross-frame serialization of the (single-buffered) shadow depth attachment.
+    // The renderer runs multiple frames in flight (BufferingType::DOUBLE) but this
+    // shadow target is a single shared image. Without a barrier, frame N+1 begins
+    // clearing/writing the depth (and thus the moments produced from it) while
+    // frame N's shadow pass is still resolving its depth -> torn depth -> corrupted
+    // moments -> flickering self-shadows, visible only on ANIMATED geometry (a
+    // static shadow is identical every frame, so the tearing is invisible). Make
+    // this frame's depth write wait for the previous frame's depth write. Gating
+    // the depth (earliest write in the pass) also gates the moment color that
+    // follows it; the moment *read* in the forward pass is already covered by the
+    // renderpass layout transition, so no extra color barrier is needed.
+    Image& depthImg = m_framebuffers[0].attachmentImages[1];
+    if (depthImg.currentLayout == LAYOUT_UNDEFINED)
+        cmd.pipeline_barrier(depthImg,
+                             LAYOUT_UNDEFINED,
+                             LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                             ACCESS_NONE,
+                             ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+                             STAGE_TOP_OF_PIPE,
+                             STAGE_EARLY_FRAGMENT_TESTS,
+                             ASPECT_DEPTH);
+    else
+        cmd.pipeline_barrier(depthImg,
+                             LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                             LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                             ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+                             ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+                             STAGE_LATE_FRAGMENT_TESTS,
+                             STAGE_EARLY_FRAGMENT_TESTS,
+                             ASPECT_DEPTH);
+
     cmd.begin_renderpass(m_renderpass, m_framebuffers[0]);
     cmd.set_viewport(m_imageExtent);
 
