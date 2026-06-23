@@ -6,6 +6,66 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
+### Hair self-shadow — Deep Opacity Map attempt (abandoned 2026-06-23, notes for future work)
+
+**Goal.** Replace the voxel cone-trace hair self-shadow (which produced light-dependent
+streak/wedge artifacts at 256³) with a directional, artifact-free hair-on-hair self-shadow,
+to tame the backlit blonde glow without flattening front-lit colour. A non-directional
+density "AO" was tried first and rejected (it dimmed equally in all directions → killed the
+blonde, since inter-fiber multiple scattering *is* the blonde look). The directional
+requirement led to a **Deep/Opacity Shadow Map** (Yuksel 2008).
+
+**What was built (all reverted; reconstruct from this entry if needed).**
+- New `HairDeepOpacityPass` (`core/passes/hair_deep_opacity_pass.{h,cpp}`), modeled on
+  `VarianceShadowPass`: renders strand hair from each light's POV into an RGBA16F
+  `sampler2DArray` (slice per light) via the same geometry-shader layer fan-out
+  (`gl_Layer = lightId`, transform by `lights[i].viewProj`), additive blend, depth test off,
+  hair-only (inverse of the VSM hair filter). Registered as `HAIR_DOM_PASS` (enum slot 3,
+  shifting FORWARD_PASS→4 …) in `ForwardRenderer::create_passes`; its attachment fed to the
+  forward pass via a `ForwardPass::set_hair_dom_descriptor()` setter (binding **15**) called
+  once in `on_before_render` (NOT the dependency table — that hardcodes binding 2 for the VSM).
+- Shader `resources/shaders/shadows/hair_dom.glsl` + sampling in `hair_strand_epic.glsl`.
+
+**Hard-won findings (these are the value of this entry):**
+1. **`read_file()` footgun:** a unified `.glsl` MUST start with a `#shader` directive — any
+   line before the first directive is written to `ss[(int)StageType::NONE] == ss[-1]`, an
+   out-of-bounds write that segfaults.
+2. **`file(GLOB)` is configure-time:** a brand-new engine `.cpp` is not compiled until
+   `cmake` is re-run (else link error `vtable ... undefined`).
+3. **Depth parameterization is the whole battle.** NDC depth (`gl_FragCoord.z`) is
+   perspective-compressed to ~1e-4 across the hair → layering collapses. Linear distance
+   from the light works. Normalizing over the shared hair-union AABB compresses the scalp
+   hair into a thin slice (eyebrows/lashes stretch the box) → use the **per-mesh** extent,
+   packed into the unused `minCoord.w / maxCoord.w / otherParams1.w` lanes by
+   `ResourceManager::update_object_data` (min/maxCoord.xyz are taken by the shared union for
+   the voxel volume), projected onto the light direction so the depth box auto-sizes per
+   light (no fixed-radius "cut" that slides with the light).
+4. **Discrete layers always band.** 4 hard `int(t*4)` layers, even smooth-splatted, leave
+   slope-kinks at the layer boundaries → a sharp light-relative "cut" line. The fix that
+   worked: **moment-based** opacity — accumulate `sum(o), sum(o·t), sum(o·t²)`, reconstruct
+   "opacity in front of depth t" with a smooth **logistic CDF** (mean/variance, variance
+   floored by `MIN_STDDEV` as a softness knob). Continuous → no banding/cut.
+5. **Sparse rasterization → acne.** Thin hair lines hit each shadow texel randomly; a single
+   bilinear sample reads per-texel noise → self-shadow acne once opacity is low enough to see
+   the colour. Mitigated (not eliminated) by a multi-tap blur of the (linear) moment map on read.
+6. **Application / perceived inversion:** routing the DOM transmittance through the dual-
+   scattering `hairCount` can *brighten* backlit hair (more layers → stronger forward-scatter
+   `Tf·Sf`), reading as inverted self-shadow. Applying `T_dom` as a **direct multiplier on
+   the light's contribution** (`color += lighting * T_dom`) darkens reliably.
+
+**Why abandoned:** even after all the above, the opacity sat on a knife-edge — strong enough
+to shadow looked too dark / re-introduced acne, weak enough to stay blonde did almost nothing
+(`T_dom ≈ 1`). Reverted to the voxel cone-trace baseline at the user's request, keeping only
+the per-light **distance attenuation** added on the hair (`computeAttenuation` in
+`hair_strand_epic.glsl`) — a genuine win that fixed the runaway hair-vs-skin contrast when the
+character moves far from the light (the hair direct term previously ignored distance falloff
+while the skin's didn't).
+
+**If resumed:** moment-based DOM (4) + per-mesh adaptive box (3) + direct-multiply
+application (6) is the right skeleton; the remaining problem is the huge per-texel strand-
+count dynamic range making the opacity un-tunable. Try: normalize opacity by per-texel
+coverage, a Fourier opacity map, or a higher-res (512³) hair voxel volume for the cone-trace.
+
 ### Skin realism — authored maps + microdetail & pores
 
 Two-layer push on skin realism. **Layer A** surfaces the authored map sets already shipped under `resources/textures/<character>/` — some slots exist in `PhysicallyBasedMaterial` (albedo/normal/roughness/AO/metallic/emissive), others don't (bent normal, curvature, scattering, clothes mask) and need engine + shader work. **Layer B** adds pore-scale detail on top of the base normal — mostly inside `physically_based.glsl`, with a small cavity-aware modulation in `ssss.glsl`. No new render passes, no C++ pass restructure.
