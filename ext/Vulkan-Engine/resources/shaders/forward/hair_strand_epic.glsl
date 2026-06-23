@@ -639,7 +639,8 @@ void main() {
                                              material.tt > 0.5,
                                              material.trt > 0.5,
                                              material.scatter > 0.5) *
-                            scene.lights[i].color * scene.lights[i].intensity * HAIR_GLOBAL_SCALE;
+                            scene.lights[i].color * scene.lights[i].intensity *
+                            computeAttenuation(scene.lights[i], g_pos) * HAIR_GLOBAL_SCALE;
 
             color += lighting;
             // if(transMask.hairCount < 1000000.0)
