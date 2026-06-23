@@ -45,6 +45,8 @@ The renderer is **forward** (not deferred). The `ForwardRenderer` (`systems/rend
 
 Hair rendering uses the forward path because hair fibers benefit from hardware MSAA — TAA is insufficient for fine strands.
 
+**Hair shadowing (deliberate setup, see `hair_strand_epic.glsl` + `variance_shadow_pass.cpp`):** the hair is **not** rendered into the variance shadow map, and its **voxel cone-trace self-shadow is disabled**. Both produced dark, light-dependent streaks/wedges on the hair (hair-as-lines self-shadow acne in the VSM; coarse-256³ path-integral wedges in the voxel cone trace). The hair now takes occlusion from the smooth VSM `solidOcclusion` **only** — so the head/body still shadow the hair, but hair-on-hair self-shadow is off. Trade-offs / how to restore: hair no longer casts a shadow-map shadow onto the face/body (re-add via VSM receiver-bias tuning), and hair-on-hair self-shadow needs a higher-resolution hair voxel volume (e.g. 512³) before the voxel path can be re-enabled cleanly. `computeHairShadow`/`hairShadow`/`computeHairShadowCone` remain defined but uncalled.
+
 ### Adding a New Post-Process Pass
 
 1. **Create the pass class**: Inherit from `PostProcessPass` (or `BasePass` for full control). See `postprocess_pass.h/cpp` for the simplest template — it takes a shader path, binds one input image, and draws a fullscreen quad (`m_vignette`).
@@ -130,6 +132,7 @@ When no mesh declares `bind_to`, both viewers auto-discover the head (first morp
 
 **Engine notes / limitations.**
 - `.hair` geometry is marked animatable (CPU-writable VBO) in `load_hair`, which excludes it from the RT BLAS (the forward hair path doesn't use it).
+- **Animatable geometry keeps two ring buffers, not one.** Besides the deformed-vertex VBO ring, `Geometry::cycle_animatable_upload` also rings the **position SSBO** (`vao.posSSBO`, one `Vec4`/vertex), because the hair voxelization (`HAIR_VOXELIZATION_PASS`, `OPTICAL_DENSITY` mode), SSAO and SSR read strand positions from that bindless buffer — not the VBO. The bindless descriptor is re-pointed at the live region each frame (`forward_pass`/`hair_voxelization_pass` `update_uniforms` pass `readOffset = posFrameOffset`). Without this the hair's volumetric self-shadow/scattering freezes at the groom pose while the visible strands move (the strand model matrix is ~identity — animation is baked into the vertices). `RING == 3` for both rings (DOUBLE buffering; bump to 4 for TRIPLE).
 - Per-frame reconstruction is CPU-side (mirrors `apply_deformation`); fine for moderate strand counts (GPU compute path is possible future work). A static (non-animated) head reconstructs once.
 - Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export now drives the binders too (same `setup_hair_binding()` + per-frame `binder->update()` as HairViewer), so exported video matches the interactive view.
 

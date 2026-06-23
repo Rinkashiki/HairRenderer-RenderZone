@@ -90,6 +90,35 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Dark shadow streaks / wedges on the hair (point-light dependent) (2026-06-23)
+
+The strand hair showed dark, light-direction-dependent streaks and hard wedges — strongest at grazing light, and gone when the PointLight was disabled. Diagnosed entirely by GUI isolation + user screenshots (the dev environment can't render: Vulkan-over-VNC isn't screenshot-able and SLViewer crashes at init on the local NVIDIA driver). Two **independent** self-shadow sources on the hair, both fed by the point light:
+
+1. **Voxel cone-trace self-shadow** (`hairShadow` / `computeHairShadowCone` in `hair_strand_epic.glsl`) — cone-marches the 256³ `HAIR_VOXEL` density. Over a large, scene-scaled groom the path integral through the coarse voxelized strands projects as hard streaks/wedges. Bias (normal-offset), mip-floor blur, and `FIBER_SCALE` reduction each only *partly* helped — confirmed not fully fixable at this voxel resolution.
+2. **VSM shadow-map self-shadow** — strand hair was rendered into the variance shadow map *as lines* (`vsm_line_geom`), so when the hair sampled the map back (`solidOcclusion = computeVarianceShadow`) its own strands shadowed it → thin line acne. This is why disabling the shadow-map term *alone* didn't clean it (voxel still on) and disabling *both* did.
+
+**Fix shipped** (clean hair, head→hair shadow preserved):
+- `hair_strand_epic.glsl` — hair occlusion (both `directFraction` and the multiple-scattering `transMask.visibility`) now uses the smooth VSM `solidOcclusion` **only**; the voxel cone-trace self-shadow is no longer used on the hair. `computeHairShadow`/`hairShadow`/`computeHairShadowCone` are left defined but uncalled (reverted to their original bodies). A block comment records why and that re-enabling needs a higher-res hair voxel volume (e.g. 512³) / tighter per-mesh AABB.
+- `variance_shadow_pass.cpp` — skip `HAIR_STR_*_TYPE` meshes when rendering the shadow map, so hair no longer self-shadows via the VSM (head/body still cast → head→hair shadow kept). Trade-off: hair no longer casts a shadow-map shadow onto the face/body (future work: VSM receiver-bias tuning to keep hair→skin shadow without hair-on-hair acne).
+
+**Verified:** user confirmed "the hair looks clean" (PointLight on, HIGH shadows, the previously-worst back/crown grazing views). Earlier `posSSBO`/mip/bias/`FIBER_SCALE` experiments on the voxel path were reverted (dead code once the voxel self-shadow was dropped); the `posSSBO` ring itself is kept for SSAO/SSR.
+
+### Hair self-shadow / scattering frozen under animation — stale `posSSBO` (2026-06-19)
+
+With a moving animation (e.g. `dance_anim.json`) the strand hair rendered and moved correctly, but its volumetric self-shadow / scattering stayed frozen at the groom pose. Root cause: the hair's density comes from `HAIR_VOXELIZATION_PASS` (active mode `OPTICAL_DENSITY == 1`), whose compute shader (`DDA_fiber_optical_density.glsl`) reads strand positions from the bindless **`posSSBO`** and transforms them by the model matrix. `posSSBO` was filled **once at load** (`device.cpp`, GPU-only) and never refreshed. Surface-bound hair animates by the binder rewriting *vertices* every frame (`HairBinder::update → upload_vertices`, which ring-updates `vao.vbo` only) while the strand model matrix stays ~identity — so the voxel density was built from the original positions and froze. Same bug class as the earlier flicker fix (a GPU buffer not following the per-frame CPU deformation); that fix updated the VBO but missed `posSSBO`. `posSSBO` is also read by SSAO and SSR, so those were stale on hair too.
+
+**Fix shipped:** mirror the VBO ring-buffer onto `posSSBO`, no GLSL changes.
+- `vao.h` — `posCopies` / `posCopyStride` / `posFrameOffset`, cycled in lockstep with `vboWriteIndex`.
+- `device.cpp` (`upload_vertex_arrays`) — animatable geometry allocates `posSSBO` host-visible (`CPU_TO_GPU`), `RING×` sized, region stride aligned to `minStorageBufferOffsetAlignment`, region 0 seeded. Static meshes keep the GPU-only single-region staging path.
+- `geometry.cpp` (`cycle_animatable_upload`) — extract `Vec4` positions from the deformed vertices into the matching `posSSBO` ring region (reused `m_posUploadScratch`), record `posFrameOffset`.
+- `forward_pass.cpp` + `hair_voxelization_pass.cpp` (`update_uniforms`, run per-frame) — write the bindless `posSSBO` descriptor with `readOffset = posFrameOffset` and range = one region for animatable geometry (offset 0 / whole buffer for static).
+
+**Note (2026-06-23):** this was a real latent fix (the voxel density now tracks the animation, and `posSSBO` was also stale for SSAO/SSR) but it was **not** the artifact the user was actually seeing — see the next entry. The kept value of this change is the SSAO/SSR correctness; the hair's voxel self-shadow that it fed is now disabled on the hair (artifacts), so its effect on hair shading is moot until the voxel volume is re-enabled at higher resolution.
+
+Keeps the no-race guarantee (GPU reads frame N's region while the CPU writes frame N+1's disjoint region — same discipline as the flicker fix). `RING == 3` reused (correct for DOUBLE buffering; bump to 4 if the renderer goes TRIPLE, same note as the VBO ring).
+
+**Verified:** Debug `--frames` harness adds **0** new validation errors vs. the stashed baseline (both show the same 182 pre-existing image-clear WAW hazards in the voxelization pass clears, unrelated to this change; 0 buffer hazards). **Pending user visual confirmation** that the hair shadow now tracks `dance_anim.json` in HairViewer.
+
 ### SLViewer exports video with no hair — binders not driven headless (2026-06-18)
 
 `SLViewer` produced videos with the character bald, while HairViewer (same scene) showed the hair. The `.hair` meshes *were* in the scene (the loader adds them and records `bind_to` requests in `result.hairBindings`), but `SLApplication::setup()` ignored `hairBindings` — no `HairBinder` was built and `tick()` had no `binder->update()`. So the strand hair stayed at its raw, unbound groom-space coordinates (grossly misaligned / off-camera) and never appeared in the framed video. `hair_binding.cpp` was historically not even linked into SLViewer.

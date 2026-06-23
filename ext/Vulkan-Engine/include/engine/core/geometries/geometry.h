@@ -91,6 +91,11 @@ class Geometry
     GeometricData m_properties = {};
     size_t        m_materialID = 0;
 
+    // Reused per-frame staging for the packed Vec4 positions mirrored into the
+    // animatable posSSBO ring (see cycle_animatable_upload). Kept as a member to
+    // avoid a per-frame allocation on the deformation path.
+    std::vector<Vec4> m_posUploadScratch;
+
     friend Graphics::VertexArrays* const get_VAO(Geometry* g);
     friend Graphics::BLAS* const         get_BLAS(Geometry* g);
 

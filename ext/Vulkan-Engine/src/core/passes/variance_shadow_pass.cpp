@@ -180,6 +180,18 @@ void VarianceShadowPass::render(Graphics::Frame& currentFrame, Scene* const scen
                     Geometry*  g   = m->get_geometry(i);
                     IMaterial* mat = m->get_material(g->get_material_ID());
 
+                    // Do NOT render strand hair into the shadow map. Hair rendered as
+                    // lines into the VSM self-shadows the hair with its own strands
+                    // when the hair samples the map back — thin dark streaks (hair-on-
+                    // hair shadow-map acne, visible after the voxel self-shadow path
+                    // was disabled in hair_strand_epic.glsl). The head/body still cast,
+                    // so head->hair shadowing is preserved. Trade-off: hair no longer
+                    // casts a shadow-map shadow onto the face/body (acceptable; the
+                    // proper way to keep that is VSM receiver bias tuning — future work).
+                    if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE ||
+                        mat->get_type() == IMaterial::Type::HAIR_STR_TYPE)
+                        continue;
+
                     ShaderPass* shaderPass = mat->get_type() != IMaterial::Type::HAIR_STR_EPIC_TYPE ? m_shaderPasses[0] : m_shaderPasses[1];
 
                     cmd.set_depth_test_enable(mat->get_parameters().depthTest);

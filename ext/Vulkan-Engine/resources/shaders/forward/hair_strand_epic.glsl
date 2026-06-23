@@ -594,31 +594,30 @@ void main() {
             float solidOcclusion = 1.0;
             if (int(object.otherParams.y) == 1 && scene.lights[i].shadowCast == 1)
             {
-                if (scene.lights[i].shadowType == 0) // Classic
-                    shadow = computeHairShadow(scene.lights[i], i, shadowMap, 0.7, g_modelPos, spread, directFraction);
-                if (scene.lights[i].shadowType == 1) // VSM
-                    shadow = computeHairShadow(scene.lights[i], i, shadowMap, 0.7, g_modelPos, spread, directFraction);
-
-                // Hair-fiber transmittance above is calibrated for thin strands and barely
-                // attenuates behind solid occluders. Multiply by the standard VSM Chebyshev
-                // test so opaque casters (head, body, props) fully shadow hair.
-                solidOcclusion  = computeVarianceShadow(shadowMap, scene.lights[i], i, g_modelPos);
-                shadow         *= solidOcclusion;
-                directFraction *= solidOcclusion;
+                // Hair occlusion uses the smooth VSM shadow map ONLY. The voxel
+                // cone-trace self-shadow (computeHairShadow / computeHairShadowCone)
+                // was the source of the dark streaks/wedges on the hair: at this voxel
+                // resolution (256^3 over a large, scene-scaled groom) the cone's path
+                // integral through the coarse voxelized strands projects as hard
+                // streaks that no bias / mip blur / strength tuning removed cleanly.
+                // Isolation tests confirmed: disabling the shadow-map term alone left
+                // the artifact; disabling the voxel terms (keeping VSM) produced a
+                // clean result. Re-enabling the voxel self-shadow cleanly would need a
+                // higher-resolution hair voxel volume (e.g. 512^3) / tighter per-mesh AABB.
+                solidOcclusion = computeVarianceShadow(shadowMap, scene.lights[i], i, g_modelPos);
+                directFraction = solidOcclusion;
             }
 
             vec3  L         = normalize(scene.lights[i].position.xyz - g_pos);
             float inBacklit = saturate(dot(-L, V));
 
             HairTransmittanceMask transMask;
-            if (material.advShadows > 0.0)
-            {
-                transMask.visibility = computeHairShadowCone(
-                    g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz - g_modelPos), physicalSigma, material.shadowKnob );
-            }
-            // Fold solid-mesh occlusion into the transmittance mask so dual scattering
-            // also sees the head/body — otherwise the scatter lobe lights hair through opaque casters.
-            transMask.visibility *= solidOcclusion;
+            // Multiple-scattering occlusion also uses the smooth VSM term only — the
+            // voxel cone-trace visibility (computeHairShadowCone) was what carried the
+            // streaks into the scatter lobe (lowering FIBER_SCALE in the direct term
+            // did nothing; this was the culprit). Using solidOcclusion keeps the
+            // head/body shadowing the scatter without the voxel artifacts.
+            transMask.visibility = solidOcclusion;
             float derivedHairCount = -log(max(transMask.visibility, 0.001));
             // Aplicas un factor para convertir "Densidad Óptica" a "Número de Capas" aproximado
             // Epic suele considerar que 1 unidad de HairCount es una capa de pelo visible.

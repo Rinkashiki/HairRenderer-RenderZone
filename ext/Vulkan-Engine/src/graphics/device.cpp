@@ -538,24 +538,49 @@ void Device::upload_vertex_arrays(VertexArrays& vao,
     }
     if (posData)
     {
+        if (animatableVBO)
+        {
+            // Host-visible position SSBO ring, lockstep with the VBO ring above
+            // (vao.vboCopies was set there). Updated every frame by
+            // Geometry::cycle_animatable_upload so the bindless consumers (hair
+            // voxelization / SSAO / SSR) read the deformed positions instead of the
+            // frozen groom pose. Each region is aligned to
+            // minStorageBufferOffsetAlignment so the descriptor can point at the
+            // live region via its readOffset.
+            const uint32_t RING      = vao.vboCopies; // == 3 (set in the animatable VBO branch)
+            size_t         alignment = m_properties.limits.minStorageBufferOffsetAlignment;
+            size_t         stride    = posSize;
+            if (alignment > 0)
+                stride = (stride + alignment - 1) & ~(alignment - 1);
 
-        // Staging Pos buffer (CPU only)
-        Buffer posStagingBuffer = create_buffer_VMA(posSize, BUFFER_USAGE_TRANSFER_SRC, VMA_MEMORY_USAGE_CPU_ONLY);
-        posStagingBuffer.upload_data(posData, posSize);
+            vao.posCopies      = RING;
+            vao.posCopyStride  = static_cast<uint32_t>(stride);
+            vao.posFrameOffset = 0;
+            vao.posSSBO        = create_buffer_VMA(
+                stride * RING, BUFFER_USAGE_STORAGE_BUFFER | BUFFER_USAGE_SHADER_DEVICE_ADDRESS, VMA_MEMORY_USAGE_CPU_TO_GPU);
+            // Seed region 0 so the first frame (pre-deformation / pre-binding) is valid.
+            vao.posSSBO.upload_data(posData, posSize);
+        }
+        else
+        {
+            // Staging Pos buffer (CPU only)
+            Buffer posStagingBuffer = create_buffer_VMA(posSize, BUFFER_USAGE_TRANSFER_SRC, VMA_MEMORY_USAGE_CPU_ONLY);
+            posStagingBuffer.upload_data(posData, posSize);
 
-        // GPU Pos buffer
-        vao.posSSBO =
-            create_buffer_VMA(posSize, BUFFER_USAGE_STORAGE_BUFFER | BUFFER_USAGE_TRANSFER_DST | BUFFER_USAGE_SHADER_DEVICE_ADDRESS, VMA_MEMORY_USAGE_GPU_ONLY);
+            // GPU Pos buffer
+            vao.posSSBO = create_buffer_VMA(
+                posSize, BUFFER_USAGE_STORAGE_BUFFER | BUFFER_USAGE_TRANSFER_DST | BUFFER_USAGE_SHADER_DEVICE_ADDRESS, VMA_MEMORY_USAGE_GPU_ONLY);
 
-        m_uploadContext.immediate_submit(m_handle, m_queues[QueueType::GRAPHIC_QUEUE], [&](VkCommandBuffer cmd) {
-            VkBufferCopy pos_copy;
-            pos_copy.dstOffset = 0;
-            pos_copy.srcOffset = 0;
-            pos_copy.size      = posSize;
-            vkCmdCopyBuffer(cmd, posStagingBuffer.handle, vao.posSSBO.handle, 1, &pos_copy);
-        });
+            m_uploadContext.immediate_submit(m_handle, m_queues[QueueType::GRAPHIC_QUEUE], [&](VkCommandBuffer cmd) {
+                VkBufferCopy pos_copy;
+                pos_copy.dstOffset = 0;
+                pos_copy.srcOffset = 0;
+                pos_copy.size      = posSize;
+                vkCmdCopyBuffer(cmd, posStagingBuffer.handle, vao.posSSBO.handle, 1, &pos_copy);
+            });
 
-        posStagingBuffer.cleanup();
+            posStagingBuffer.cleanup();
+        }
     }
     if (vao.voxelCount > 0)
     {
