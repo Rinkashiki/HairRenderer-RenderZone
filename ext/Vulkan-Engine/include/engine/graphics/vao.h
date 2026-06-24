@@ -40,19 +40,26 @@ struct VertexArrays {
     uint32_t vboWriteIndex  = 0; // ring cursor advanced on each re-upload
     uint32_t vboFrameOffset = 0; // byte offset bound by the draw this frame
 
+    // Bindless position SSBO (one Vec4 per vertex). Always **device-local** and
+    // bound at offset 0 / full size — the hair voxelization marches this buffer
+    // every frame, so it must live in fast VRAM, not host-visible memory.
     Buffer   posSSBO;
-    // Animatable position SSBO ring (mirrors the VBO ring above). The hair
-    // voxelization, SSAO and SSR read strand positions from this bindless buffer
-    // (one Vec4 per vertex). For deformable geometry it must follow the per-frame
-    // CPU deformation or the hair's volumetric self-shadow freezes at the groom
-    // pose while the visible strands move (the strand model matrix is ~identity —
-    // animation is baked into the vertices, not the transform). Holds `posCopies`
-    // regions, each aligned to minStorageBufferOffsetAlignment so the bindless
-    // descriptor can point at the live region via its readOffset. It cycles in
-    // lockstep with the VBO ring (same vboWriteIndex, different stride).
+    // For deformable geometry whose positions the GPU reads *live* (hair → the
+    // voxel self-shadow must follow the per-frame CPU deformation, not freeze at
+    // the groom pose) the CPU writes the deformed Vec4 positions into this
+    // host-visible staging *ring* each frame; the voxelization pass then copies
+    // the live region into the device-local posSSBO (staging → device upload).
+    // `posCopies` regions, each aligned to minStorageBufferOffsetAlignment, cycle
+    // in lockstep with the VBO ring (same vboWriteIndex, different stride) so a
+    // CPU write never clobbers a region an in-flight frame's copy is still reading.
+    // Static / animatable-but-not-live geometry (e.g. the head) leaves posStaging
+    // empty: posSSBO is uploaded once and never refreshed.
+    Buffer   posStaging;
+    bool     posLiveCopy     = false; // needs the per-frame staging → device copy
+    bool     posStagingDirty = false; // staging region rewritten this frame; copy pending
     uint32_t posCopies      = 1;
-    uint32_t posCopyStride  = 0; // bytes per region (aligned for descriptor readOffset)
-    uint32_t posFrameOffset = 0; // byte offset of the region the GPU reads this frame
+    uint32_t posCopyStride  = 0; // bytes per staging region (aligned)
+    uint32_t posFrameOffset = 0; // byte offset of the staging region written this frame
     Buffer   indexSSBO;
     /*
     Optional, if the geometry need a proxy axis-aligned voxelized volume

@@ -82,6 +82,9 @@ struct CommandBuffer {
                           PipelineStage srcStage = STAGE_TRANSFER,
                           PipelineStage dstStage = STAGE_FRAGMENT_SHADER);
 
+    /* Record a buffer-to-buffer copy (e.g. host-visible staging → device-local SSBO). */
+    void copy_buffer(Buffer& src, Buffer& dst, size_t size, size_t srcOffset = 0, size_t dstOffset = 0);
+
     void clear_image(Image& img, ImageLayout layout, ImageAspect aspect = ASPECT_COLOR, Vec4 clearColor = Vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
     /*Copy the entire extent of the image*/

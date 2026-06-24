@@ -276,6 +276,13 @@ void Graphics::CommandBuffer::pipeline_barrier(Buffer& buffer, AccessFlags srcMa
 
     vkCmdPipelineBarrier(handle, Translator::get(srcStage), Translator::get(dstStage), 0, 0, nullptr, 1, &barrier, 0, nullptr);
 }
+void Graphics::CommandBuffer::copy_buffer(Buffer& src, Buffer& dst, size_t size, size_t srcOffset, size_t dstOffset) {
+    VkBufferCopy region = {};
+    region.srcOffset    = srcOffset;
+    region.dstOffset    = dstOffset;
+    region.size         = size;
+    vkCmdCopyBuffer(handle, src.handle, dst.handle, 1, &region);
+}
 void Graphics::CommandBuffer::clear_image(Image& img, ImageLayout layout, ImageAspect aspect, Vec4 clearColor) {
 
     VkClearColorValue vclearColor = {};

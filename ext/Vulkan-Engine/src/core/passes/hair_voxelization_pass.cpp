@@ -320,6 +320,22 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                     auto mat = m->get_material();
                     if (mat->get_type() == Core::IMaterial::Type::HAIR_STR_TYPE || mat->get_type() == Core::IMaterial::Type::HAIR_STR_EPIC_TYPE)
                     {
+                        // Live-deformed hair: pull this frame's deformed positions from
+                        // the host-visible staging ring into the device-local posSSBO the
+                        // march reads — so the voxel self-shadow follows the animation
+                        // while the heavy read stays in VRAM. Only when the binder actually
+                        // rewrote them this frame (posStagingDirty), so a paused/static pose
+                        // costs nothing. WAR barrier (prior frame's reads must finish before
+                        // we overwrite) → copy → RAW barrier (this frame's reads see fresh
+                        // data). Recorded outside any renderpass (compute path here).
+                        VAO* hairVao = get_VAO(m->get_geometry());
+                        if (hairVao->posLiveCopy && hairVao->posStagingDirty)
+                        {
+                            cmd.pipeline_barrier(hairVao->posSSBO, ACCESS_SHADER_READ, ACCESS_TRANSFER_WRITE, STAGE_ALL_COMMANDS, STAGE_TRANSFER);
+                            cmd.copy_buffer(hairVao->posStaging, hairVao->posSSBO, hairVao->posSSBO.size, hairVao->posFrameOffset, 0);
+                            cmd.pipeline_barrier(hairVao->posSSBO, ACCESS_TRANSFER_WRITE, ACCESS_SHADER_READ, STAGE_TRANSFER, STAGE_ALL_COMMANDS);
+                            hairVao->posStagingDirty = false;
+                        }
 
                         uint32_t objectOffset = currentFrame.uniformBuffers[1].strideSize * draw_idx;
 #if DDA_VOXELIZATION == 1 || OPTICAL_DENSITY == 1
@@ -518,15 +534,12 @@ void HairVoxelizationPass::update_uniforms(uint32_t frameIndex, Scene* const sce
                 if (vao->loadedOnGPU)
                 {
                     uint32_t slot = draw_idx + i;
-                    // Pos SSBO binding. Animatable hair rings the posSSBO in lockstep
-                    // with the VBO, so point the descriptor at the region written this
-                    // frame — this is what makes the voxelized density (hair self-
-                    // shadow / scattering) follow the animation instead of freezing at
-                    // the groom pose. Static geometry binds the whole buffer at 0.
-                    const size_t posRange  = vao->posCopies > 1 ? vao->posCopyStride : vao->posSSBO.size;
-                    const size_t posOffset = vao->posCopies > 1 ? vao->posFrameOffset : 0;
+                    // Pos SSBO binding. posSSBO is a device-local single region bound at
+                    // offset 0; live hair is kept current by the per-frame staging→device
+                    // copy recorded in render() (below), so the voxel density follows the
+                    // animation while the march still reads fast VRAM (not host memory).
                     m_descriptorPool.set_descriptor_write(
-                        &vao->posSSBO, posRange, posOffset, &m_descriptors[frameIndex].bufferDescritor, UNIFORM_STORAGE_BUFFER, 0, slot);
+                        &vao->posSSBO, vao->posSSBO.size, 0, &m_descriptors[frameIndex].bufferDescritor, UNIFORM_STORAGE_BUFFER, 0, slot);
                     // IBO binding
                     m_descriptorPool.set_descriptor_write(
                         &vao->indexSSBO, vao->indexSSBO.size, 0, &m_descriptors[frameIndex].bufferDescritor, UNIFORM_STORAGE_BUFFER, 1, slot);

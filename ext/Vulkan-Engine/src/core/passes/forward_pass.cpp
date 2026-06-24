@@ -547,14 +547,12 @@ void ForwardPass::update_uniforms(uint32_t frameIndex, Scene* const scene) {
                 if (vao->loadedOnGPU)
                 {
                     uint32_t slot = draw_idx + i;
-                    // Pos SSBO binding. Animatable geometry rings the posSSBO in
-                    // lockstep with the VBO, so point the descriptor at the region
-                    // written this frame (one region); static geometry binds the
-                    // whole single-region buffer at offset 0.
-                    const size_t posRange  = vao->posCopies > 1 ? vao->posCopyStride : vao->posSSBO.size;
-                    const size_t posOffset = vao->posCopies > 1 ? vao->posFrameOffset : 0;
+                    // Pos SSBO binding. posSSBO is always a device-local single region
+                    // bound at offset 0 (live hair is kept current via a per-frame
+                    // staging→device copy in HairVoxelizationPass::render, so the
+                    // descriptor never needs a per-frame readOffset).
                     m_descriptorPool.set_descriptor_write(
-                        &vao->posSSBO, posRange, posOffset, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 0, slot);
+                        &vao->posSSBO, vao->posSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 0, slot);
                     // IBO binding
                     m_descriptorPool.set_descriptor_write(
                         &vao->indexSSBO, vao->indexSSBO.size, 0, &m_descriptors[frameIndex].bindlessDescriptor, UNIFORM_STORAGE_BUFFER, 1, slot);

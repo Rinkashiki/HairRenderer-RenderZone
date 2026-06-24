@@ -462,7 +462,8 @@ void Device::upload_vertex_arrays(VertexArrays& vao,
                                   const void*   posData,
                                   size_t        voxelSize,
                                   const void*   voxelData,
-                                  bool          animatableVBO) {
+                                  bool          animatableVBO,
+                                  bool          livePositionSSBO) {
     PROFILING_EVENT()
     // Should be executed only once if geometry data is not changed
 
@@ -538,31 +539,52 @@ void Device::upload_vertex_arrays(VertexArrays& vao,
     }
     if (posData)
     {
-        if (animatableVBO)
+        if (animatableVBO && livePositionSSBO)
         {
-            // Host-visible position SSBO ring, lockstep with the VBO ring above
-            // (vao.vboCopies was set there). Updated every frame by
-            // Geometry::cycle_animatable_upload so the bindless consumers (hair
-            // voxelization / SSAO / SSR) read the deformed positions instead of the
-            // frozen groom pose. Each region is aligned to
-            // minStorageBufferOffsetAlignment so the descriptor can point at the
-            // live region via its readOffset.
+            // Live-deformed hair: the voxelization compute marches these positions
+            // every frame, so posSSBO stays **device-local** (fast VRAM reads). The
+            // per-frame deformed positions arrive through a separate host-visible
+            // staging *ring* (posStaging) that the CPU writes in
+            // Geometry::cycle_animatable_upload; the voxelization pass then copies the
+            // live region staging → device (see HairVoxelizationPass::render). A ring
+            // (lockstep with the VBO ring) keeps a CPU write from clobbering a region
+            // an in-flight frame's copy still reads; each region is aligned to
+            // minStorageBufferOffsetAlignment. NOTE: this used to be a single
+            // host-visible CPU_TO_GPU buffer, which spilled out of the BAR for large
+            // grooms and made every voxelization read cross PCIe — the perf regression.
             const uint32_t RING      = vao.vboCopies; // == 3 (set in the animatable VBO branch)
             size_t         alignment = m_properties.limits.minStorageBufferOffsetAlignment;
             size_t         stride    = posSize;
             if (alignment > 0)
                 stride = (stride + alignment - 1) & ~(alignment - 1);
 
+            vao.posLiveCopy    = true;
             vao.posCopies      = RING;
             vao.posCopyStride  = static_cast<uint32_t>(stride);
             vao.posFrameOffset = 0;
-            vao.posSSBO        = create_buffer_VMA(
-                stride * RING, BUFFER_USAGE_STORAGE_BUFFER | BUFFER_USAGE_SHADER_DEVICE_ADDRESS, VMA_MEMORY_USAGE_CPU_TO_GPU);
-            // Seed region 0 so the first frame (pre-deformation / pre-binding) is valid.
-            vao.posSSBO.upload_data(posData, posSize);
+
+            // Device-local target the shaders read (offset 0, full size).
+            vao.posSSBO = create_buffer_VMA(
+                posSize, BUFFER_USAGE_STORAGE_BUFFER | BUFFER_USAGE_TRANSFER_DST | BUFFER_USAGE_SHADER_DEVICE_ADDRESS, VMA_MEMORY_USAGE_GPU_ONLY);
+            // Host-visible staging ring the CPU writes each frame.
+            vao.posStaging = create_buffer_VMA(stride * RING, BUFFER_USAGE_TRANSFER_SRC, VMA_MEMORY_USAGE_CPU_TO_GPU);
+            // Seed staging region 0 and the device buffer so the first frame
+            // (pre-deformation / pre-binding) is valid before any per-frame copy.
+            vao.posStaging.upload_data(posData, posSize);
+            m_uploadContext.immediate_submit(m_handle, m_queues[QueueType::GRAPHIC_QUEUE], [&](VkCommandBuffer cmd) {
+                VkBufferCopy pos_copy;
+                pos_copy.dstOffset = 0;
+                pos_copy.srcOffset = 0;
+                pos_copy.size      = posSize;
+                vkCmdCopyBuffer(cmd, vao.posStaging.handle, vao.posSSBO.handle, 1, &pos_copy);
+            });
         }
         else
         {
+            // Single-region, device-local posSSBO uploaded once. Serves both static
+            // geometry and *animatable-but-not-live* geometry (e.g. the morph/skinned
+            // head): its VBO still rings for the visible deform, but its posSSBO is
+            // never read live, so we keep it GPU-only (no per-frame repack/upload).
             // Staging Pos buffer (CPU only)
             Buffer posStagingBuffer = create_buffer_VMA(posSize, BUFFER_USAGE_TRANSFER_SRC, VMA_MEMORY_USAGE_CPU_ONLY);
             posStagingBuffer.upload_data(posData, posSize);

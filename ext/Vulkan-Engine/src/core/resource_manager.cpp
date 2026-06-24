@@ -480,8 +480,13 @@ void ResourceManager::upload_geometry_data(Graphics::Device* const device, Core:
         size_t positionsSize = sizeof(Vec4) * positions.size();
 
         const bool animatable = gd.morphTargetData.has_value() || gd.skinData.has_value() || gd.forceAnimatable;
+        // Only hair (forceAnimatable, set in load_hair) has its positions read live by
+        // the GPU each frame (HAIR_VOXELIZATION_PASS). The morph/skinned head is also
+        // animatable but its posSSBO is never read live, so it skips the per-frame
+        // position-SSBO ring (kept as a single GPU-only upload). See upload_vertex_arrays.
+        const bool livePositionSSBO = gd.forceAnimatable;
         device->upload_vertex_arrays(
-            *rd, vboSize, gd.vertexData.data(), iboSize, gd.vertexIndex.data(), positionsSize, positions.data(), voxelSize, gd.voxelData.data(), animatable);
+            *rd, vboSize, gd.vertexData.data(), iboSize, gd.vertexIndex.data(), positionsSize, positions.data(), voxelSize, gd.voxelData.data(), animatable, livePositionSSBO);
     }
     /*
     ACCELERATION STRUCTURE — skip for deformable meshes (VBO is CPU_TO_GPU, not BLAS-compatible).
@@ -505,6 +510,8 @@ void ResourceManager::destroy_geometry_data(Core::Geometry* const g) {
         if (rd->voxelCount > 0)
             rd->voxelBuffer.cleanup();
         rd->posSSBO.cleanup();
+        if (rd->posLiveCopy)
+            rd->posStaging.cleanup();
 
         rd->loadedOnGPU = false;
         get_BLAS(g)->cleanup();

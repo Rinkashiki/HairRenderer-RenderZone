@@ -6,6 +6,22 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
+### Renderer performance — opportunities for future work (notes 2026-06-24)
+
+After fixing the host-visible-`posSSBO` regression (see Done, 2026-06-24), these are the remaining per-frame costs worth attacking, roughly highest-leverage first. None are started; each notes where it lives and the risk.
+
+**CPU (per-frame, single-threaded — scales with vertex/strand count):**
+1. **Hair positions are repacked + uploaded each animating frame.** `cycle_animatable_upload` builds a `Vec4` per vertex into `posStaging` (≈1.35M verts for maria) on top of the interleaved VBO upload, and the voxelization DMA-copies it to the device-local `posSSBO`. This is the live-voxel cost that keeps us a bit below develop2 when animating (see Done, 2026-06-24). To remove it: skin/deform on the **GPU** (compute) writing the packed device `posSSBO` directly — no CPU repack, no host→device copy. Largest payoff, largest effort; pairs with item 3.
+2. **`apply_deformation` does two full vertex-array copies/frame** (`geometry.cpp:87` `deformed = vertexData`, then `:154` `deformedVertexData = deformed`). Reorder to upload first, then `deformedVertexData = std::move(deformed)` — saves one `N`-vertex copy per animating mesh per frame. Low risk; the binder reads `deformedVertexData` *after* the head's `apply_deformation` returns, so the move is safe.
+3. **CPU skinning/morph + hair-binding reconstruction are scalar `for`-loops** (`apply_deformation`, `HairBinder::update`). For large grooms this dominates. Options, increasing effort: thread over strands/vertices (OpenMP/`std::for_each(par)`), SIMD the skin matrix×vertex, or move the whole deform+bind to a GPU compute pass (the CLAUDE.md hair-binding note already flags "GPU compute path is possible future work").
+
+**GPU memory placement:**
+4. **Animatable VBO is still `CPU_TO_GPU` (host-visible).** The hair `posSSBO` was moved to device-local (Done, 2026-06-24), but the VBO ring (~226 MB for maria) is still host-visible and read every frame as vertex input + as the bindless storage buffer for any consumer. Vertex fetch tolerates host-visible better than the voxelization march did, but if profiling shows the forward/shadow passes are PCIe-bound, give the VBO the same device-local + staging-ring treatment. Profile first.
+
+**GPU shading (the bigger overall renderer cost):**
+5. **Restored voxel cone-trace hair self-shadow** (`computeHairShadow` + `computeHairShadowCone` in `hair_strand_epic.glsl`) is the per-fragment shadow cost of the current hair look — several volume samples per light per fragment over the 256³ `HAIR_VOXEL_VOLUME`. The cheaper alternatives are already explored: the VSM-only path (`6c635e4`, fast but no hair-on-hair occlusion) and the abandoned Deep Opacity Map (see next entry). Revisit only once the look is locked.
+6. **General forward-pass profiling** — the post-process chain (SSAO, SSS, bloom, DoF, tonemap, FXAA) runs full-res every frame; MSAA 8× resolves are not free. A GPU timestamp query per pass (the RHI already records command buffers per `IBasePass`) would show where the frame actually goes before guessing. Worth adding a debug timing readout before any GPU-side optimization.
+
 ### Hair self-shadow — Deep Opacity Map attempt (abandoned 2026-06-23, notes for future work)
 
 **Goal.** Replace the voxel cone-trace hair self-shadow (which produced light-dependent
@@ -149,6 +165,24 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### Performance regression from *Fixed shadows on hair* — host-visible hair `posSSBO` (2026-06-24)
+
+FPS dropped from ~35-40 to ~30 after *Fixed shadows on hair* (`6c635e4`); verified by removing that whole commit on a `develop2` branch (→ 35-40 again). The commit's only **net-new per-frame GPU cost** was the position-SSBO change (the `2026-06-19` entry): it moved hair's `posSSBO` from device-local (`GPU_ONLY`, uploaded once) to a host-visible (`CPU_TO_GPU`) ring updated every frame. (Its shader change removed the voxel cone-trace, but that was later reverted, so per-fragment shading matches the `65820d4` baseline — the regression is the buffer, not shading.)
+
+**Root cause:** maria hair is **1.35M vertices**. The animatable VBO ring (~226 MB) **plus** the new host-visible `posSSBO` ring (~65 MB) overflow a non-ReBAR 256 MB BAR, so the `posSSBO` lands in system RAM and `HAIR_VOXELIZATION_PASS` (`DDA_fiber_optical_density.glsl`) marches ~22 MB of strand positions across **PCIe every frame** — present even in a static pose, since the voxelization runs every frame. `develop2` is faster only because its `posSSBO` is device-local (frozen). A first attempt (gating the host-visible ring to hair only, sparing the head) did **not** help: the head's mirror was pure waste, but the *hair* posSSBO — the one actually read by the march — was still host-visible.
+
+**Fix shipped — device-local `posSSBO` + per-frame staging→device copy** (industry-standard pattern for GPU-read-heavy dynamic data; keeps the voxel self-shadow live, unlike `develop2`'s freeze):
+- `vao.h` — `posSSBO` is now **always device-local** (`GPU_ONLY`, bound at offset 0 / full size). Live-deformed hair adds `posStaging` (host-visible `CPU_TO_GPU` ring) + flags `posLiveCopy` / `posStagingDirty`.
+- `device.cpp` (`upload_vertex_arrays`, gated by the `livePositionSSBO = gd.forceAnimatable` param) — hair allocates device-local `posSSBO` (TRANSFER_DST) + `posStaging` ring (TRANSFER_SRC), seeds both. Static / animatable-not-live geometry (the head) keeps the single device-local upload-once path.
+- `geometry.cpp` (`cycle_animatable_upload`) — writes the repacked `Vec4` positions into `posStaging` and sets `posStagingDirty`.
+- `command_buffer.{h,cpp}` — new `copy_buffer(src,dst,size,srcOff,dstOff)`.
+- `hair_voxelization_pass.cpp` (`render`) — for each live hair geom with `posStagingDirty`: **WAR barrier** (prior reads finish) → `copy_buffer(posStaging[frameOffset] → posSSBO)` → **RAW barrier** (this frame's reads see fresh data), then clear the flag. Skipped when not dirty, so a paused pose (binder early-outs) costs nothing → full `develop2` speed. Recorded outside any renderpass (compute path).
+- `forward_pass.cpp` / `hair_voxelization_pass.cpp` (`update_uniforms`) — `posSSBO` descriptor writes reverted to `(size, offset 0)` (no per-frame `readOffset`; the device buffer is always current after the copy).
+
+**Net effect:** the heavy voxelization march reads fast VRAM again. When animating, a ~22 MB DMA copy + the CPU `Vec4` repack remain (so a touch below `develop2` — that's the cost of keeping the voxel self-shadow live; eliminating it needs GPU skinning, see Open item 1). When paused, no copy → `develop2` speed.
+
+**Verified:** clean build; `--frames 40 --log-level warn` with the dance animation playing → EXIT 0, **0** validation errors/hazards (the per-frame copy + WAR/RAW barriers are exercised and clean). SLViewer shares this engine code (picks it up on its next build). **Pending user FPS confirmation** under animation.
 
 ### Dark shadow streaks / wedges on the hair (point-light dependent) (2026-06-23)
 

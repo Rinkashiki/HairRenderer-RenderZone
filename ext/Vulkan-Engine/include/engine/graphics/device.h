@@ -168,7 +168,14 @@ class Device
                               const void*   posData       = nullptr,
                               size_t        voxelSize     = 0,
                               const void*   voxelData     = nullptr,
-                              bool          animatableVBO = false);
+                              bool          animatableVBO = false,
+                              // Only geometry whose positions are consumed *live* by the
+                              // GPU (hair → HAIR_VOXELIZATION_PASS) needs the per-frame
+                              // host-visible position-SSBO ring. The head/body are
+                              // animatable too, but nothing reads their posSSBO live
+                              // (excluded from the RT BLAS; forward shading uses the VBO),
+                              // so they keep the cheap single-region GPU-only posSSBO.
+                              bool          livePositionSSBO = false);
     void upload_texture_image(Image&        img,
                               ImageConfig   config,
                               SamplerConfig samplerConfig,

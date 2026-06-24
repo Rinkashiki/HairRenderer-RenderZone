@@ -167,13 +167,16 @@ void Geometry::cycle_animatable_upload(const void* data, size_t size) {
         m_VAO.vbo.upload_data(data, size, offset);
         m_VAO.vboFrameOffset  = static_cast<uint32_t>(offset);
 
-        // Mirror the deformed positions into the matching posSSBO ring region so
-        // the bindless consumers (hair voxelization / SSAO / SSR) follow the
-        // animation instead of reading the frozen groom pose. posSSBO holds one
+        // Mirror the deformed positions into the host-visible posStaging ring region
+        // so the bindless consumers (hair voxelization / SSAO / SSR) follow the
+        // animation instead of reading the frozen groom pose. posStaging holds one
         // Vec4 per vertex and cycles on the same ring cursor as the VBO (different
-        // stride). Both callers pass a contiguous Graphics::Vertex array, so the
-        // positions are at a known offset within each element.
-        if (m_VAO.posCopies > 1 && m_VAO.posCopyStride > 0)
+        // stride). The voxelization pass copies this region into the device-local
+        // posSSBO the shaders read (see HairVoxelizationPass::render); we only flag
+        // it dirty here so the copy is skipped on frames with no fresh deformation.
+        // Both callers pass a contiguous Graphics::Vertex array, so the positions are
+        // at a known offset within each element.
+        if (m_VAO.posLiveCopy && m_VAO.posCopyStride > 0)
         {
             const auto*  verts    = static_cast<const Graphics::Vertex*>(data);
             const size_t numVerts = size / sizeof(Graphics::Vertex);
@@ -183,8 +186,9 @@ void Geometry::cycle_animatable_upload(const void* data, size_t size) {
                 m_posUploadScratch[v] = Vec4(verts[v].pos, 1.0f);
 
             const size_t posOffset = static_cast<size_t>(m_VAO.vboWriteIndex) * m_VAO.posCopyStride;
-            m_VAO.posSSBO.upload_data(m_posUploadScratch.data(), numVerts * sizeof(Vec4), posOffset);
-            m_VAO.posFrameOffset = static_cast<uint32_t>(posOffset);
+            m_VAO.posStaging.upload_data(m_posUploadScratch.data(), numVerts * sizeof(Vec4), posOffset);
+            m_VAO.posFrameOffset   = static_cast<uint32_t>(posOffset);
+            m_VAO.posStagingDirty  = true;
         }
     }
     else
