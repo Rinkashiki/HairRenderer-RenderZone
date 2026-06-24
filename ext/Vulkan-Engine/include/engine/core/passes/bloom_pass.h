@@ -40,7 +40,7 @@ class BloomPass : public BasePass
     const uint32_t MIPMAP_LEVELS = 6;
 
     // Settings
-    float m_bloomStrength = 0.05f;
+    float m_bloomStrength = 0.0f;
 
     // Resources
     Graphics::Image                    m_originalImage;

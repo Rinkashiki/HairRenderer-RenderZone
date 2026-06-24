@@ -209,6 +209,30 @@ void BloomPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint32
                              ACCESS_SHADER_READ,
                              STAGE_COMPUTE_SHADER);
     }
+    else
+    {
+        // Bloom disabled (strength 0): the compute chain above is skipped, but the
+        // ADD BLOOM pass below still samples m_bloomImage. Without the chain it is
+        // never transitioned out of LAYOUT_UNDEFINED/GENERAL, so the sample would
+        // hit the wrong layout (validation error). Put it in a defined, cleared
+        // SHADER_READ state — mix() weights it 0, so cleared zeros read fine and we
+        // avoid sampling uninitialized memory.
+        cmd = currentFrame.commandBuffer;
+        cmd.pipeline_barrier(m_bloomImage,
+                             LAYOUT_UNDEFINED,
+                             LAYOUT_GENERAL,
+                             ACCESS_SHADER_WRITE,
+                             ACCESS_SHADER_READ,
+                             STAGE_COMPUTE_SHADER,
+                             STAGE_COMPUTE_SHADER);
+        cmd.clear_image(m_bloomImage, LAYOUT_GENERAL);
+        cmd.pipeline_barrier(m_bloomImage,
+                             LAYOUT_GENERAL,
+                             LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                             ACCESS_SHADER_WRITE,
+                             ACCESS_SHADER_READ,
+                             STAGE_COMPUTE_SHADER);
+    }
 
 ////////////////////////////////////////////////////////////
 // ADD BLOOM
