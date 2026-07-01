@@ -77,9 +77,15 @@ void main() {
     v_normal = normalize(mat3(transpose(inverse(mv))) * normal);
 
     if(material.hasNormalTexture || material.hasDetailNormalTexture) {
-        vec3 T = -normalize(vec3(mv * vec4(tangent, 0.0)));
+        // Tangent points along +U (as computed by compute_tangents_gram_smidt).
+        // It must NOT be negated — a prior -T flipped the red/tangent axis and made
+        // normal-mapped bumps read inverted.
+        vec3 T = normalize(vec3(mv * vec4(tangent, 0.0)));
         vec3 N = normalize(vec3(mv * vec4(normal, 0.0)));
-        vec3 B = cross(N, T);
+        // Bitangent as cross(T,N) (not cross(N,T)) reads the normal map's green
+        // channel Y-down: the source maps are authored DirectX-style (Substance
+        // default). Applies to base + detail normals (both route through v_TBN).
+        vec3 B = cross(T, N);
         v_TBN = mat3(T, B, N);
     }
 

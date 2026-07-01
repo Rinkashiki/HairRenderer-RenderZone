@@ -49,11 +49,11 @@
       "rotation":       [0.0, 180.0, 0.0],
       "material": {
         "type":              "pbr",
-        "albedo_texture":       "textures/maria/T-Maria_BaseColor_eyes.png",
+        "albedo_texture":       "textures/maria/T-Maria_BaseColor.png",
         "normal_texture":       "textures/maria/T-Maria-Normal.png",
         "roughness_texture":    "textures/maria/T-Maria-Roughness.png",
         "occlusion_texture":    "textures/maria/T-Maria-AO.png",
-        "bent_normal_texture":  "textures/maria/T-Maria-BentNormal.png",
+        
         "curvature_texture":    "textures/maria/T-Maria-Curvature.png",
         "scattering_texture":   "textures/maria/T-Maria-Scattering.png",
         "clothes_mask_texture":   "textures/maria/T-Maria_ClothesMask.png",
@@ -70,7 +70,7 @@
         "albedo_weight":     1.0,
         "metalness":         0.0,
         "roughness":         1.0,
-        "roughness_weight":  0.6,
+        "roughness_weight":  1.0,
         "occlusion_weight":  1.0
       },
       "extra_materials": [
@@ -88,7 +88,7 @@
         }
       ],
       "primitive_materials": [0, 1, 1, 2, 2],
-      "animation": "animations/face_anim.json"
+      "animation": "animations/test_anim.json"
     },
     {
       "name":      "Hair",
