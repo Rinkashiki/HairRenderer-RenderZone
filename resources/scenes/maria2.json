@@ -42,7 +42,7 @@
     {
       "name":           "Maria",
       "type":           "glb",
-      "file":           "models/maria2/maria2.glb",
+      "file":           "models/maria2/maria5.glb",
       "glb_mesh_index": -1,
       "position":       [0.0, -12.6, 0.2],
       "scale":          10.0,
@@ -85,17 +85,9 @@
           "albedo":    [0.8, 0.3, 0.35],
           "roughness": 0.35,
           "metalness": 0.0
-        },
-		{
-			"type": "pbr",
-			"albedo": [1.0, 1.0, 1.0],
-			"roughness": 0.3,
-			"metalness": 0.0,
-			"albedo_texture" :  "textures/maria2/TemporaryEyeColor.png",
-			"eye_mask_texture": "textures/maria2/TemporaryEyeMask.png"
-		}
+        }
       ],
-      "primitive_materials": [0, 3, 2, 1, 1, 2],
+      "primitive_materials": [0, 1, 1, 2, 2],
       "animation": "animations/face_anim.json"
     },
     {
