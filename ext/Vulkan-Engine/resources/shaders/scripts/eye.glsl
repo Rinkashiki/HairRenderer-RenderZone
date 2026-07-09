@@ -107,7 +107,9 @@ vec3 eye_shade(vec3 color, vec3 albedo, vec3 objNormal, float eyeAmount) {
 // new UVs, which correspond to the iris texel we're supposed to be seeing. Simulates
 // the effect of light refraction on the cornea.
 // NOTE : Implements Parallax Occlusion Mapping.
-vec2 eye_parallax_uv(vec2 uv, vec3 objPos, vec3 viewDirObj) {
-	// TODO : Implement
-	return vec2(0, 0);
+vec2 eye_parallax_uv(vec2 uv, vec3 viewTS) {
+	// Basic temporary implementation for testing.
+	float irisDepth = 0.04;
+	vec2 newUV = uv - viewTS.xy / max(viewTS.z, 0.2) * irisDepth;
+	return newUV;
 }
