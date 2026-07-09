@@ -1,4 +1,8 @@
-// eye.glsl — procedural eyeball socket occlusion with a warm sclera shadow tint.
+// eye.glsl — Contains:
+// 1) Procedural eyeball socket occlusion with a warm sclera shadow tint.
+// 2) Parallax occlusion mapping for cornea refraction and iris effect.
+
+// Overview: Procedural eyeball socket occlusion:
 //
 // Approximates the soft darkening where the eyelids contact the sclera, so the
 // eyeball reads as sitting INSIDE the socket instead of looking like a glued-on
@@ -21,6 +25,10 @@
 //
 // All tuning lives here as consts. HairViewer recompiles shaders on relaunch,
 // so just edit and restart — no rebuild, no GUI.
+
+// Overview: Parallax occlusion mapping:
+// Simulate refraction of light passing through the cornea with parallax occlusion mapping.
+
 
 // Object-space direction the cornea/iris faces. Calibrated against the Maria/Nadia
 // rig via the grayscale occN debug: the cornea normal points along +Z, so the
@@ -93,4 +101,13 @@ vec3 eye_shade(vec3 color, vec3 albedo, vec3 objNormal, float eyeAmount) {
     color *= mix(vec3(1.0), eye_occlusion(objNormal), eyeAmount);
     color  = max(color, albedo * (EYE_AMBIENT_FLOOR * eyeAmount));
     return color;
+}
+
+// Eye parallax logic. Given a point on the eyeball and the view direction, return the
+// new UVs, which correspond to the iris texel we're supposed to be seeing. Simulates
+// the effect of light refraction on the cornea.
+// NOTE : Implements Parallax Occlusion Mapping.
+vec2 eye_parallax_uv(vec2 uv, vec3 objPos, vec3 viewDirObj) {
+	// TODO : Implement
+	return vec2(0, 0);
 }
