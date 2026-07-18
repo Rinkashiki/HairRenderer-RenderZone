@@ -1,0 +1,99 @@
+{
+  "name": "eyes",
+
+  "camera": {
+    "position": [0.0, 2.5, -10.0],
+    "near":     0.1,
+    "far":      100.0,
+    "fov":      40.0
+  },
+
+  "lights": [
+    {
+      "type":           "point",
+      "name":           "PointLight",
+      "position":      [7.0, 5.0, -9.0],
+      "intensity":      10.0,
+      "shadow_fov":     120.0,
+      "shadow_bias":    0.0002,
+      "shadow_near":    0.1,
+      "area_of_effect": 30.0,
+      "dummy_mesh":     "sphere.obj",
+	  "dummy_visible":	false
+    }
+  ],
+
+  "materials": {
+    "maria_hair": {
+      "type":             "hairepic",
+      "thickness":        0.001,
+      "use_pigmentation": true,
+      "eumelanine":       0.4,
+      "pheomelanine":     0.6,
+      "roughness":        0.5,
+      "specular":         0.4,
+      "root_darkening":   0.3,
+      "variability":      0.25,
+      "scatter_boost":    0.1
+    }
+  },
+
+  "meshes": [
+    {
+      "name":           "Eyes",
+      "type":           "glb",
+      "file":           "models/eyes/SMPLX_Eyes.glb",
+      "glb_mesh_index": -1,
+      "position":       [0.0, -12.6, 0.2],
+      "scale":          10.0,
+      "rotation":       [0.0, 180.0, 0.0],
+      "material": {
+        "type":                     "pbr",
+        "albedo_texture":           "textures/eyes/TemporaryEyeColor.png",
+        "normal_texture":           "textures/eyes/TemporaryEyeNormal.png",
+        "eye_mask_texture":         "textures/eyes/TemporaryEyeMask.png",
+        "detail_tiling":            48.0,
+        "detail_normal_strength":   0.5,
+        "cavity_spec_occlusion":    0.65,
+        "dual_lobe_mix":            0.20,
+        "dual_lobe_roughness_soft": 0.60,
+        "sheen_intensity":          0.3,
+        "albedo":                   [1.0, 1.0, 1.0],
+        "albedo_weight":            1.0,
+        "metalness":                0.0,
+        "roughness":                0.3,
+        "roughness_weight":         0.6,
+        "occlusion_weight":         1.0
+      },
+      "extra_materials": [],
+      "primitive_materials": [0],
+      "animation": "animations/face_anim.json"
+    }
+  ],
+
+  "scene": {
+    "ambient_color":     [0.05, 0.05, 0.05],
+    "ambient_intensity": 1.0,
+    "skybox": {
+      "hdri":      "textures/nature_demo.hdr",
+      "intensity": 1.0,
+      "rotation": 290.0
+    },
+    "use_ibl": true,
+    "fog":     { "enabled": false }
+  },
+
+  "renderer": {
+    "clear_color":     [0.0, 0.0, 0.0, 1.0],
+    "sss_scatter_lut": "textures/scatterDistance/monk05.png",
+    "msaa": 8,
+    "dof": {
+      "enabled":         true,
+      "focus_distance":  8.0,
+      "focus_range":     6.0,
+      "near_blur_scale": 1.0,
+      "far_blur_scale":  2.0,
+      "max_blur":        8.0
+    }
+  }
+}
