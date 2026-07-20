@@ -24,11 +24,18 @@ class HairViewer
 
     UserInterface m_interface{};
 
-    Core::IWindow*         m_window;
-    Systems::BaseRenderer* m_renderer;
-    Scene*                 m_scene;
-    Camera*                camera;
-    Tools::Controller*     m_controller;
+    Core::IWindow*         m_window{nullptr};
+    Systems::BaseRenderer* m_renderer{nullptr};
+    Scene*                 m_scene{nullptr};
+    Camera*                camera{nullptr};
+    Tools::Controller*     m_controller{nullptr};
+
+    // False until init() finishes wiring the scene, controller and GUI. The
+    // scene now loads on a worker while the main thread pumps poll_events()
+    // (see setup()), so window/mouse/key callbacks can fire *during* the load,
+    // before m_controller and m_interface.overlay exist. The callbacks bail out
+    // while this is false to avoid dereferencing those not-yet-built objects.
+    bool m_ready{false};
 
     // Surface binders for strand-hair meshes (scalp hair, brows, lashes).
     std::vector<hair_binding::HairBinder*> m_binders;
@@ -69,6 +76,8 @@ class HairViewer
 #pragma region Input Management
 
     void keyboard_callback(int key, int scancode, int action, int mods) {
+        if (!m_ready)
+            return; // still loading — controller/GUI not built yet
         void* windowHandle{nullptr};
         m_window->get_handle(windowHandle);
         GLFWwindow* glfwWindow = static_cast<GLFWwindow*>(windowHandle);
@@ -92,6 +101,9 @@ class HairViewer
     }
 
     void mouse_callback(double xpos, double ypos) {
+        if (!m_ready)
+            return; // still loading — controller/GUI not built yet
+
         if (m_interface.overlay->wants_to_handle_input())
             return;
 
@@ -100,6 +112,8 @@ class HairViewer
 
     void window_resize_callback(int width, int height) {
         m_window->set_size(width, height);
+        if (!m_ready)
+            return; // still loading — GUI overlay not built yet
         m_interface.overlay->set_extent({width, height});
     }
 

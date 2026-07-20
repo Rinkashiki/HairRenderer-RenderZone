@@ -36,6 +36,10 @@ void HairViewer::init(Systems::RendererSettings settings) {
     auto* bindPanel = new Tools::Panel("HAIR BINDING", 0.0f, 0.7f, 0.2f, 0.3f, PanelWidgetFlags::NoMove, true);
     bindPanel->add_child(new HairBindWidget(&m_binders));
     m_interface.overlay->add_panel(bindPanel);
+
+    // Everything the input callbacks touch (controller + GUI overlay) now
+    // exists — safe to let window/mouse/key events through.
+    m_ready = true;
 }
 
 void HairViewer::run(Systems::RendererSettings settings) {
