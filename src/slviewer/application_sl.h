@@ -25,7 +25,7 @@ class SLApplication
 
     std::string m_resourcesPath;
     std::string m_animationPath;
-    std::string m_scenePath;  // empty → bundled resources/scenes/default.json
+    std::string m_scenePath;  // empty → bundled resources/scenes/maria.json
     std::string m_outputPath{"output.mp4"};
     int           m_width{1920};
     int           m_height{1080};

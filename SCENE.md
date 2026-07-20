@@ -1,9 +1,10 @@
 # Scene JSON Module
 
 The renderer loads scenes from a JSON file at runtime. `HairViewer` loads
-`resources/scenes/default.json` unconditionally; `SLViewer` accepts an
-optional `--scene <path>` flag and falls back to the same default. The parser
-lives in the application layer (`src/scene_loader.{h,cpp}`).
+`resources/scenes/maria.json` (see `SCENE_PATH` in `src/application.h`);
+`SLViewer` accepts an optional `--scene <path>` flag and falls back to the same
+`maria.json` when it is omitted. The parser lives in the application layer
+(`src/scene_loader.{h,cpp}`).
 
 ---
 
@@ -12,9 +13,9 @@ lives in the application layer (`src/scene_loader.{h,cpp}`).
 | Path | Purpose |
 |------|---------|
 | `src/scene_loader.h` / `.cpp` | Parser. Returns `{Scene*, Camera*, Mesh* primaryAnimated, Vec4 clearColor}`. |
-| `resources/scenes/default.json` | Bundled default scene (Alex + hair cards + 1 point light + skybox + test animation). |
-| `resources/scenes/*.json` | Alternative scenes (`javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`). |
-| `src/application.cpp` | HairViewer wiring (always loads `default.json`). |
+| `resources/scenes/maria.json` | Default scene (Maria GLB + strand hair/brows/lashes + point light + skybox). |
+| `resources/scenes/*.json` | Other scenes (`alex`, `javi`, `nadia`, `neural_tono`, `bust_strands`). |
+| `src/application.cpp` | HairViewer wiring (loads `SCENE_PATH`, currently `maria.json`). |
 | `src/slviewer/application_sl.cpp` | SLViewer wiring (`--scene` flag overrides default). |
 
 Loading entry point:
@@ -363,49 +364,69 @@ animation, so SLViewer can derive the frame budget from the animation header.
 
 ## 10. Worked example
 
-`resources/scenes/default.json` — the current Alex configuration:
+`resources/scenes/maria.json` — the current default configuration. The Maria
+mesh declares **no `material`** (its PBR materials + skin/eye maps are baked into
+`maria.glb`); the strand hair/brows/lashes reference shared materials from the
+`materials` library and bind to the head surface via `bind_to`:
 
 ```json
 {
-  "name": "alex_default",
-  "camera": { "position": [0,0,-16], "near": 0.1, "far": 100, "fov": 40 },
+  "name": "maria",
+  "camera": { "position": [0,2.5,-10], "near": 0.1, "far": 100, "fov": 40 },
   "lights": [{
     "type": "point", "name": "PointLight",
-    "position": [-5,1,-5], "intensity": 1.0,
+    "position": [7,5,-9], "intensity": 10.0,
     "shadow_fov": 120, "shadow_bias": 0.0002, "shadow_near": 0.1,
-    "area_of_effect": 30, "dummy_mesh": "sphere.obj"
+    "area_of_effect": 30, "dummy_mesh": "sphere.obj", "dummy_visible": false
   }],
+  "materials": {
+    "maria_hair": {
+      "type": "hairepic", "thickness": 0.001, "use_pigmentation": true,
+      "eumelanine": 0.4, "pheomelanine": 0.6, "roughness": 0.5,
+      "specular": 0.4, "root_darkening": 0.3, "variability": 0.25, "scatter_boost": 0.1
+    },
+    "maria_eyelashes": {
+      "type": "eyelash", "thickness": 0.001, "use_pigmentation": true,
+      "eumelanine": 0.45, "pheomelanine": 0.2, "roughness": 0.65,
+      "specular": 0.05, "R_power": 0.25, "TT_power": 2.5, "TRT_power": 0.2,
+      "use_backlit": true, "scatter_boost": 0.15, "root_darkening": 0.2,
+      "variability": 0.2, "use_glints": false
+    }
+  },
   "meshes": [
     {
-      "name": "Alex", "type": "glb", "file": "models/alex/alex.glb",
-      "glb_mesh_index": 0,
+      "name": "Maria", "type": "glb", "file": "models/maria/maria.glb",
+      "glb_mesh_index": -1,
       "position": [0,-12.6,0.2], "scale": 10, "rotation": [0,180,0],
-      "material": {
-        "type": "pbr", "albedo_texture": "$GLB[0]",
-        "albedo": [0.8, 0.482, 0.333], "metalness": 0, "roughness": 0.5
-      },
       "animation": "animations/test_anim.json"
     },
     {
-      "name": "HairCards", "type": "obj",
-      "file": "models/alex/hair_fauxmohawk.obj",
-      "position": [0,-11.8,0.4], "scale": 0.1, "rotation": [0,180,0],
-      "material": {
-        "type": "haircard",
-        "hair_color": [0.05,0.02,0.01],
-        "hair_data_texture": "textures/alex/hair_fauxmohawk_attribute.png",
-        "tangent_texture": "textures/alex/hair_fauxmohawk_tangent.png"
-      }
+      "name": "Hair", "type": "hair", "file": "models/maria/maria.hair",
+      "position": [-0.011,-0.555,-0.04], "scale": 0.01, "rotation": [90,180,180],
+      "material": "maria_hair", "bind_to": "Maria"
+    },
+    {
+      "name": "Eyebrows", "type": "hair", "file": "models/maria/eyebrows.hair",
+      "position": [-0.01,-0.61,-0.032], "scale": 0.01, "rotation": [90,180,180],
+      "material": "maria_hair", "bind_to": "Maria"
+    },
+    {
+      "name": "Eyelashes", "type": "hair", "file": "models/maria/eyelashes.hair",
+      "position": [-0.01,-0.61,-0.032], "scale": 0.01, "rotation": [90,180,180],
+      "material": "maria_eyelashes", "bind_to": "Maria"
     }
   ],
   "scene": {
-    "ambient_color": [0.05,0.05,0.05], "ambient_intensity": 0.1,
-    "skybox": { "hdri": "textures/studio_demo.hdr", "intensity": 1.0 },
+    "ambient_color": [0.05,0.05,0.05], "ambient_intensity": 1.0,
+    "skybox": { "hdri": "textures/nature_demo.hdr", "intensity": 1.0, "rotation": 290 },
     "use_ibl": true, "fog": { "enabled": false }
   },
   "renderer": {
     "clear_color": [0,0,0,1],
-    "sss_scatter_lut": "textures/scatterDistance.png"
+    "sss_scatter_lut": "textures/scatterDistance/monk05.png",
+    "msaa": 8,
+    "dof": { "enabled": true, "focus_distance": 8, "focus_range": 6,
+             "near_blur_scale": 1, "far_blur_scale": 2, "max_blur": 8 }
   }
 }
 ```

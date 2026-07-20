@@ -135,7 +135,7 @@ python tools/bake_glb_material.py resources/scenes/nadia.json
 ```
 It reads the scene's `material` / `extra_materials` / `primitive_materials`, embeds the referenced PNGs (original bytes, verbatim — identical pixels), builds the ORM, writes the standard slots + `extras.vkfw_material`, and emits the slimmed scene. Re-runnable.
 
-**Size note.** These characters use 8K skin maps, so a baked GLB is large (~250–300 MB vs ~21 MB). This is inherent to the source textures (full-res verbatim embedding was chosen for pixel-identical results). `*.glb` under `resources/` is **Git-LFS tracked** (`.gitattributes`) — commit the baked GLBs through LFS, not as plain blobs.
+**Size note.** These characters use 8K skin maps, so a baked GLB is large (~250–300 MB vs ~21 MB). This is inherent to the source textures (full-res verbatim embedding was chosen for pixel-identical results). `*.glb` under `resources/` is **Git-LFS tracked** (`.gitattributes`) — commit the baked GLBs through LFS, not as plain blobs. Because the maps are baked into the GLB, the **SLViewer distributable does not ship the loose `resources/textures/<char>/` folders** (they'd be ~1.2 GB of duplicated bytes) — see the `install(DIRECTORY … resources/textures … PATTERN "<char>" EXCLUDE)` rule in `CMakeLists.txt`.
 
 **Key files:** `tools/bake_glb_material.py` (baker), `ext/Vulkan-Engine/src/tools/loaders.cpp` (`load_GLB` + `GLBMaterialAux` + `load_PNG_from_memory`; `SetImagesAsIs` keeps the 8K maps raw and they're decoded on demand), `ext/Vulkan-Engine/include/engine/tools/loaders.h` (`GLBImage` / `GLBMaterialAux`), `src/scene_loader.cpp` (`GLBTexCtx`, `resolve_texture` `$GLB[...]` resolution, `assemble_baked_materials`).
 
@@ -175,14 +175,16 @@ The animations loaded are in json format. The specifics of this format and its s
 
 ### Scene format
 
-Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. The bundled default is `resources/scenes/default.json`; alternative scenes (`alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`) exercise the broader schema.
+Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. Known-good character scenes: `alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`. The default scene (used by SLViewer when `--scene` is omitted, and by HairViewer) is `resources/scenes/maria.json`.
+
+> **Note:** the old `resources/scenes/default.json` (Alex + `haircard`/OBJ hair) was **removed** — it segfaulted on the haircard hair path. `maria.json` is the default now.
 
 ### Scene Selection
 
 Scenes are JSON-driven (`resources/scenes/*.json` — see @SCENE.md).
 
 - **HairViewer** loads a scene unconditionally (currently `resources/scenes/nadia.json`). To use a different scene, either edit that file or change the path in `src/application.cpp::HairViewer::setup()`.
-- **SLViewer** accepts an optional `--scene <path>` flag; default falls back to `resources/scenes/default.json`.
+- **SLViewer** accepts an optional `--scene <path>` flag; when omitted it falls back to `resources/scenes/maria.json`.
 
 #### Engine example applications
 
@@ -290,10 +292,12 @@ SLViewer-linux/
 ├── THIRD_PARTY_NOTICES.txt
 └── resources/
     ├── meshes/           # engine built-in meshes (sphere, cube)
-    ├── textures/         # engine LUTs + IBL maps
-    ├── models/alex/      # alex.glb, hair_fauxmohawk.obj
-    ├── textures/alex/    # hair data + tangent textures
-    └── animations/       # test_anim.json, test_morph.json
+    ├── scenes/           # *.json (maria is the default; no default.json)
+    ├── models/<char>/    # <char>.glb (materials + skin/eye maps baked in) + .hair strands
+    ├── textures/         # global HDRIs, scatterDistance/ SSS LUTs, skin detail maps, icon
+    │                     #   NOTE: per-character folders (alex/ javi/ maria/ nadia/) are
+    │                     #   NOT shipped — those maps are baked verbatim into each <char>.glb.
+    └── animations/       # test_anim.json, test_morph.json, ...
 ```
 
 No `resources/shaders/` is shipped — shaders are pre-compiled to SPIR-V at
@@ -377,7 +381,7 @@ ever requests one, the hard-fail at startup names the file clearly.
 
 ## SLViewer — Headless Video Export
 
-`SLViewer` renders the Alex scene from a JSON animation file and encodes the result as an MP4 using system ffmpeg.
+`SLViewer` renders a scene from a JSON animation file and encodes the result as an MP4 using ffmpeg. When `--scene` is omitted it uses `resources/scenes/maria.json`.
 
 ### Prerequisites
 
@@ -394,7 +398,7 @@ ever requests one, the hard-fail at startup names the file clearly.
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `<animation.json>` | (required) | Path to the timeline JSON. Overrides the scene's `animation` field on the first mesh that declares one (or on the first skinned mesh). |
-| `--scene <file.json>` | `resources/scenes/default.json` | Scene JSON. Schema in @SCENE.md. |
+| `--scene <file.json>` | `resources/scenes/maria.json` | Scene JSON. Schema in @SCENE.md. |
 | `--output <file.mp4>` | `output.mp4` | Output video path |
 | `--width N` | 1920 | Render width in pixels |
 | `--height N` | 1080 | Render height in pixels |
@@ -406,6 +410,7 @@ ever requests one, the hard-fail at startup names the file clearly.
 
 ```bash
 ./SLViewer ../resources/animations/test_anim.json \
+           --scene ../resources/scenes/maria.json \
            --output test_output.mp4 \
            --width 1280 --height 720 \
            --log-level warn

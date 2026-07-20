@@ -285,8 +285,27 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.txt" DESTINATION 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/models"
         DESTINATION resources
         PATTERN "hair_strands_ABCextraction" EXCLUDE)
+
+# Textures. The character skin/eye maps live baked *inside* each character GLB
+# (extras.vkfw_material, verbatim bytes — see "Self-Contained Character GLBs"),
+# so the loose per-character folders under resources/textures/<char>/ are pure
+# duplicates (~1.2 GB combined) and are EXCLUDED from the distributable. The
+# engine reads those maps from the GLB; nothing on disk is opened for a baked
+# character with a slimmed scene JSON, and no shipped scene references them.
+#
+# What still ships: the global HDRIs, SSS scatter LUTs (scenes reference
+# textures/scatterDistance/*), skin detail maps, and icon.
+#
+# ⚠️ If a scene ever overrides a character material with a *loose* texture that
+# lives in one of these folders, add that specific file back with an explicit
+# install(FILES ...) below — the baked-GLB textures cannot be overridden per-key
+# without shipping the override file.
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures"
-        DESTINATION resources)
+        DESTINATION resources
+        PATTERN "alex"  EXCLUDE
+        PATTERN "javi"  EXCLUDE
+        PATTERN "maria" EXCLUDE
+        PATTERN "nadia" EXCLUDE)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/animations"
         DESTINATION resources)
 

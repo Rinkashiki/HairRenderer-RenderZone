@@ -129,7 +129,7 @@ void SLApplication::init() {
 
 void SLApplication::setup() {
     const std::string scenePath = m_scenePath.empty()
-        ? (m_resourcesPath + "scenes/default.json")
+        ? (m_resourcesPath + "scenes/maria.json")
         : m_scenePath;
 
     auto result   = scene_loader::load_scene_json(

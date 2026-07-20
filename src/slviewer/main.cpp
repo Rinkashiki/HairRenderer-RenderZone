@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::string animPath    = argv[1];
-    std::string scenePath;  // empty → use bundled default
+    std::string scenePath;  // empty → use bundled default (scenes/maria.json)
     std::string outputPath  = "output.mp4";
     int         width       = 1920;
     int         height      = 1080;
