@@ -255,7 +255,7 @@ void ResourceManager::update_object_data(Graphics::Device* const device,
                 Core::Geometry*  g = mesh->get_geometry(gi);
                 Core::IMaterial* mat = mesh->get_material(g ? g->get_material_ID() : 0);
                 if (mat && (mat->get_type() == Core::IMaterial::Type::HAIR_STR_TYPE ||
-                            mat->get_type() == Core::IMaterial::Type::HAIR_STR_EPIC_TYPE))
+                            Core::IMaterial::is_epic_hair_family(mat->get_type())))
                     return true;
             }
             return false;

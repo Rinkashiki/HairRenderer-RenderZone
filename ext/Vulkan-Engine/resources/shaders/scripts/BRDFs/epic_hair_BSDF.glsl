@@ -569,6 +569,122 @@ vec3 evalEpicHairBSDF(vec3         L,
     return S ;
 }
 
+// ── Eyelash variant ─────────────────────────────────────────────────────────
+// Same Marschner R/TT/TRT structure as evalEpicHairBSDF, but with the three knobs
+// the epic path leaves inert actually wired in, so eyelashes can be tuned to be
+// far less reflective and far more transmissive than scalp hair:
+//   • R   (surface sheen)   scaled by Rpower  — dial the plastic-wire glare down.
+//   • TT  (transmission)    scaled by TTpower and modulated by backlit — real
+//                           light-through-the-fiber glow, strongest when backlit.
+//   • TRT (secondary glint) scaled by TRTpower — tame the coloured highlight.
+// Only eyelash_strand.glsl calls this; scalp hair/eyebrows keep evalEpicHairBSDF,
+// so wiring these multipliers here cannot change the existing hair look.
+vec3 evalEyelashBSDF(vec3         L,
+                     vec3         V,
+                     vec3         N,
+                     float        shadow,
+                     sampler3D    NpTex,
+                     EpicHairBSDF bsdf,
+                     float        inBacklit,
+                     float        area,
+                     bool         r,
+                     bool         tt,
+                     bool         trt,
+                     bool         scatter) {
+
+    float clampedRoughness = clamp(bsdf.roughness, 1.0 / 255.0, 1.0);
+
+    const float backlit = bsdf.useBacklit ? inBacklit : 1.0;
+
+    // THETA
+    const float VoL       = dot(V, L);
+    const float sinThetaL = clamp(dot(N, L), -1.0, 1.0);
+    const float sinThetaV = clamp(dot(N, V), -1.0, 1.0);
+    float       cosThetaD = cos(0.5 * abs(asin(sinThetaV) - asin(sinThetaL)));
+    cosThetaD             = max(cosThetaD, 1e-3); // see evalEpicHairBSDF for why
+
+    float viewPerpendicularity = sqrt(max(0.0, 1.0 - sinThetaV * sinThetaV));
+    float grazingTerm          = viewPerpendicularity;
+
+    // PHI
+    const vec3  Lp         = L - sinThetaL * N;
+    const vec3  Vp         = V - sinThetaV * N;
+    const float cosPhi     = dot(Lp, Vp) * inversesqrt(dot(Lp, Lp) * dot(Vp, Vp) + 1e-4);
+    const float cosHalfPhi = sqrt(saturate(0.5 + 0.5 * cosPhi));
+
+    float n       = bsdf.ior;
+    float n_prime = 1.19 / cosThetaD + 0.36 * cosThetaD;
+
+    float shift = 0.035;
+    vec3  alpha = vec3(-shift * 2, shift, shift * 4);
+    vec3  beta  = vec3(area + pow2(clampedRoughness), area + pow2(clampedRoughness) * 0.5, area + pow2(clampedRoughness) * 2.0);
+
+    vec3 S = vec3(0.0);
+
+    // R — primary surface sheen (Rpower now active: lower it to kill the glare)
+    if (r)
+    {
+        const float sa        = sin(alpha[0]);
+        const float ca        = cos(alpha[0]);
+        float       shiftR    = 2 * sa * (ca * cosHalfPhi * sqrt(1 - sinThetaV * sinThetaV) + sa * sinThetaV);
+        float       betaScale = bsdf.useSeparableR ? sqrt(2.0) * cosHalfPhi : 1.0;
+        float       Mp        = g(sinThetaL + sinThetaV - shiftR, beta[0] * betaScale, bsdf.clampBSDFValue);
+        float       Np        = 0.25 * cosHalfPhi;
+        float       Fp        = fresnel(sqrt(saturate(0.5 + 0.5 * VoL)), n);
+        S += vec3(Mp * Np * Fp * (bsdf.specular * 2.0) * bsdf.Rpower * mix(1, 0.0, saturate(-VoL)));
+    }
+
+    // TT — transmission (TTpower + backlit now active: the translucency knob)
+    if (tt)
+    {
+        float Mp = g(sinThetaL + sinThetaV - alpha[1], beta[1], bsdf.clampBSDFValue);
+
+        float a = 1.0 / n_prime;
+        float h = cosHalfPhi * (1.0 + a * (0.6 - 0.8 * cosPhi));
+
+        float f  = fresnel(cosThetaD * sqrt(saturate(1 - h * h)), n);
+        float Fp = pow2(1.0 - f);
+        vec3  Tp = vec3(0.0);
+
+        if (bsdf.useLegacyAbsorption)
+        {
+            Tp = pow(abs(bsdf.baseColor), vec3(0.5 * sqrt(1.0 - pow2(h * a)) / cosThetaD));
+        } else
+        {
+            const vec3 absorptionColor = hairColorToAbsorption(bsdf.baseColor);
+            Tp                         = exp(-absorptionColor * 2.0 * abs(1.0 - pow2(h * a) / cosThetaD));
+        }
+
+        float Np = exp(-3.65 * cosPhi - 3.98);
+
+        S += Mp * Np * Fp * Tp * grazingTerm * bsdf.TTpower * backlit;
+    }
+
+    // TRT — secondary glint (TRTpower now active: tame the coloured highlight)
+    if (trt)
+    {
+        float Mp = g(sinThetaL + sinThetaV - alpha[2], beta[2], bsdf.clampBSDFValue);
+
+        float f  = fresnel(cosThetaD * 0.5, n);
+        float Fp = pow2(1.0 - f) * f;
+        vec3  Tp = pow(abs(bsdf.baseColor), vec3(0.8 / cosThetaD));
+
+        float Np = exp(17.0 * cosPhi - 16.78);
+
+        S += Mp * Np * Fp * Tp * grazingTerm * bsdf.TRTpower;
+    }
+
+    if (scatter)
+    {
+        S = bsdf.globalScattering * (S + bsdf.localScattering) * bsdf.opaqueVisibility;
+        S += evalKajiyaKayDiffuseAttenuation(bsdf.baseColor, bsdf.metallic, L, V, N, 1.0 - bsdf.opaqueVisibility);
+    }
+
+    S = -min(-S, 0.0);
+
+    return S;
+}
+
 // Dual scattering computation are done here for faster iteration (i.e., does not invalidate tons of shaders)
 EpicHairBSDF computeDualScatteringTerms(const HairTransmittanceMask TransmittanceMask,
                                         const HairAverageScattering AverageScattering,

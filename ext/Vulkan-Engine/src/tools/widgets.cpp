@@ -661,7 +661,7 @@ void ObjectExplorerWidget::render() {
                 ImGui::Separator();
             }
 #pragma region EPIC
-            if (model->get_material(i)->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
+            if (IMaterial::is_epic_hair_family(model->get_material(i)->get_type()))
             {
                 HairEpicMaterial* mat = static_cast<HairEpicMaterial*>(model->get_material(i));
 

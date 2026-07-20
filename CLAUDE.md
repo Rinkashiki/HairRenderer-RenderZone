@@ -85,6 +85,7 @@ Resources flow between passes through the dependency table + `link_previous_imag
 
 - **Resource Manager** (`core/resource_manager.h/cpp`): CPU-to-GPU data upload. Holds shared resources like `VIGNETTE` (fullscreen quad mesh used by all post-process passes).
 - **Materials**: `HairEpicMaterial` for hair, `PhysicallyBasedMaterial` for head/eyes. Material classes define their own descriptor layouts and uniform buffers.
+  - **`EyelashMaterial`** (subclass of `HairEpicMaterial`, type `HAIR_STR_EYELASH_TYPE`, scene JSON type `"eyelash"`): same params/uniforms/geometry as epic hair but routed to `shaders/forward/eyelash_strand.glsl`, which calls `evalEyelashBSDF` (in `epic_hair_BSDF.glsl`) instead of `evalEpicHairBSDF`. That variant wires up `R_power`/`TT_power`/`TRT_power`/`use_backlit` — which the epic path ignores — so eyelashes can be made less reflective (low `specular`/`R_power`) and more transmissive (higher `TT_power` + `use_backlit`) without affecting scalp hair. Any subsystem that special-cases epic hair (forward draw loop, VSM skip, hair voxelization, resource-manager voxel union, GUI widget) must test `IMaterial::is_epic_hair_family()`, not the exact type, or eyelashes drop out of it.
 - **RHI** (`Graphics/` folder): Low-level Vulkan abstraction (device, swapchain, command buffers, images, descriptors). Should generally remain untouched.
 - Uses classic `VkRenderPass` objects, **not** `VK_KHR_dynamic_rendering`.
 

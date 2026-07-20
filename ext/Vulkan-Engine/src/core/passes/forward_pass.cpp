@@ -346,6 +346,25 @@ void ForwardPass::setup_shader_passes() {
     hairStrandPass2->graphicSettings.alphaToOne    = false;
     m_shaderPasses[IMaterial::Type::HAIR_STR_EPIC_TYPE] = hairStrandPass2;
 
+    // Eyelashes: identical pipeline to epic strand hair (same geometry, uniforms,
+    // vertex attributes and push constant), only a different fragment shader that
+    // makes them less reflective / more transmissive. Kept in sync with the epic
+    // pass above.
+    GraphicShaderPass* eyelashPass =
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/eyelash_strand.glsl");
+    eyelashPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
+    eyelashPass->settings.pushConstants          = {Graphics::PushConstant(SHADER_STAGE_FRAGMENT, sizeof(Vec4))};
+    eyelashPass->graphicSettings.attributes      = {
+        {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, false}, {UV_ATTRIBUTE, true}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, true}};
+    eyelashPass->graphicSettings.dynamicStates    = dynamicStates;
+    eyelashPass->graphicSettings.samples          = samples;
+    eyelashPass->graphicSettings.sampleShading    = true;
+    eyelashPass->graphicSettings.blendAttachments = blendAttachments;
+    eyelashPass->graphicSettings.topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    eyelashPass->graphicSettings.alphaToCoverage  = false;
+    eyelashPass->graphicSettings.alphaToOne       = false;
+    m_shaderPasses[IMaterial::Type::HAIR_STR_EYELASH_TYPE] = eyelashPass;
+
 #endif
     GraphicShaderPass* hairCardPass =
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/hair_card.glsl");
@@ -468,7 +487,7 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
 
 #if FAST_HAIR_GEOMETRY == 1
                         // DRAW
-                        if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
+                        if (IMaterial::is_epic_hair_family(mat->get_type()))
                         {
                             // SSBO Bindless
                             cmd.bind_descriptor_set(m_descriptors[currentFrame.index].bindlessDescriptor, 3, *shaderPass, {});
@@ -484,7 +503,7 @@ void ForwardPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint
 
 #else
 
-                        if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE)
+                        if (IMaterial::is_epic_hair_family(mat->get_type()))
                         {
                             float avgHairLength = g->get_properties().avgFiberLength * m->get_scale().x;
                             Vec4  data          = Vec4(float(draw_idx + i), avgHairLength, 0.0, 0.0);

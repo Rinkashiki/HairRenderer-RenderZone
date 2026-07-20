@@ -6,6 +6,17 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
+### Eyelash shader — further realism (future work, noted 2026-07-20)
+
+A dedicated eyelash material + shader now exists (see Done, 2026-07-20: `EyelashMaterial` / `HAIR_STR_EYELASH_TYPE` / `eyelash_strand.glsl` / `evalEyelashBSDF`). The current tuning (`maria_eyelashes` in `resources/scenes/maria.json`, `EYELASH_SHEEN` in the shader) is a *good-enough first pass* that fixed the "too shiny / too dark" complaints, not a finished look. Ideas for when eyelashes get revisited:
+
+- **Tip translucency / thickness taper.** Real lashes are thicker and darker at the lid, thinning to a translucent tip. Right now thickness is uniform and translucency is a global `TT_power`. Could drive thickness and TT strength by the strand UV.x (root→tip), reusing the existing `tipBleaching`/`tipFalloff` plumbing.
+- **Backlit rim is currently the main transmission cue** (`TT_power`×`backlit`). It reads well against bright backgrounds but is weak when front/side-lit; a small view-independent forward-scatter term would help lashes against the darker eye/skin.
+- **`EYELASH_SHEEN = 0.15`** is a flat global damp of the env specular sheen. A softer, more physically-motivated grazing falloff (or removing the sheen entirely and relying on ambient) may look cleaner than a flat scale.
+- **Shape/clumping.** The groom itself (strand geometry) matters more than the BSDF past a point — clumping, curl, and per-strand length variation would do more for realism than further shader tweaks.
+- **Only maria is wired up.** Other characters (alex/javi/nadia) still share one hair material for hair+brows+lashes; give them `eyelash`-type materials too once the look is locked.
+- **All knobs are data-only** (`maria_eyelashes`), so most iteration needs no rebuild — HairViewer recompiles shaders + reloads the scene at launch.
+
 ### Renderer performance — opportunities for future work (notes 2026-06-24)
 
 After fixing the host-visible-`posSSBO` regression (see Done, 2026-06-24), these are the remaining per-frame costs worth attacking, roughly highest-leverage first. None are started; each notes where it lives and the risk.
@@ -165,6 +176,22 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### Dedicated eyelash shader + material (2026-07-20)
+
+**Goal (user):** eyelashes shared `maria_hair` (HairEpicMaterial) with scalp hair/eyebrows and looked wrong — too reflective, not transmissive enough. Chosen approach (user-selected): a **separate eyelash shader + material type**, not just param tuning.
+
+**Root-cause finding that shaped the design:** the active hair shader is `hair_strand_epic.glsl` → `evalEpicHairBSDF` (FAST_HAIR_GEOMETRY=0). In that function `R_power`/`TT_power`/`TRT_power` are uploaded but **never read**, and `useBacklit`/`backlit` is computed but never applied — so transmission was not art-controllable from JSON at all; only `specular` (scales R lobe + env sheen) and melanin/roughness did anything.
+
+**Implemented:**
+- New material type `HAIR_STR_EYELASH_TYPE = 7` + `IMaterial::is_epic_hair_family()` helper (`material.h`); `EyelashMaterial : HairEpicMaterial` reusing all params/uniforms via a new protected `HairEpicMaterial(Type,…)` ctor (`hair.h`).
+- New `evalEyelashBSDF` in `epic_hair_BSDF.glsl` — a copy of `evalEpicHairBSDF` with the dead knobs wired in: R scaled by `Rpower`, TT scaled by `TTpower`×`backlit` (real translucency, backlit-strongest), TRT scaled by `TRTpower`. Only the eyelash shader calls it, so scalp hair is byte-for-byte unchanged.
+- New `eyelash_strand.glsl` = faithful clone of `hair_strand_epic.glsl` calling `evalEyelashBSDF`. Registered as its own `GraphicShaderPass` slot in `forward_pass.cpp` (mirrors the epic pass settings).
+- Extended every epic-hair switch site to the family helper so eyelashes behave like epic hair everywhere except the fragment shader: forward-pass draw loop (push constant), `variance_shadow_pass` (VSM skip), `hair_voxelization_pass`, `resource_manager` (shared voxel union AABB), `widgets.cpp` (GUI editor).
+- Scene loader: new `"eyelash"` material type (reuses `build_hairepic(jm, eyelash=true)`); exposed `use_backlit` in the parser + allowed-keys.
+- `maria.json`: added `maria_eyelashes` (type `eyelash`, specular 0.1, R_power 0.5, TT_power 2.5, TRT_power 0.4, use_backlit true, darker melanin, glints off) and pointed the Eyelashes mesh at it. Hair + eyebrows still share `maria_hair`.
+
+**Verified:** clean build; HairViewer `--frames` run exits 0, eyelash shader compiles at runtime (Shaderc), no validation errors, no unknown-key/material warnings. **Pending user visual validation** in the interactive viewer — the starting parameter values are a first pass meant for tuning (all live in `maria_eyelashes`, no code change needed to adjust). SLViewer picks up the new embedded shader at its next build.
 
 ### "Application not responding" on launch — async scene load (2026-07-20)
 

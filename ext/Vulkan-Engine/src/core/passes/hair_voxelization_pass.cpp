@@ -318,7 +318,7 @@ void HairVoxelizationPass::render(Graphics::Frame& currentFrame, Scene* const sc
                     m->get_geometry()) // Check if is inside frustrum
                 {
                     auto mat = m->get_material();
-                    if (mat->get_type() == Core::IMaterial::Type::HAIR_STR_TYPE || mat->get_type() == Core::IMaterial::Type::HAIR_STR_EPIC_TYPE)
+                    if (mat->get_type() == Core::IMaterial::Type::HAIR_STR_TYPE || Core::IMaterial::is_epic_hair_family(mat->get_type()))
                     {
                         // Live-deformed hair: pull this frame's deformed positions from
                         // the host-visible staging ring into the device-local posSSBO the

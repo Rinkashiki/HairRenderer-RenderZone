@@ -188,7 +188,7 @@ void VarianceShadowPass::render(Graphics::Frame& currentFrame, Scene* const scen
                     // so head->hair shadowing is preserved. Trade-off: hair no longer
                     // casts a shadow-map shadow onto the face/body (acceptable; the
                     // proper way to keep that is VSM receiver bias tuning — future work).
-                    if (mat->get_type() == IMaterial::Type::HAIR_STR_EPIC_TYPE ||
+                    if (IMaterial::is_epic_hair_family(mat->get_type()) ||
                         mat->get_type() == IMaterial::Type::HAIR_STR_TYPE)
                         continue;
 

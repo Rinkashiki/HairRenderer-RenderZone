@@ -47,7 +47,20 @@ class IMaterial
         HAIR_CARD_TYPE       = 4,
         HAIR_STR_DISNEY_TYPE = 5,
         HAIR_STR_EPIC_TYPE  = 6,
+        // Eyelashes: same uniforms/geometry as epic strand hair, but routed to a
+        // dedicated fragment shader (eyelash_strand.glsl) so they can be far less
+        // reflective and more transmissive than scalp hair. Behaves like epic hair
+        // in every other subsystem — use is_epic_hair_family() at those sites.
+        HAIR_STR_EYELASH_TYPE = 7,
     };
+
+    // Epic strand hair + its eyelash variant share geometry, uniforms, voxelization,
+    // shadow handling and GUI — only the forward fragment shader differs. Subsystems
+    // that treat "epic strand hair" specially should test the family, not the exact
+    // type, or eyelashes silently drop out of voxelization / shadow / the draw path.
+    static inline bool is_epic_hair_family(Type t) {
+        return t == HAIR_STR_EPIC_TYPE || t == HAIR_STR_EYELASH_TYPE;
+    }
 
     static IMaterial* DEBUG_MATERIAL;
 

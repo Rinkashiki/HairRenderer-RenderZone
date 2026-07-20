@@ -338,11 +338,14 @@ static Core::IMaterial* build_haircard(const json&        jm,
     return mat;
 }
 
-static Core::IMaterial* build_hairepic(const json& jm) {
+// `eyelash == true` builds an EyelashMaterial (same params, routed to the eyelash
+// shader) instead of a HairEpicMaterial. Every setter below is inherited, so the
+// two paths share this whole body.
+static Core::IMaterial* build_hairepic(const json& jm, bool eyelash = false) {
     Vec3 tint(0.35f);
     if (jm.contains("tint_color"))
         tint = to_vec3(jm["tint_color"], tint);
-    auto* mat = new Core::HairEpicMaterial(tint);
+    Core::HairEpicMaterial* mat = eyelash ? new Core::EyelashMaterial(tint) : new Core::HairEpicMaterial(tint);
 
     if (jm.contains("thickness"))     mat->set_thickness(jm["thickness"].get<float>());
     if (jm.contains("roughness"))     mat->set_roughness(jm["roughness"].get<float>());
@@ -359,6 +362,7 @@ static Core::IMaterial* build_hairepic(const json& jm) {
     if (jm.contains("eumelanine"))    mat->set_eumelanine(jm["eumelanine"].get<float>());
     if (jm.contains("pheomelanine"))  mat->set_pheomelanine(jm["pheomelanine"].get<float>());
     if (jm.contains("use_pigmentation")) mat->use_pigmentation(jm["use_pigmentation"].get<bool>());
+    if (jm.contains("use_backlit"))   mat->setUseBacklit(jm["use_backlit"].get<bool>());
     if (jm.contains("use_scatter"))   mat->set_useScatter(jm["use_scatter"].get<bool>());
     if (jm.contains("use_glints"))    mat->use_glints(jm["use_glints"].get<bool>());
     if (jm.contains("adv_shadows"))   mat->set_adv_shadows(jm["adv_shadows"].get<bool>());
@@ -372,7 +376,7 @@ static Core::IMaterial* build_hairepic(const json& jm) {
     warn_unknown(jm,
         {"type", "tint_color", "thickness", "roughness", "specular", "metallic",
          "shift", "ior", "R", "R_power", "TT", "TT_power", "TRT", "TRT_power",
-         "eumelanine", "pheomelanine", "use_pigmentation", "use_scatter", "use_glints",
+         "eumelanine", "pheomelanine", "use_pigmentation", "use_backlit", "use_scatter", "use_glints",
          "adv_shadows", "density_boost", "scatter_boost",
          "root_darkening", "tip_bleaching", "tip_falloff", "variability"},
         "material(hairepic)");
@@ -474,6 +478,7 @@ static Core::IMaterial* build_material_inline(const json&        jm,
     if (type == "pbr")        return build_pbr(jm, resourcesPath, glbTextures);
     if (type == "haircard")   return build_haircard(jm, resourcesPath, glbTextures);
     if (type == "hairepic")   return build_hairepic(jm);
+    if (type == "eyelash")    return build_hairepic(jm, /*eyelash*/ true);
     if (type == "hair")       return build_hair(jm);
     if (type == "hairdisney") return build_hairdisney(jm);
     if (type == "unlit")      return build_unlit(jm, resourcesPath, glbTextures);
