@@ -6,6 +6,8 @@
 #include <engine/systems/renderers/forward.h>
 #include <engine/tools/loaders.h>
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -16,6 +18,14 @@
 using json = nlohmann::json;
 
 namespace scene_loader {
+
+// Texture-resolution context for a single mesh: the GLB's embedded images (baked
+// self-contained materials) plus a per-mesh cache so a `$GLB[...]` reference shared
+// by several material slots decodes its image only once.
+struct GLBTexCtx {
+    const Tools::Loaders::GLBMaterialAux*           aux = nullptr;
+    std::unordered_map<std::string, Core::Texture*> cache;
+};
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -125,12 +135,17 @@ static Core::Light* build_light(const json&        jl,
 
 // ─── materials ──────────────────────────────────────────────────────────────
 
-// Resolve a texture reference. "$GLB[N]" returns the Nth element of glbTextures (or nullptr).
-// Any other non-empty string is treated as a path relative to resourcesPath.
-static Core::Texture* resolve_texture(const json&                          jvalue,
-                                      const std::string&                   resourcesPath,
-                                      const std::vector<Core::Texture*>&   glbTextures,
-                                      TextureFormatType                    fmt) {
+// Resolve a texture reference:
+//   "$GLB[<name>]"          — embedded GLB image by name (baked self-contained assets)
+//   "$GLB[<name>:<r|g|b|a>]" — a single channel of that image (unpacks ORM: R=occlusion,
+//                             G=roughness, B=metallic), replicated to grayscale
+//   "$GLB[<N>]"             — legacy: embedded image by index
+//   any other non-empty str — a texture path relative to resourcesPath.
+// Decoded images are cached per mesh so a shared reference decodes only once.
+static Core::Texture* resolve_texture(const json&        jvalue,
+                                      const std::string& resourcesPath,
+                                      GLBTexCtx&         glbTextures,
+                                      TextureFormatType  fmt) {
     if (jvalue.is_null())
         return nullptr;
 
@@ -138,16 +153,56 @@ static Core::Texture* resolve_texture(const json&                          jvalu
     if (ref.empty())
         return nullptr;
 
-    // "$GLB[N]" sentinel
+    // "$GLB[...]" — embedded image (name, name:channel, or numeric index).
     if (ref.rfind("$GLB[", 0) == 0) {
         const auto close = ref.find(']');
         if (close == std::string::npos)
             return nullptr;
-        const int idx = std::stoi(ref.substr(5, close - 5));
-        if (idx >= 0 && static_cast<size_t>(idx) < glbTextures.size())
-            return glbTextures[idx];
-        LOG_WARN("scene_loader: $GLB[" + std::to_string(idx) + "] out of range");
-        return nullptr;
+        std::string inner   = ref.substr(5, close - 5);
+        int         channel = -1;
+        const auto  colon   = inner.rfind(':');
+        if (colon != std::string::npos && colon + 2 == inner.size()) {
+            switch (inner[colon + 1]) {
+                case 'r': channel = 0; break;
+                case 'g': channel = 1; break;
+                case 'b': channel = 2; break;
+                case 'a': channel = 3; break;
+            }
+            if (channel >= 0)
+                inner = inner.substr(0, colon);
+        }
+
+        const std::string key = inner + (channel >= 0 ? (":" + std::to_string(channel)) : "");
+        auto              it  = glbTextures.cache.find(key);
+        if (it != glbTextures.cache.end())
+            return it->second;
+
+        if (!glbTextures.aux) {
+            LOG_WARN("scene_loader: '" + ref + "' but the mesh has no embedded GLB images");
+            return nullptr;
+        }
+
+        const Tools::Loaders::GLBImage* img = nullptr;
+        for (const auto& gi : glbTextures.aux->images)
+            if (gi.name == inner) { img = &gi; break; }
+        if (!img) { // numeric-index fallback
+            const bool numeric = !inner.empty() && std::all_of(inner.begin(), inner.end(),
+                                                               [](unsigned char c) { return std::isdigit(c) != 0; });
+            if (numeric) {
+                size_t idx = std::stoul(inner);
+                if (idx < glbTextures.aux->images.size())
+                    img = &glbTextures.aux->images[idx];
+            }
+        }
+        if (!img) {
+            LOG_WARN("scene_loader: embedded GLB image '" + inner + "' not found");
+            return nullptr;
+        }
+
+        auto* tex = new Core::Texture();
+        Tools::Loaders::load_PNG_from_memory(tex, img->encoded.data(), img->encoded.size(), fmt, channel);
+        glbTextures.cache[key] = tex;
+        return tex;
     }
 
     auto* tex = new Core::Texture();
@@ -155,9 +210,9 @@ static Core::Texture* resolve_texture(const json&                          jvalu
     return tex;
 }
 
-static Core::IMaterial* build_pbr(const json&                        jm,
-                                  const std::string&                 resourcesPath,
-                                  const std::vector<Core::Texture*>& glbTextures) {
+static Core::IMaterial* build_pbr(const json&        jm,
+                                  const std::string& resourcesPath,
+                                  GLBTexCtx&         glbTextures) {
     auto* mat = new Core::PhysicallyBasedMaterial();
     if (jm.contains("albedo"))           mat->set_albedo(to_vec3(jm["albedo"], Vec3(1.0f)));
     if (jm.contains("albedo_weight"))    mat->set_albedo_weight(jm["albedo_weight"].get<float>());
@@ -254,9 +309,9 @@ static Core::IMaterial* build_pbr(const json&                        jm,
     return mat;
 }
 
-static Core::IMaterial* build_haircard(const json&                        jm,
-                                       const std::string&                 resourcesPath,
-                                       const std::vector<Core::Texture*>& glbTextures) {
+static Core::IMaterial* build_haircard(const json&        jm,
+                                       const std::string& resourcesPath,
+                                       GLBTexCtx&         glbTextures) {
     auto* mat = new Core::HairCardMaterial();
     if (jm.contains("hair_color"))         mat->set_hair_color(to_vec3(jm["hair_color"]));
     if (jm.contains("alpha_threshold"))    mat->set_alpha_threshold(jm["alpha_threshold"].get<float>());
@@ -395,9 +450,9 @@ static Core::IMaterial* build_hairdisney(const json& jm) {
     return mat;
 }
 
-static Core::IMaterial* build_unlit(const json&                        jm,
-                                    const std::string&                 resourcesPath,
-                                    const std::vector<Core::Texture*>& glbTextures) {
+static Core::IMaterial* build_unlit(const json&        jm,
+                                    const std::string& resourcesPath,
+                                    GLBTexCtx&         glbTextures) {
     Vec4 color(1.0f, 1.0f, 0.5f, 1.0f);
     if (jm.contains("color"))
         color = to_vec4(jm["color"], color);
@@ -411,9 +466,9 @@ static Core::IMaterial* build_unlit(const json&                        jm,
     return mat;
 }
 
-static Core::IMaterial* build_material_inline(const json&                        jm,
-                                              const std::string&                 resourcesPath,
-                                              const std::vector<Core::Texture*>& glbTextures) {
+static Core::IMaterial* build_material_inline(const json&        jm,
+                                              const std::string& resourcesPath,
+                                              GLBTexCtx&         glbTextures) {
     require(jm, "type", "material");
     const std::string type = jm.at("type").get<std::string>();
     if (type == "pbr")        return build_pbr(jm, resourcesPath, glbTextures);
@@ -449,10 +504,10 @@ struct MaterialLibrary {
     std::unordered_map<std::string, Core::IMaterial*> sharedCache;
 };
 
-static Core::IMaterial* resolve_material(const json&                        jm,
-                                         const std::string&                 resourcesPath,
-                                         const std::vector<Core::Texture*>& glbTextures,
-                                         MaterialLibrary&                   lib) {
+static Core::IMaterial* resolve_material(const json&        jm,
+                                         const std::string& resourcesPath,
+                                         GLBTexCtx&         glbTextures,
+                                         MaterialLibrary&   lib) {
     // Case 2: bare string → shared library reference.
     if (jm.is_string()) {
         const std::string name = jm.get<std::string>();
@@ -464,7 +519,8 @@ static Core::IMaterial* resolve_material(const json&                        jm,
             throw std::runtime_error("scene_loader: material reference '" + name +
                                      "' has no entry in the top-level 'materials' library");
         // Library entries are scene-global → no GLB texture context available.
-        Core::IMaterial* mat = build_material_inline(defIt->second, resourcesPath, {});
+        GLBTexCtx        libCtx;
+        Core::IMaterial* mat = build_material_inline(defIt->second, resourcesPath, libCtx);
         lib.sharedCache[name] = mat;
         return mat;
     }
@@ -511,6 +567,86 @@ struct PendingBind {
     std::string bindingPath;    // absolute sidecar path, empty if none
 };
 
+// Assemble materials for a self-contained ("baked") GLB. Each geometry's glTF
+// material carries an engine material block in extras.vkfw_material (surfaced via
+// GLBMaterialAux). That block is the base layer; the scene JSON's `material`
+// (slot 0) and `extra_materials[i]` (slot i+1) merge OVER it (merge_patch — JSON
+// wins per key), so a partially-baked GLB + JSON that fills the gaps still works.
+// geom->slot comes from `primitive_materials` when present, else each geometry's
+// own glTF material index (so a fully-slimmed scene needs no slot mapping).
+static void assemble_baked_materials(Core::Mesh*                           mesh,
+                                     const json&                           jm,
+                                     const std::string&                    resourcesPath,
+                                     GLBTexCtx&                            glbCtx,
+                                     const Tools::Loaders::GLBMaterialAux& aux,
+                                     MaterialLibrary&                      lib) {
+    const size_t nGeom = mesh->get_num_geometries();
+
+    std::vector<int> slotOfGeom(nGeom, 0);
+    if (jm.contains("primitive_materials") && jm["primitive_materials"].is_array()) {
+        const auto& pm = jm["primitive_materials"];
+        for (size_t g = 0; g < nGeom; ++g)
+            slotOfGeom[g] = (g < pm.size()) ? pm[g].get<int>() : 0;
+    } else {
+        for (size_t g = 0; g < nGeom; ++g)
+            slotOfGeom[g] = (g < aux.geometryMaterialIndex.size() && aux.geometryMaterialIndex[g] >= 0)
+                                ? aux.geometryMaterialIndex[g]
+                                : static_cast<int>(g);
+    }
+
+    int numSlots = 0;
+    for (int s : slotOfGeom)
+        numSlots = std::max(numSlots, s + 1);
+
+    // JSON overlay for a slot: slot 0 = "material", slot i+1 = extra_materials[i].
+    auto jsonOverlay = [&](int slot) -> const json* {
+        if (slot == 0 && jm.contains("material"))
+            return &jm["material"];
+        if (slot >= 1 && jm.contains("extra_materials") && jm["extra_materials"].is_array() &&
+            static_cast<size_t>(slot - 1) < jm["extra_materials"].size())
+            return &jm["extra_materials"][slot - 1];
+        return nullptr;
+    };
+
+    for (int s = 0; s < numSlots; ++s) {
+        int rep = -1; // representative geometry backing this slot -> baked base block
+        for (size_t g = 0; g < nGeom; ++g)
+            if (slotOfGeom[g] == s) { rep = static_cast<int>(g); break; }
+
+        json base = json::object();
+        if (rep >= 0 && static_cast<size_t>(rep) < aux.geometryMaterialJson.size() &&
+            !aux.geometryMaterialJson[rep].empty()) {
+            try {
+                base = json::parse(aux.geometryMaterialJson[rep]);
+            } catch (const std::exception& e) {
+                LOG_ERROR(std::string("scene_loader: invalid baked material JSON: ") + e.what());
+                base = json::object();
+            }
+        }
+
+        const json* overlay = jsonOverlay(s);
+
+        Core::IMaterial* mat = nullptr;
+        if (overlay && (overlay->is_string() || (overlay->is_object() && overlay->contains("base")))) {
+            // Explicit library reference / base-override fully replaces the baked block.
+            mat = resolve_material(*overlay, resourcesPath, glbCtx, lib);
+        } else {
+            json merged = base;
+            if (overlay && overlay->is_object())
+                merged.merge_patch(*overlay);
+            if (merged.is_object() && !merged.empty()) {
+                if (!merged.contains("type"))
+                    merged["type"] = "pbr";
+                mat = build_material_inline(merged, resourcesPath, glbCtx);
+            }
+        }
+        mesh->push_material(mat ? mat : new Core::PhysicallyBasedMaterial());
+    }
+
+    for (size_t g = 0; g < nGeom; ++g)
+        mesh->set_material_ID(g, slotOfGeom[g]);
+}
+
 static Core::Mesh* build_mesh(const json&                     jm,
                               const std::string&              resourcesPath,
                               std::vector<PendingAttachment>& pending,
@@ -524,11 +660,13 @@ static Core::Mesh* build_mesh(const json&                     jm,
     const std::string fullPath = resourcesPath + file;
 
     auto* mesh = new Core::Mesh();
-    std::vector<Core::Texture*> glbTextures; // only populated for type == "glb"
+    Tools::Loaders::GLBMaterialAux glbAux; // embedded images + baked material blocks (glb only)
+    GLBTexCtx                      glbCtx; // texture resolver for this mesh's materials
 
     if (type == "glb") {
         int meshIndex = jm.value("glb_mesh_index", -1);
-        Tools::Loaders::load_GLB(mesh, fullPath, meshIndex, &glbTextures);
+        Tools::Loaders::load_GLB(mesh, fullPath, meshIndex, nullptr, &glbAux);
+        glbCtx.aux = &glbAux;
     } else if (type == "obj" || type == "ply" || type == "hair") {
         Tools::Loaders::load_3D_file(mesh, fullPath, false);
         if (mesh->get_num_geometries() == 0) {
@@ -554,39 +692,51 @@ static Core::Mesh* build_mesh(const json&                     jm,
     if (jm.contains("scale"))    mesh->set_scale(to_scale(jm["scale"]));
     if (jm.contains("rotation")) mesh->set_rotation(to_vec3(jm["rotation"]));
 
-    // Material — may be inline, a library reference (string), or { base, ...overrides }.
-    if (jm.contains("material")) {
-        auto* mat = resolve_material(jm["material"], resourcesPath, glbTextures, lib);
-        mesh->push_material(mat);
-    }
+    // Materials. A self-contained ("baked") GLB carries an engine material block
+    // per glTF material (extras.vkfw_material); those form the base layer and the
+    // scene JSON merges over them. An unbaked GLB (or obj/ply) is defined entirely
+    // by the scene JSON — the original, unchanged path.
+    bool hasBaked = false;
+    for (const auto& s : glbAux.geometryMaterialJson)
+        if (!s.empty()) { hasBaked = true; break; }
 
-    // Optional extra material slots, used by GLB meshes with multiple primitives
-    // (e.g. body + teeth + tongue). Each entry is resolved like `material` and
-    // appended after the primary material.
-    if (jm.contains("extra_materials")) {
-        if (!jm["extra_materials"].is_array())
-            throw std::runtime_error("scene_loader: 'extra_materials' must be an array");
-        for (const auto& em : jm["extra_materials"])
-            mesh->push_material(resolve_material(em, resourcesPath, glbTextures, lib));
-    }
+    if (type == "glb" && hasBaked) {
+        assemble_baked_materials(mesh, jm, resourcesPath, glbCtx, glbAux, lib);
+    } else {
+        // Material — may be inline, a library reference (string), or { base, ...overrides }.
+        if (jm.contains("material")) {
+            auto* mat = resolve_material(jm["material"], resourcesPath, glbCtx, lib);
+            mesh->push_material(mat);
+        }
 
-    // Optional per-primitive material slot mapping. Entry i is the material slot
-    // index used by geometry i (= primitive i in load order). Required when a
-    // mesh has more than one geometry and you want anything other than every
-    // geometry using slot 0.
-    if (jm.contains("primitive_materials")) {
-        if (!jm["primitive_materials"].is_array())
-            throw std::runtime_error("scene_loader: 'primitive_materials' must be an array of slot indices");
-        const auto& pm = jm["primitive_materials"];
-        const size_t numGeoms = mesh->get_num_geometries();
-        const size_t numMats  = mesh->get_num_materials();
-        for (size_t i = 0; i < pm.size() && i < numGeoms; ++i) {
-            size_t slot = pm[i].get<size_t>();
-            if (slot >= numMats)
-                throw std::runtime_error("scene_loader: 'primitive_materials[" + std::to_string(i) +
-                                         "]' references slot " + std::to_string(slot) +
-                                         " but mesh has only " + std::to_string(numMats) + " material slot(s)");
-            mesh->set_material_ID(i, slot);
+        // Optional extra material slots, used by GLB meshes with multiple primitives
+        // (e.g. body + teeth + tongue). Each entry is resolved like `material` and
+        // appended after the primary material.
+        if (jm.contains("extra_materials")) {
+            if (!jm["extra_materials"].is_array())
+                throw std::runtime_error("scene_loader: 'extra_materials' must be an array");
+            for (const auto& em : jm["extra_materials"])
+                mesh->push_material(resolve_material(em, resourcesPath, glbCtx, lib));
+        }
+
+        // Optional per-primitive material slot mapping. Entry i is the material slot
+        // index used by geometry i (= primitive i in load order). Required when a
+        // mesh has more than one geometry and you want anything other than every
+        // geometry using slot 0.
+        if (jm.contains("primitive_materials")) {
+            if (!jm["primitive_materials"].is_array())
+                throw std::runtime_error("scene_loader: 'primitive_materials' must be an array of slot indices");
+            const auto& pm = jm["primitive_materials"];
+            const size_t numGeoms = mesh->get_num_geometries();
+            const size_t numMats  = mesh->get_num_materials();
+            for (size_t i = 0; i < pm.size() && i < numGeoms; ++i) {
+                size_t slot = pm[i].get<size_t>();
+                if (slot >= numMats)
+                    throw std::runtime_error("scene_loader: 'primitive_materials[" + std::to_string(i) +
+                                             "]' references slot " + std::to_string(slot) +
+                                             " but mesh has only " + std::to_string(numMats) + " material slot(s)");
+                mesh->set_material_ID(i, slot);
+            }
         }
     }
 

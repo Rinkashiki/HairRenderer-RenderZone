@@ -305,8 +305,12 @@ All Layer A and Layer B fields are **optional** and gated by their respective `h
 A `texref` is a JSON string:
 
 - `"path/to/file.png"` — relative to `resourcesPath`; loaded via `Tools::Loaders::load_texture`. Color-channel textures use `TEXTURE_FORMAT_TYPE_COLOR`; normal/tangent maps use `TEXTURE_FORMAT_TYPE_NORMAL`.
-- `"$GLB[N]"` — sentinel referring to the Nth embedded texture in the same mesh's GLB (only meaningful when the mesh `type` is `"glb"`). Out-of-range indexes log a warning and resolve to null.
+- `"$GLB[<name>]"` — an image embedded in the same mesh's GLB, by glTF image name (only meaningful when the mesh `type` is `"glb"`). Used by **baked** self-contained GLBs (see CLAUDE.md → "Self-Contained Character GLBs").
+- `"$GLB[<name>:<r|g|b|a>]"` — a single channel of an embedded image, replicated to grayscale. Used to unpack an ORM map: R = occlusion, G = roughness, B = metallic.
+- `"$GLB[N]"` — legacy: embedded image by index. Out-of-range indexes log a warning and resolve to null.
 - `null` or `""` — no texture.
+
+**Baked GLBs.** When a character GLB has been baked (each glTF material carries an engine block in `extras.vkfw_material`), the mesh's `material` / `extra_materials` / `primitive_materials` fields are **optional** — the baked block is the base and the scene JSON only supplies overrides, merged per-key (`merge_patch`, JSON wins). An unbaked GLB behaves exactly as before (the JSON defines the whole material). See CLAUDE.md and `tools/bake_glb_material.py`.
 
 ---
 

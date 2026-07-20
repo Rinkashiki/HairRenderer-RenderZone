@@ -166,6 +166,19 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Self-contained character GLBs — baked materials + textures (2026-07-20)
+
+Character `.glb` files now carry their own materials + textures; the scene JSON only holds overrides (or nothing). Decisions (locked with user): **hybrid** embed (standard glTF slots + full engine block in `extras.vkfw_material`), **pygltflib** baker, **positional** override schema preserved, shared skin-detail maps embedded, baker reads the existing scene JSON, **full-res verbatim** textures (pixel-identical; ~250–300 MB per GLB — inherent to the 8K skin maps).
+
+**Implemented:**
+- `tools/bake_glb_material.py` (pygltflib + Pillow) — embeds original PNG bytes verbatim, packs Roughness+AO into an ORM image (R=occ, G=rough, B=metal), writes standard glTF slots + `extras.vkfw_material` (refs `$GLB[name]` / `$GLB[name:ch]`), emits a slimmed scene. `--inplace` overwrites glb + scene.
+- Engine `load_GLB` (`loaders.{h,cpp}`) — `GLBImage`/`GLBMaterialAux`, `SetImagesAsIs(true)` so the 8K maps stay raw (no ~1.3 GB decode spike) and are decoded on demand; per-geometry baked-block capture; `load_PNG_from_memory` (on-demand decode + ORM channel unpack). Fixed `std::thread(load_GLB,…)` to pass the new 5th arg.
+- `scene_loader.cpp` — `GLBTexCtx`, `resolve_texture` `$GLB[...]` resolution, `assemble_baked_materials` (3-layer merge: glTF std ← `extras.vkfw_material` ← scene JSON via `merge_patch`, JSON wins per key; geom→slot from `primitive_materials` else glTF material index). Non-baked path unchanged → full backward compat.
+
+**Migration:** `nadia/alex/maria/javi` baked in place + scene JSONs slimmed (`material`/`extra_materials`/`primitive_materials` removed from the character mesh). `.gitattributes` now LFS-tracks `resources/**/*.glb`. Docs in CLAUDE.md ("Self-Contained Character GLBs") + SCENE.md §6.7.
+
+**Verified:** baked `maria` A/B'd against the original (identical) before in-place migration; HairViewer builds clean. **Pending:** user spot-check of `alex`/`javi` in-place, and Git-LFS re-add of the four GLBs (`git add --renormalize resources/models/*/*.glb`) before commit.
+
 ### Performance regression from *Fixed shadows on hair* — host-visible hair `posSSBO` (2026-06-24)
 
 FPS dropped from ~35-40 to ~30 after *Fixed shadows on hair* (`6c635e4`); verified by removing that whole commit on a `develop2` branch (→ 35-40 again). The commit's only **net-new per-frame GPU cost** was the position-SSBO change (the `2026-06-19` entry): it moved hair's `posSSBO` from device-local (`GPU_ONLY`, uploaded once) to a host-visible (`CPU_TO_GPU`) ring updated every frame. (Its shader change removed the voxel cone-trace, but that was later reverted, so per-fragment shading matches the `65820d4` baseline — the regression is the buffer, not shading.)

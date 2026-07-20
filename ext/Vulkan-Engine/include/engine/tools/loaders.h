@@ -36,17 +36,36 @@ void load_PLY(Core::Mesh* const mesh,
               bool              verbose           = false,
               bool              calculateTangents = false,
               bool              overrideGeometry  = false);
+// One embedded GLB image, kept as raw (undecoded) file bytes so the huge 8K skin
+// maps aren't all decoded into RAM at once. Decoded on demand by the consumer.
+struct GLBImage {
+    std::string          name;    // glTF image name (baked assets name every image)
+    std::vector<uint8_t> encoded; // raw PNG/JPEG bytes exactly as embedded
+};
+
+// Auxiliary data for self-contained ("baked") character GLBs — see
+// tools/bake_glb_material.py and SCENE.md. Populated when a non-null aux is passed
+// to load_GLB. `geometry*` vectors are aligned with Geometry push order.
+struct GLBMaterialAux {
+    std::vector<GLBImage>    images;                // every embedded image, by name
+    std::vector<std::string> geometryMaterialJson;  // material.extras.vkfw_material per geometry ("" if none)
+    std::vector<int>         geometryMaterialIndex;  // glTF material index per geometry (-1 if none)
+};
+
 /*
 Load a GLB (glTF Binary) file. Extracts geometry, normals, UVs, skinning data,
 and morph targets. meshIndex == -1 loads all meshes as separate Geometry entries
 on the same Mesh object; otherwise only the mesh at that index is loaded.
 If outTextures is non-null, embedded albedo textures referenced by loaded
 primitives are decoded and appended (one per primitive that has a baseColorTexture).
+If aux is non-null, images are kept raw (SetImagesAsIs) and every embedded image +
+per-geometry baked material block (extras.vkfw_material) is surfaced through it.
 */
 void load_GLB(Core::Mesh* const                    mesh,
               const std::string                     fileName,
               int                                   meshIndex   = -1,
-              std::vector<Core::Texture*>*           outTextures = nullptr);
+              std::vector<Core::Texture*>*           outTextures = nullptr,
+              GLBMaterialAux*                        aux         = nullptr);
 
 /*
 Generic loader. It automatically parses the file and find the needed loader for the file extension. Can be called
@@ -73,6 +92,17 @@ Load .png file.
 void load_PNG(Core::Texture* const texture,
               const std::string    fileName,
               TextureFormatType    textureFormat = TEXTURE_FORMAT_TYPE_COLOR);
+/*
+Decode an in-memory PNG/JPEG (e.g. an image embedded in a baked GLB) into a texture.
+Mirrors load_PNG's format selection. If `channel` is 0..3, that single channel is
+extracted and replicated to grayscale RGBA (used to unpack ORM: R=occlusion,
+G=roughness, B=metallic); channel < 0 keeps the full RGBA image.
+*/
+void load_PNG_from_memory(Core::Texture* const texture,
+                          const unsigned char* data,
+                          size_t               size,
+                          TextureFormatType    textureFormat = TEXTURE_FORMAT_TYPE_COLOR,
+                          int                  channel       = -1);
 /*
 Load .hrd
 */

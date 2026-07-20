@@ -108,6 +108,36 @@ All loading goes through `Tools::Loaders::load_3D_file()` (`ext/Vulkan-Engine/sr
 
 Loaded data flows: `Vertex[]` + `uint32_t[]` → `Core::Geometry::fill()` → `Core::Mesh::push_geometry()` → scene.
 
+### Self-Contained Character GLBs (baked materials)
+
+Character `.glb` files can carry their **own materials and textures** so the scene JSON only needs overrides (or nothing). The character GLBs (`nadia`, `alex`, `maria`, `javi`) are **baked** this way; their scene JSONs no longer declare `material` / `extra_materials` / `primitive_materials` for the character mesh.
+
+**How a material is stored in the GLB (hybrid):**
+- **Standard glTF slots** — baseColor, metallic-roughness, occlusion, normal, and factors — are written so the GLB opens sensibly in any glTF viewer. Roughness + Metallic + AO are repacked into a single **ORM** image (R=occlusion, G=roughness, B=metallic), as glTF requires.
+- **The full engine material block** is written verbatim into each glTF material's `extras.vkfw_material` (a JSON string — the same schema `build_pbr` consumes). Texture references are `$GLB[<image name>]`, or `$GLB[<image>:<r|g|b|a>]` for the ORM channels. **The engine reads this block**; the standard slots are decoration for external tools.
+
+**Loader layering (per material slot, low→high priority)** — see `scene_loader.cpp::assemble_baked_materials`:
+1. glTF standard fields
+2. `extras.vkfw_material` (the baked base)
+3. scene JSON `material` / `extra_materials[i]` — merged over the base via `merge_patch` (**JSON wins per key**)
+
+So the final material equals the JSON wherever the JSON sets a field, and the GLB fills the rest. This makes it **fully backward-compatible**: an unbaked GLB (only baseColor, no `extras`) + a JSON that defines the whole material renders exactly as before (the loader takes the unchanged non-baked path when no geometry carries a baked block). A baked GLB + a slimmed JSON renders identically because the baked block holds the same params and the same (verbatim) texture bytes.
+
+**Geometry→slot mapping.** With `primitive_materials` present the loader uses it (legacy behaviour preserved); otherwise each geometry uses **its own glTF material index** as the slot, so a fully-slimmed scene needs no slot mapping. The baker bakes each glTF material with the block of whatever JSON slot it resolved to, so multi-material characters (e.g. Javi's hearing-aid parts) reconstruct correctly without `primitive_materials`.
+
+**Baker — `tools/bake_glb_material.py`** (needs `pygltflib` + `Pillow`):
+```bash
+# Bake a scene's character GLB in place (slims the scene JSON too):
+python tools/bake_glb_material.py resources/scenes/nadia.json --inplace
+# Safe dev output (writes <glb>.baked.glb + <scene>.baked.json, originals untouched):
+python tools/bake_glb_material.py resources/scenes/nadia.json
+```
+It reads the scene's `material` / `extra_materials` / `primitive_materials`, embeds the referenced PNGs (original bytes, verbatim — identical pixels), builds the ORM, writes the standard slots + `extras.vkfw_material`, and emits the slimmed scene. Re-runnable.
+
+**Size note.** These characters use 8K skin maps, so a baked GLB is large (~250–300 MB vs ~21 MB). This is inherent to the source textures (full-res verbatim embedding was chosen for pixel-identical results). `*.glb` under `resources/` is **Git-LFS tracked** (`.gitattributes`) — commit the baked GLBs through LFS, not as plain blobs.
+
+**Key files:** `tools/bake_glb_material.py` (baker), `ext/Vulkan-Engine/src/tools/loaders.cpp` (`load_GLB` + `GLBMaterialAux` + `load_PNG_from_memory`; `SetImagesAsIs` keeps the 8K maps raw and they're decoded on demand), `ext/Vulkan-Engine/include/engine/tools/loaders.h` (`GLBImage` / `GLBMaterialAux`), `src/scene_loader.cpp` (`GLBTexCtx`, `resolve_texture` `$GLB[...]` resolution, `assemble_baked_materials`).
+
 ### Hair-to-Scalp Surface Binding
 
 Strand hair (`.hair` — scalp hair, eyebrows, eyelashes) can be bound to a character head's surface so it sits on the skin (no clip / no float), follows the head's **morph + skeletal** animation, and keeps each strand's silhouette. Neural `.ply` hair is out of scope (deprecated).

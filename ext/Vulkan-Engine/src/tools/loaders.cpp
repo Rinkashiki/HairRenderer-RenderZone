@@ -359,11 +359,17 @@ void VKFW::Tools::Loaders::load_PLY(Core::Mesh* const mesh,
     { std::cerr << "Caught tinyply exception: " << e.what() << std::endl; }
 }
 void VKFW::Tools::Loaders::load_GLB(Core::Mesh* const mesh, const std::string fileName, int meshIndex,
-                                     std::vector<Core::Texture*>* outTextures) {
+                                     std::vector<Core::Texture*>* outTextures, GLBMaterialAux* aux) {
     tinygltf::Model    model;
     tinygltf::TinyGLTF loader;
     std::string        err;
     std::string        warn;
+
+    // Baked GLBs carry the full-res 8K skin maps. Keep them raw (undecoded) so a
+    // single load doesn't inflate to ~1.3 GB of decoded RGBA; the consumer decodes
+    // each referenced image on demand instead.
+    if (aux)
+        loader.SetImagesAsIs(true);
 
     bool ok = loader.LoadBinaryFromFile(&model, &err, &warn, fileName);
     if (!warn.empty())
@@ -384,6 +390,19 @@ void VKFW::Tools::Loaders::load_GLB(Core::Mesh* const mesh, const std::string fi
     {
         LOG_ERROR("GLB mesh index out of range for: " + fileName);
         return;
+    }
+
+    // --- surface embedded images (raw) for baked self-contained materials ---
+    if (aux)
+    {
+        aux->images.reserve(model.images.size());
+        for (auto& im : model.images)
+        {
+            GLBImage gi;
+            gi.name    = im.name;
+            gi.encoded = std::move(im.image); // raw encoded bytes (SetImagesAsIs)
+            aux->images.push_back(std::move(gi));
+        }
     }
 
     // --- helpers ---
@@ -639,6 +658,24 @@ void VKFW::Tools::Loaders::load_GLB(Core::Mesh* const mesh, const std::string fi
 
             mesh->push_geometry(g);
 
+            // ---- capture baked material block for this geometry (push order) ----
+            if (aux)
+            {
+                std::string vkfw;
+                if (prim.material >= 0 && prim.material < (int)model.materials.size())
+                {
+                    const tinygltf::Material& gmat = model.materials[prim.material];
+                    if (gmat.extras.IsObject() && gmat.extras.Has("vkfw_material"))
+                    {
+                        const tinygltf::Value& v = gmat.extras.Get("vkfw_material");
+                        if (v.IsString())
+                            vkfw = v.Get<std::string>();
+                    }
+                }
+                aux->geometryMaterialJson.push_back(std::move(vkfw));
+                aux->geometryMaterialIndex.push_back(prim.material);
+            }
+
             // ---- extract embedded albedo texture if requested ----
             if (outTextures && prim.material >= 0)
             {
@@ -851,7 +888,7 @@ void VKFW::Tools::Loaders::load_3D_file(Core::Mesh* const mesh, const std::strin
         {
             if (asynCall)
             {
-                std::thread loadThread(Loaders::load_GLB, mesh, fileName, -1, nullptr);
+                std::thread loadThread(Loaders::load_GLB, mesh, fileName, -1, nullptr, nullptr);
                 loadThread.detach();
             } else
                 Loaders::load_GLB(mesh, fileName, -1, nullptr);
@@ -1280,6 +1317,51 @@ void VKFW::Tools::Loaders::load_PNG(Core::Texture* const texture, const std::str
 #ifndef NDEBUG
     LOG_DEBUG("PNG Texture loaded successfully");
 #endif // DEBUG
+}
+
+void VKFW::Tools::Loaders::load_PNG_from_memory(Core::Texture* const texture, const unsigned char* data, size_t size,
+                                                TextureFormatType textureFormat, int channel) {
+    int            w, h, ch;
+    unsigned char* decoded = stbi_load_from_memory(data, static_cast<int>(size), &w, &h, &ch, STBI_rgb_alpha);
+    if (!decoded)
+    {
+#ifndef NDEBUG
+        LOG_DEBUG("Failed to decode embedded image");
+#endif
+        return;
+    }
+
+    unsigned char* pixels = decoded;
+    if (channel >= 0 && channel < 4)
+    {
+        // Unpack a single channel (e.g. ORM) into a replicated grayscale RGBA image.
+        const size_t   n   = static_cast<size_t>(w) * static_cast<size_t>(h);
+        unsigned char* out = static_cast<unsigned char*>(malloc(n * 4));
+        for (size_t i = 0; i < n; ++i)
+        {
+            unsigned char v = decoded[i * 4 + channel];
+            out[i * 4 + 0] = v;
+            out[i * 4 + 1] = v;
+            out[i * 4 + 2] = v;
+            out[i * 4 + 3] = 255;
+        }
+        stbi_image_free(decoded);
+        pixels = out;
+    }
+
+    texture->set_image_cache(pixels, {static_cast<unsigned int>(w), static_cast<unsigned int>(h), 1}, 4);
+    // Mirror load_PNG: only COLOR/NORMAL override the default; LINEAR keeps the default.
+    switch (textureFormat)
+    {
+    case TEXTURE_FORMAT_TYPE_COLOR:
+        texture->set_format(SRGBA_8);
+        break;
+    case TEXTURE_FORMAT_TYPE_NORMAL:
+        texture->set_format(RGBA_8U);
+        break;
+    default:
+        break;
+    }
 }
 
 void VKFW::Tools::Loaders::load_HDRi(Core::TextureHDR* const texture, const std::string fileName) {
