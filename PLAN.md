@@ -166,6 +166,16 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### "Application not responding" on launch — async scene load (2026-07-20)
+
+**Symptom (user, Linux):** on every launch the desktop shows "not responding"; waiting a few seconds lets it run fine, but the dialog reappears each launch.
+
+**Diagnosis (measured with temporary probes):** `init()` breakdown — window+renderer ready at ~36 ms (shaders are *not* compiled in the renderer ctor), then `setup()` blocks the **main thread for ~13.5 s** loading the scene (`scene_loader::load_scene_json` — GLB parse + verbatim 8K texture bytes into RAM), then the **first frame** takes ~3.4 s (lazy pass setup + shader compile + GPU upload). Only the 13.5 s load exceeds the compositor's ~5 s ping timeout, so during it the frozen event loop trips "not responding." The first-frame 3.4 s is under the timeout. (Also found: the checked-out `build/HairViewer` was 20 days stale and segfaulted on frame 1 in `ResourceManager::update_object_data`; a rebuild runs clean — unrelated to the freeze but worth a rebuild.)
+
+**Fix (`src/application.cpp::setup()`):** run `load_scene_json` on a `std::thread`; the main thread pumps `m_window->poll_events()` on a 16 ms tick until the worker signals done (`std::atomic<bool>`), then joins and proceeds. Worker exceptions are captured via `std::exception_ptr` and rethrown on the main thread so load failures surface exactly as before. Safe to thread because the load path is Vulkan/GLFW-free (loaders only fill CPU-side texture caches; GPU images are created lazily at first render — the neural-hair path already loads off-thread, and `load_sss_scatter_lut` only stores `m_pendingScatterLut` at this stage). Deliberately no rendering during the wait (renderer state is being written by the worker → would race); polling alone satisfies the compositor.
+
+**Verified:** clean build, `--frames` run exits 0 with no new validation errors; instrumentation confirmed the window is polled ~860× across the ~13.5 s load (was 0 before). Only HairViewer changed — SLViewer is headless. The ~3.4 s first-frame stall remains (under the timeout); attacking it would need off-thread shader compilation (future work, ties into the renderer-performance notes above).
+
 ### Self-contained character GLBs — baked materials + textures (2026-07-20)
 
 Character `.glb` files now carry their own materials + textures; the scene JSON only holds overrides (or nothing). Decisions (locked with user): **hybrid** embed (standard glTF slots + full engine block in `extras.vkfw_material`), **pygltflib** baker, **positional** override schema preserved, shared skin-detail maps embedded, baker reads the existing scene JSON, **full-res verbatim** textures (pixel-identical; ~250–300 MB per GLB — inherent to the 8K skin maps).

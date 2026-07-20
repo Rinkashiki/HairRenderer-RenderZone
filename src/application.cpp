@@ -1,7 +1,11 @@
 #include "application.h"
 #include "scene_loader.h"
 #include <engine/engine_config.h>
+#include <atomic>
+#include <chrono>
+#include <exception>
 #include <filesystem>
+#include <thread>
 
 void HairViewer::init(Systems::RendererSettings settings) {
     m_window = new WindowGLFW("Hair Viewer", 1024, 1024);
@@ -51,13 +55,46 @@ void HairViewer::run(Systems::RendererSettings settings) {
 }
 
 void HairViewer::setup() {
-    // JSON-driven scene path (default). See SCENE.md.
-    auto result   = scene_loader::load_scene_json(
-        SCENE_PATH,
-        RESOURCES_PATH,
-        VKFW::get_engine_resources_path(),
-        /*animationOverride*/ "",
-        m_renderer);
+    // The JSON scene load (parse + GLB geometry + verbatim 8K texture bytes into
+    // RAM) is ~13 s of pure CPU work — long enough that, if run on the main
+    // thread, the window stops answering the compositor's ping and the OS shows
+    // "application not responding" on every launch. It touches no Vulkan/GLFW
+    // (loaders only fill CPU-side caches; GPU images are created lazily at first
+    // render — the neural-hair path already loads off-thread this way), so we run
+    // it on a worker while the main thread keeps pumping window events. See
+    // SCENE.md for the schema.
+    std::atomic<bool>          done{false};
+    std::exception_ptr         loadError;
+    scene_loader::LoadResult   result;
+
+    std::thread loader([&] {
+        try {
+            result = scene_loader::load_scene_json(
+                SCENE_PATH,
+                RESOURCES_PATH,
+                VKFW::get_engine_resources_path(),
+                /*animationOverride*/ "",
+                m_renderer);
+        } catch (...) {
+            loadError = std::current_exception();
+        }
+        done.store(true, std::memory_order_release);
+    });
+
+    // Keep the window responsive while the scene loads. We deliberately only
+    // poll events here (no render) — the renderer's passes aren't created yet
+    // and the worker is writing renderer/scene state, so touching the renderer
+    // now would race. Polling alone is enough: "not responding" is about the
+    // event loop answering, not about presenting frames.
+    while (!done.load(std::memory_order_acquire)) {
+        m_window->poll_events();
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+    loader.join();
+
+    if (loadError)
+        std::rethrow_exception(loadError); // surface load failures as before
+
     m_scene  = result.scene;
     camera   = result.camera;
 
