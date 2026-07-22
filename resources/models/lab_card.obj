@@ -1,0 +1,19 @@
+# lab_card.obj — unit quad in the XY plane, facing -Z (toward the default camera).
+# A stand-in backdrop for look-development scenes (see scenes/eyelash_lab.json),
+# so an isolated asset can be judged against a surface as well as against the sky.
+# Scale non-uniformly from the scene JSON to get the aspect you need.
+
+v -0.5 -0.5 0.0
+v  0.5 -0.5 0.0
+v  0.5  0.5 0.0
+v -0.5  0.5 0.0
+
+vt 0.0 0.0
+vt 1.0 0.0
+vt 1.0 1.0
+vt 0.0 1.0
+
+vn 0.0 0.0 -1.0
+
+f 1/1/1 2/2/1 3/3/1
+f 1/1/1 3/3/1 4/4/1

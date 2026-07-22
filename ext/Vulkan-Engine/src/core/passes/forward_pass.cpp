@@ -361,6 +361,12 @@ void ForwardPass::setup_shader_passes() {
     eyelashPass->graphicSettings.sampleShading    = true;
     eyelashPass->graphicSettings.blendAttachments = blendAttachments;
     eyelashPass->graphicSettings.topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    // Left OFF deliberately. The sub-pixel coverage model (EyelashMaterial
+    // VARIANT_COVERAGE) writes gl_SampleMask itself instead: fixed-function
+    // alpha-to-coverage picks its sample pattern from the alpha value alone, so
+    // overlapping fibers — which all carry nearly the same coverage — collapse
+    // onto the same subsample and the lash mass never accumulates. See the
+    // sample-masking block in eyelash_strand.glsl.
     eyelashPass->graphicSettings.alphaToCoverage  = false;
     eyelashPass->graphicSettings.alphaToOne       = false;
     m_shaderPasses[IMaterial::Type::HAIR_STR_EYELASH_TYPE] = eyelashPass;

@@ -838,7 +838,36 @@ void ObjectExplorerWidget::render() {
                 {
                     mat->set_variabilty(varrr);
                 }
-              
+
+                // Eyelash-only: the lighting-model selector and the params each
+                // model reads. Lets a variant be flipped live while comparing.
+                if (model->get_material(i)->get_type() == IMaterial::Type::HAIR_STR_EYELASH_TYPE)
+                {
+                    EyelashMaterial* lash = static_cast<EyelashMaterial*>(mat);
+
+                    ImGui::Separator();
+                    const char* variants[] = {"0 Baseline", "1 Matte fiber", "2 Tapered", "3 Coverage"};
+                    int         variant    = lash->get_variant();
+                    if (ImGui::Combo("Lash Model", &variant, variants, IM_ARRAYSIZE(variants)))
+                    {
+                        lash->set_variant(variant);
+                    }
+                    float sheenScale = lash->get_sheen_scale();
+                    if (ImGui::DragFloat("Env Sheen Scale", &sheenScale, 0.01f, 0.0f, 1.0f))
+                    {
+                        lash->set_sheen_scale(sheenScale);
+                    }
+                    float tipTaper = lash->get_tip_taper();
+                    if (ImGui::DragFloat("Tip Taper", &tipTaper, 0.01f, 0.0f, 1.0f))
+                    {
+                        lash->set_tip_taper(tipTaper);
+                    }
+                    float minPixelWidth = lash->get_min_pixel_width();
+                    if (ImGui::DragFloat("Min Pixel Width", &minPixelWidth, 0.05f, 0.1f, 4.0f))
+                    {
+                        lash->set_min_pixel_width(minPixelWidth);
+                    }
+                }
             }
             if (model->get_material(i)->get_type() == IMaterial::Type::HAIR_STR_TYPE)
             {

@@ -560,8 +560,73 @@ class HairEpicMaterial : public IMaterial
 class EyelashMaterial : public HairEpicMaterial
 {
   public:
+    /// Lighting model selector. The eyelash shader implements several competing
+    /// models behind one pipeline so they can be compared side by side in the
+    /// same frame under identical lighting (see resources/scenes/eyelash_lab.json).
+    /// Once a winner is picked the losers get deleted and this collapses away.
+    enum Variant
+    {
+        VARIANT_BASELINE = 0, //!< evalEyelashBSDF as originally written.
+        VARIANT_MATTE    = 1, //!< No R / no TRT — absorption + diffuse + TT only.
+        VARIANT_TAPERED  = 2, //!< Transmission-first, root->tip thickness/TT taper.
+        VARIANT_COVERAGE = 3, //!< Baseline + energy-conserving sub-pixel coverage.
+    };
+
+  protected:
+    int m_variant = VARIANT_BASELINE;
+
+    // Env specular sheen scale. Was a hardcoded EYELASH_SHEEN = 0.15 in the
+    // shader; exposed so the sheen's contribution to the "shiny wire" read can
+    // be judged without a recompile.
+    float m_sheenScale = 0.15f;
+
+    // Root->tip taper strength (VARIANT_TAPERED). 0 = uniform fiber (the old
+    // behaviour), 1 = tip fully thinned and maximally transmissive.
+    float m_tipTaper = 0.0f;
+
+    // Minimum rendered fiber width in pixels (VARIANT_COVERAGE). A fiber
+    // narrower than this is widened to stay rasterizable and its alpha dropped
+    // by the same factor, so total energy is preserved instead of a sub-pixel
+    // strand being drawn a full pixel wide at full opacity.
+    float m_minPixelWidth = 1.0f;
+
+    virtual Graphics::MaterialUniforms get_uniforms() const override;
+
+  public:
     EyelashMaterial(Vec3 baseColor = {0.35f, 0.35f, 0.35f})
         : HairEpicMaterial(HAIR_STR_EYELASH_TYPE, baseColor) {
+    }
+
+    inline int get_variant() const {
+        return m_variant;
+    }
+    inline void set_variant(int v) {
+        m_variant = v;
+        m_isDirty = true;
+    }
+
+    inline float get_sheen_scale() const {
+        return m_sheenScale;
+    }
+    inline void set_sheen_scale(float s) {
+        m_sheenScale = s;
+        m_isDirty    = true;
+    }
+
+    inline float get_tip_taper() const {
+        return m_tipTaper;
+    }
+    inline void set_tip_taper(float t) {
+        m_tipTaper = t;
+        m_isDirty  = true;
+    }
+
+    inline float get_min_pixel_width() const {
+        return m_minPixelWidth;
+    }
+    inline void set_min_pixel_width(float w) {
+        m_minPixelWidth = w;
+        m_isDirty       = true;
     }
 };
 

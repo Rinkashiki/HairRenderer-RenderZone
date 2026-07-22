@@ -427,6 +427,10 @@ static Core::IMaterial* build_hairepic(const json& jm, bool eyelash = false) {
     if (jm.contains("pheomelanine"))  mat->set_pheomelanine(jm["pheomelanine"].get<float>());
     if (jm.contains("use_pigmentation")) mat->use_pigmentation(jm["use_pigmentation"].get<bool>());
     if (jm.contains("use_backlit"))   mat->setUseBacklit(jm["use_backlit"].get<bool>());
+    // Picks the TT absorption model: the legacy pow(baseColor, path/cosThetaD) or
+    // the exp(-absorption * ...) one. They differ a lot on dark fibers, so this
+    // needs to be settable per asset, not only through the GUI.
+    if (jm.contains("use_legacy_absorption")) mat->setUseLegacyAbsorption(jm["use_legacy_absorption"].get<bool>());
     if (jm.contains("use_scatter"))   mat->set_useScatter(jm["use_scatter"].get<bool>());
     if (jm.contains("use_glints"))    mat->use_glints(jm["use_glints"].get<bool>());
     if (jm.contains("adv_shadows"))   mat->set_adv_shadows(jm["adv_shadows"].get<bool>());
@@ -437,13 +441,29 @@ static Core::IMaterial* build_hairepic(const json& jm, bool eyelash = false) {
     if (jm.contains("tip_falloff"))   mat->set_tip_falloff(jm["tip_falloff"].get<float>());
     if (jm.contains("variability"))   mat->set_variabilty(jm["variability"].get<float>());
 
-    warn_unknown(jm,
+    std::unordered_set<std::string> allowed =
         {"type", "tint_color", "thickness", "roughness", "specular", "metallic",
          "shift", "ior", "R", "R_power", "TT", "TT_power", "TRT", "TRT_power",
-         "eumelanine", "pheomelanine", "use_pigmentation", "use_backlit", "use_scatter", "use_glints",
+         "eumelanine", "pheomelanine", "use_pigmentation", "use_backlit", "use_legacy_absorption",
+         "use_scatter", "use_glints",
          "adv_shadows", "density_boost", "scatter_boost",
-         "root_darkening", "tip_bleaching", "tip_falloff", "variability"},
-        "material(hairepic)");
+         "root_darkening", "tip_bleaching", "tip_falloff", "variability"};
+
+    // Eyelash-only knobs: the lighting-model selector and the params only some
+    // of those models read. Rejected on a plain "hairepic" material so a typo'd
+    // scalp-hair block still warns.
+    if (eyelash)
+    {
+        auto* lash = static_cast<Core::EyelashMaterial*>(mat);
+        if (jm.contains("variant"))         lash->set_variant(jm["variant"].get<int>());
+        if (jm.contains("sheen_scale"))     lash->set_sheen_scale(jm["sheen_scale"].get<float>());
+        if (jm.contains("tip_taper"))       lash->set_tip_taper(jm["tip_taper"].get<float>());
+        if (jm.contains("min_pixel_width")) lash->set_min_pixel_width(jm["min_pixel_width"].get<float>());
+
+        allowed.insert({"variant", "sheen_scale", "tip_taper", "min_pixel_width"});
+    }
+
+    warn_unknown(jm, allowed, eyelash ? "material(eyelash)" : "material(hairepic)");
 
     return mat;
 }

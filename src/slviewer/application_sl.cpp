@@ -175,8 +175,16 @@ void SLApplication::setup() {
 static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::string& declaredPath) {
     auto*       binder = new hair_binding::HairBinder(hair, head);
     std::string side   = !declaredPath.empty() ? declaredPath : (hair->get_file_route() + ".hbnd");
+    // A missing sidecar leaves the binder unbound, which silently renders the
+    // groom at its raw (off-frame) position — an exported video of a bald
+    // character with no error anywhere. Say so instead.
     if (std::filesystem::exists(side))
-        binder->load(side);
+    {
+        if (!binder->load(side))
+            LOG_ERROR("hair binding: failed to load sidecar '" + side + "' for '" + hair->get_name() + "'");
+    } else
+        LOG_ERROR("hair binding: no sidecar at '" + side + "' — '" + hair->get_name() +
+                  "' stays unbound and will render off-frame");
     return binder;
 }
 

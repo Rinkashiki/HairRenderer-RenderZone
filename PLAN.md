@@ -6,16 +6,241 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
-### Eyelash shader — further realism (future work, noted 2026-07-20)
+### Eyelash shading study — round 1 awaiting user judgement (2026-07-22)
 
-A dedicated eyelash material + shader now exists (see Done, 2026-07-20: `EyelashMaterial` / `HAIR_STR_EYELASH_TYPE` / `eyelash_strand.glsl` / `evalEyelashBSDF`). The current tuning (`maria_eyelashes` in `resources/scenes/maria.json`, `EYELASH_SHEEN` in the shader) is a *good-enough first pass* that fixed the "too shiny / too dark" complaints, not a finished look. Ideas for when eyelashes get revisited:
+**Goal (user):** decide what the eyelash shader *should be*, methodically, instead of tuning the existing one further. Approach agreed: an isolated test scene with several competing models rendered side by side, then roll the winner out to all four characters (only maria has an `eyelash` material today).
 
-- **Tip translucency / thickness taper.** Real lashes are thicker and darker at the lid, thinning to a translucent tip. Right now thickness is uniform and translucency is a global `TT_power`. Could drive thickness and TT strength by the strand UV.x (root→tip), reusing the existing `tipBleaching`/`tipFalloff` plumbing.
-- **Backlit rim is currently the main transmission cue** (`TT_power`×`backlit`). It reads well against bright backgrounds but is weak when front/side-lit; a small view-independent forward-scatter term would help lashes against the darker eye/skin.
-- **`EYELASH_SHEEN = 0.15`** is a flat global damp of the env specular sheen. A softer, more physically-motivated grazing falloff (or removing the sheen entirely and relying on ambient) may look cleaner than a flat scale.
-- **Shape/clumping.** The groom itself (strand geometry) matters more than the BSDF past a point — clumping, curl, and per-strand length variation would do more for realism than further shader tweaks.
-- **Only maria is wired up.** Other characters (alex/javi/nadia) still share one hair material for hair+brows+lashes; give them `eyelash`-type materials too once the look is locked.
-- **All knobs are data-only** (`maria_eyelashes`), so most iteration needs no rebuild — HairViewer recompiles shaders + reloads the scene at launch.
+**Decisions (locked with user):** lashes on a **neutral card backdrop** (not fully isolated — an isolated groom is backlit in every pixel and biases tuning); **four models** V0/V1/V2/V3 as below; **one far directional key + the existing orbit toggle** for front→side→back sweeps; Claude **pre-filters headlessly** via SLViewer before the user looks.
+
+**Built:**
+- `EyelashMaterial` gained a `Variant` selector plus `sheen_scale` / `tip_taper` / `min_pixel_width`, packed into the free `dataSlot9` via a `get_uniforms()` override (epic hair uses slots 1–8 → no UBO layout change). JSON keys + GUI controls wired.
+- One shader, four models, so all render in the same frame under identical lighting and a model can be flipped live:
+  - **V0 Baseline** — original `evalEyelashBSDF`. Control.
+  - **V1 Matte fiber** — `evalMatteLash`: no R/TRT/env-sheen, wrapped fiber diffuse + forward scatter.
+  - **V2 Tapered** — root→tip thinning (geometry stage) + transmission ramp (fragment stage).
+  - **V3 Coverage** — energy-conserving sub-pixel width; resurrects the commented-out projected-width code and spends the inverse as partial MSAA coverage via hashed `gl_SampleMask`.
+- `resources/scenes/eyelash_lab.json` (2×2 grid, V0 top-left → V3 bottom-right) + `resources/models/lab_card.obj`.
+- **V3 is also live on `maria.json`** (`"variant": 3`) at the user's request, for an in-context look. `SCENE_PATH` is back on `scenes/maria.json`.
+
+**Fixed along the way:**
+- `HairTransmittanceMask::visibility` was read unconditionally but only assigned under `advShadows` — an uninitialized read into the scattering term whenever `adv_shadows: false`. Now initialized to 1.0.
+- The hair material UBO block ends `float variability; vec3 tintColor;`; under std140 that `vec3` pads to offset 128 while the CPU packs the tint at 116, so anything added after it lands a slot late. The eyelash shader declares the tint as three floats. (`tintColor` is unused by both hair shaders, so the epic path was never affected.)
+- **V3 erased the lashes entirely on maria** — visible only once it was put on a real character, not in the lab. Fixed-function `alphaToCoverage` picks its sample pattern from the alpha *value*, so every fiber in a lash line (all at nearly the same ~0.15 px coverage) resolved onto the *same* subsample and the mass never accumulated → the whole lash line at 1/8 intensity. The lab groom is ~5× larger on screen, which hid it completely. Isolated by re-rendering with `min_pixel_width: 0.05` (widening disabled): that matched V0 to within noise, proving the geometry path was fine and the alpha was the culprit. Now `alphaToCoverage` is off and the fragment shader writes `gl_SampleMask[0]` itself — a hashed subset of `gl_SampleMaskIn` with stochastic rounding, keyed on the per-strand random + `gl_FragCoord` so it is temporally stable. **Lesson: validate a screen-space model at real character scale, not just in the lab.**
+- V1 first landed **brighter and warmer than the baseline** it exists to calm down — it skipped the dual-scattering bookkeeping and fed `baseColor` (a *scattered* fiber colour) straight into a Lambert-ish lobe. Now applies `globalScattering`/`localScattering`/`opaqueVisibility` and a `MATTE_DIFFUSE_GAIN` (0.3). All four models now sit within the same brightness band.
+
+**Verified:** HairViewer (Debug) and SLViewer both build; eyelash shader compiles under `glslc` (only the 3 documented dead-code skips); `--frames 10` on the lab scene shows only the pre-existing swapchain-semaphore/descriptor-pool messages; `maria.json` re-rendered unchanged (no regression from `alphaToCoverage`). Each grid cell was diffed pixel-wise against a single-variant reference render to prove it shows the model it is labelled with — this caught that **the engine maps world −X to screen-right**, so the grid's X positions are mirrored to match the naming.
+
+**Pending — user judgement.** Which model (or mix) wins. Then: lock params, delete the losing branches and the selector, give alex/javi/nadia `eyelash` materials, restore `SCENE_PATH`.
+
+> ⚠️ **Round 1 above is invalidated and must be re-run.** Two bugs found on 2026-07-22 (see below)
+> mean the lab renders were lit with the TT lobe silently disabled, and the maria regression check
+> was comparing two bald frames. Neither the V0–V3 ranking nor the "no regression" claim survives.
+
+#### RESOLVED: the "sharp reflection" is the TT lobe clipping to white (2026-07-22)
+
+**User's report:** a sharp reflection on maria's lashes at certain angles; turning `TT` off
+makes it go away. **Verdict: the user's instinct was right — it is not a reflection.** It is
+the transmission lobe saturating to pure white. Reproduced headlessly and A/B'd; see below.
+
+**What the measurements showed.**
+- **R and TRT contribute essentially nothing** on this material. With `specular: 0.05` /
+  `R_power: 0.25` / `TRT_power: 0.2`, an isolated-groom probe rendered with R+TRT disabled is
+  within ~1% of the full material at every light angle. Backlit, the eyelash *is* the TT lobe.
+- **The non-legacy absorption barely absorbs on a dark fiber.** `Tp = exp(-A*2*|1 - (h a)^2/cosThetaD|)`
+  with maria's melanin lands around **0.6–0.7 per channel** and nearly flat in `h`; the legacy
+  `pow(baseColor, 0.5*sqrt(1-(h a)^2)/cosThetaD)` lands around **0.3** and keeps the colour
+  ratio. Multiplied by `TT_power: 2.5`, the non-legacy path drives all three channels past 1.0
+  at once — and *clipping all three channels is what turns a warm translucent glow into a
+  white specular-looking streak*. The "sharpness" is the clip edge, not a narrow lobe.
+- The narrow-`beta[1]` theory from the first pass is **wrong at this roughness**: at
+  `roughness: 0.65`, `beta[1] = r^2*0.5 ≈ 0.21`, which is broad. Discard it.
+- **The suspect line is not a local transcription error.** `exp(-AbsorptionColor * 2 * abs(1 - Pow2(h*a) / CosThetaD))`
+  is what Epic's `HairShading.ush` itself contains — missing `sqrt` and all. So the fix is to
+  *select the other branch*, not to "correct" the formula.
+
+**A/B on maria** (camera on the eye, key at `[-9, 4, 6]` — a lateral rim angle where the lashes
+clear the head's own shadow; measured over the pixels TT actually changes):
+
+| config | clipped px (>230) | warmth (R−B) | crop mean |
+|---|---|---|---|
+| as-is | 664 | 49.7 | 74.0 |
+| `use_legacy_absorption: true` | **314** | **61.0** | 71.2 |
+| `TT_power: 1.0` | 279 | 54.6 | 71.1 |
+| `TT: false` | 233 | 56.9 | 67.9 |
+
+Visually: as-is has hard white tips; legacy turns them **golden and keeps the translucency**;
+`TT_power: 1.0` still reads white (it scales the lobe but does not restore the colour ratio);
+`TT: false` kills the glow and the lashes go dead. **Recommendation: `use_legacy_absorption: true`**,
+leaving `TT_power` alone. Not applied — the user picks.
+
+**Scope note (unchanged, now confirmed visually):** `evalEpicHairBSDF` has the same absorption
+branch, and `maria_hair` also leaves `use_legacy_absorption` unset — maria's scalp hair blows out
+to white streaks in exactly the same way in these renders. Any decision should cover both.
+
+`use_legacy_absorption` is **now settable from scene JSON** (`build_hairepic` in `src/scene_loader.cpp`);
+previously only the GUI checkbox could reach it.
+
+#### Round 2 — lab re-run with the light fixed, plus a 5th variant (2026-07-22)
+
+**Done at user request:** re-ran the eyelash comparison now that directional lights work,
+and added **legacy absorption as a 5th option**. It is a *material flag*, not a lighting
+model, so it did NOT get an enum value — it rides as `use_legacy_absorption` on a
+baseline cell. That keeps the `Variant` enum meaning "lighting model" and lets the flag
+combine with any variant (which turned out to matter, see below).
+
+**The grid turned out to be untrustworthy — again, and for a new reason.** With
+*identical* material in all five cells, the top row renders ~3.2× the lash contrast of
+the bottom row, and under a `TT_power` boost only the top row develops a highlight at
+all. Reproducible with the mesh declaration order reversed, so it tracks **position**,
+not draw order. Ruled out: the shared hair voxel volume (`adv_shadows: false` barely
+changes it) and view-vector spread (a 9.5° long lens cuts `dot(-L,V)` variation to ~10%
+and does not fix it). **Mechanism still unexplained — open question.** Also: repeat
+renders of the same scene differ by ~1.0 mean abs diff per cell, so this scene is **not
+deterministic** and small numeric comparisons on it mean nothing.
+
+So the grid is now documented as an eyeball-only tool, and the real comparison moved to
+**`resources/scenes/eyelash_solo.json`** — one groom, centred, rendered once per
+variant. Same groom, same screen position, same light; only the material changes.
+
+**Results (solo scene, 3/4 back rim key):**
+
+| variant | "ink" (total contrast) | clipped px >200 | warmth (R−B) |
+|---|---|---|---|
+| V0 baseline | 384 | 392 | 35.0 |
+| V1 matte fiber | 297 | **0** | 40.8 |
+| V2 tapered | 287 | 487 | 34.7 |
+| V3 coverage | **948** | 1214 | 37.1 |
+| V4 baseline + legacy abs | 332 | 40 | 41.5 |
+| **V3 coverage + legacy abs** | **786** | **159** | **45.4** |
+
+**The two winners fix different, orthogonal problems** — V3 fixes *density* (a
+`thickness: 0.001` fiber is sub-pixel, so the rasterizer drops most of the lash line;
+coverage widens and pays it back as partial MSAA coverage), and legacy absorption fixes
+the *white blowout* (see the RESOLVED section above). Combining them keeps 83% of V3's
+density while cutting clipping 8× and giving the warmest highlights — visually a defined
+lash line with golden rather than blown-white tips. **Recommended: `variant: 3` +
+`use_legacy_absorption: true`.** V1 matte never clips but reads flat and lifeless; V2
+tapered is V0 with less mass.
+
+**Not applied to any character yet — awaiting the user's eyeball.** Contact sheets from
+this run: `lash_variants.png` (all five) and `lash_best.png` (V0 / V3 / V4 / V3+legacy).
+
+#### LANDED on maria (2026-07-22)
+
+`maria_eyelashes`: `variant: 3`, `min_pixel_width: 1.0`, `use_legacy_absorption: true`,
+**`TT_power: 2.5 -> 0.25`** (user dialled it in the GUI and picked 0.25).
+`maria_hair`: `use_legacy_absorption: true`.
+
+**Correction to my own recommendation.** I proposed legacy absorption as the fix for the
+"too reflective" lashes; it was not sufficient and the user was right to push back. It cuts
+`Tp` roughly 0.65 -> 0.30, i.e. **~2x on TT amplitude plus a warmer tint** — but TT was
+running 5–10x over the clipping point, so halving it only rescued the pixels that were
+marginally over and left the blown core white. The amplitude knob is **`TT_power`**, and
+that is what actually solved it. Legacy absorption is still worth keeping: once TT is low
+enough not to clip, its warm tint is visible instead of being crushed to white.
+
+**Question answered: can the eyelashes go back to the scalp-hair shader with just a
+different TT value? No.** `evalEpicHairBSDF` has no `Rpower`/`TTpower`/`TRTpower` factors
+and no `backlit` term — its lobes are `Mp * Np * Fp * Tp * grazingTerm`. A `hairepic`
+material would silently ignore `TT_power: 0.25`, which is the knob the whole tuning now
+rests on. Exposing those powers is precisely why `evalEyelashBSDF` exists. Additionally
+`variant: 3`'s sub-pixel coverage has no epic-path equivalent and is what supplies the lash
+density. Both load bearing — the shaders cannot be merged as things stand.
+
+**Also fixed:** `hair_strand_epic.glsl` still had the uninitialized `transMask.visibility`
+read (only assigned under `advShadows`, read unconditionally) that was fixed in the eyelash
+shader earlier. Now initialized to 1.0 there too.
+
+**Rolled out to all four (2026-07-22).** `alex`/`javi`/`nadia` each gained a
+`<char>_eyelashes` material with maria's approved shading block, and their `<char>_hair`
+material gained `use_legacy_absorption: true` (which also covers the eyebrows, since those
+share it). **Pigmentation is per character, not copied:** each lash material takes its own
+character's hair `eumelanine` (alex 0.8, javi 0.9, nadia 1.0) rather than maria's 0.45,
+because the eyebrows use the hair material — copying maria's value verbatim would have left
+nadia's lashes visibly lighter than her own brows. `pheomelanine` is 0.2 for all, mirroring
+maria. Note javi's Eyelashes mesh points at `models/nadia/eyelashes.hair` (shared groom).
+
+**Still open from the study:** the variant selector is still in place with all four models
+(nothing deleted), and the grid's positional bias is unexplained.
+
+#### Two bugs found while investigating the above (2026-07-22)
+
+**1. Directional lights were broken for every hair shader — FIXED.**
+`Core::DirectionalLight::get_uniforms` packs the light *direction* (view space, `w=0`) into
+`LightUniform::position`. `physically_based.glsl` branches on `DIRECTIONAL_LIGHT` and uses it as
+a direction; **`hair_strand_epic.glsl` and `eyelash_strand.glsl` did not** — they always did
+`normalize(position - fragPos)`, which places the light one unit from the view origin. That
+collapses `L` onto `V` (a headlight), which pins `inBacklit = saturate(dot(-L, V))` at ~0 and
+**silently disables the entire TT lobe**. Both shaders now use the same branch as the PBR path;
+the `computeHairShadowCone` direction was transformed as a point too and is fixed the same way.
+
+*Consequence for the eyelash study:* **`resources/scenes/eyelash_lab.json` was lit by exactly this
+broken path**, so its whole V0–V3 comparison ran with TT dead — i.e. with the dominant eyelash lobe
+switched off. The lab needs re-rendering before its round-1 conclusions mean anything. Its `direction`
+field is also backwards: the engine's convention is **direction points toward the light** (that is how
+`physically_based.glsl` consumes it), and the lab sets `-normalize(position)`.
+
+**2. SLViewer's first captured frame renders without surface-bound strand hair — OPEN, not fixed.**
+Frame 0 of every headless export is **bald** (no scalp hair, brows or lashes); frames 1+ are correct.
+Binding itself succeeds — it is the first frame only. Proven by making the strand materials 20x
+brighter and thicker: frame 0 stayed pixel-identical, frame 1 showed the hair.
+- *Impact on the record:* last session's "maria re-rendered unchanged (no regression)" check and the
+  V0-vs-V3 eye-crop diffs were both computed from frame 0, i.e. **from two bald renders** — those
+  numbers are meaningless and should not be relied on.
+- *Workaround in any harness:* read the **last** frame, never `frame_00000.png`.
+- *Likely cause to check:* the animatable-geometry ring (`Geometry::cycle_animatable_upload`) — the
+  renderer probably draws a ring slot the binder has not written yet on the first frame. Whether this
+  is only a first-frame warm-up or a permanent one-frame lag is **not yet established** (the probe
+  scene was static, so lag is invisible). A non-captured warm-up frame in `SLApplication::run` would
+  fix the symptom; the lag question needs a moving test.
+- Both viewers now **log an error** when a hair sidecar is missing or fails to load, instead of
+  silently rendering an off-frame groom.
+
+**Round-2 ideas if none of the four is enough:**
+- **Shape/clumping.** The groom geometry matters more than the BSDF past a point — clumping, curl and per-strand length variation would do more than further shader work.
+- **Sheen falloff.** `sheen_scale` is still a flat damp; a grazing-angle falloff may read cleaner than a constant.
+- **Per-character grooms differ** (maria/nadia share an 856-strand groom, alex 816, javi only 321), so the winning params may not transfer unchanged.
+
+### Unify the eyelash and epic-hair shaders (proposed 2026-07-22)
+
+**Recommendation: yes, do this — but only after the variant study is closed out.**
+`eyelash_strand.glsl` and `hair_strand_epic.glsl` are ~95% the same file, and they are
+**already drifting in ways that cost real debugging time**. Two bugs this session had to be
+found and fixed *twice*, once per copy: the uninitialized `transMask.visibility` read, and
+the directional-light `L` derivation. The second one silently disabled the whole TT lobe
+under a directional key and invalidated a full round of the eyelash study before anyone
+noticed. That is the actual argument for merging — not tidiness.
+
+**What genuinely differs today** (checked, not assumed):
+1. `evalEpicHairBSDF` has **no `Rpower`/`TTpower`/`TRTpower` factors and no `backlit` term** —
+   its lobes are `Mp * Np * Fp * Tp * grazingTerm`. `evalEyelashBSDF` is the same maths with
+   those four wired in. That is the whole BSDF-level difference.
+2. The eyelash path carries the `Variant` selector and its `dataSlot9` block
+   (`variant`, `sheen_scale`, `tip_taper`, `min_pixel_width`).
+3. `variant: 3`'s sub-pixel coverage (quad widening + hashed `gl_SampleMask`) exists only on
+   the eyelash path.
+
+**Two-step plan:**
+- **Step 1 — fold the powers into `evalEpicHairBSDF`.** Add the three power multipliers and
+  the backlit gate, defaulting to `1.0` / `1.0` / `1.0` / `backlit = 1.0`. With those defaults
+  the expression is *algebraically identical* to today's, so existing hair is unchanged — that
+  is the safety property that makes this low risk, and it is verifiable by rendering maria
+  before/after and diffing. `evalEyelashBSDF` then becomes redundant and gets deleted.
+  Note `TT_power` currently does nothing on `hairepic` materials, so this also *gains* the
+  scalp hair a knob it should always have had.
+- **Step 2 — promote coverage from a variant to a material flag** on the shared hair path.
+  Scalp hair has the identical sub-pixel problem (`thickness: 0.001` projects to ~0.15 px), so
+  this likely **improves hair too**, not just lashes. At that point `eyelash_strand.glsl` has no
+  reason to exist and `EyelashMaterial` collapses to a thin `HairEpicMaterial` preset.
+
+**Blocker:** the `Variant` enum still holds V1 matte and V2 tapered, which are eyelash-only
+experiments that lost. Delete those first (see the study above); what remains is
+baseline + coverage, which is a flag, not a shader.
+
+**Watch out for:** `EyelashMaterial::get_uniforms()` packs `dataSlot9`. If the material classes
+merge, `HairEpicMaterial` must own those slots (9–11 are free, so no UBO layout change), and
+`eyelash_strand.glsl`'s std140 workaround — declaring `tintColor` as three separate floats —
+has to survive the merge or every field after it shifts a slot.
 
 ### Renderer performance — opportunities for future work (notes 2026-06-24)
 

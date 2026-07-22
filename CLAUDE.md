@@ -85,7 +85,7 @@ Resources flow between passes through the dependency table + `link_previous_imag
 
 - **Resource Manager** (`core/resource_manager.h/cpp`): CPU-to-GPU data upload. Holds shared resources like `VIGNETTE` (fullscreen quad mesh used by all post-process passes).
 - **Materials**: `HairEpicMaterial` for hair, `PhysicallyBasedMaterial` for head/eyes. Material classes define their own descriptor layouts and uniform buffers.
-  - **`EyelashMaterial`** (subclass of `HairEpicMaterial`, type `HAIR_STR_EYELASH_TYPE`, scene JSON type `"eyelash"`): same params/uniforms/geometry as epic hair but routed to `shaders/forward/eyelash_strand.glsl`, which calls `evalEyelashBSDF` (in `epic_hair_BSDF.glsl`) instead of `evalEpicHairBSDF`. That variant wires up `R_power`/`TT_power`/`TRT_power`/`use_backlit` — which the epic path ignores — so eyelashes can be made less reflective (low `specular`/`R_power`) and more transmissive (higher `TT_power` + `use_backlit`) without affecting scalp hair. Any subsystem that special-cases epic hair (forward draw loop, VSM skip, hair voxelization, resource-manager voxel union, GUI widget) must test `IMaterial::is_epic_hair_family()`, not the exact type, or eyelashes drop out of it.
+  - **`EyelashMaterial`** (subclass of `HairEpicMaterial`, type `HAIR_STR_EYELASH_TYPE`, scene JSON type `"eyelash"`): same params/uniforms/geometry as epic hair but routed to `shaders/forward/eyelash_strand.glsl`, which calls `evalEyelashBSDF` (in `epic_hair_BSDF.glsl`) instead of `evalEpicHairBSDF`. That variant wires up `R_power`/`TT_power`/`TRT_power`/`use_backlit` — which the epic path ignores — so eyelashes can be made less reflective (low `specular`/`R_power`) and more transmissive (higher `TT_power` + `use_backlit`) without affecting scalp hair. Any subsystem that special-cases epic hair (forward draw loop, VSM skip, hair voxelization, resource-manager voxel union, GUI widget) must test `IMaterial::is_epic_hair_family()`, not the exact type, or eyelashes drop out of it. It also carries a **lighting-model selector** — see "Eyelash Shading Models" below.
 - **RHI** (`Graphics/` folder): Low-level Vulkan abstraction (device, swapchain, command buffers, images, descriptors). Should generally remain untouched.
 - Uses classic `VkRenderPass` objects, **not** `VK_KHR_dynamic_rendering`.
 
@@ -152,6 +152,118 @@ It reads the material blocks (recipe if `--materials`, else the scene's `materia
 
 **Key files:** `tools/bake_glb_material.py` (baker) + `tools/bake_recipes/*.json` (material source of truth), `ext/Vulkan-Engine/src/tools/loaders.cpp` (`load_GLB` + `GLBMaterialAux` + `load_PNG_from_memory`; `SetImagesAsIs` keeps the 8K maps raw and they're decoded on demand), `ext/Vulkan-Engine/include/engine/tools/loaders.h` (`GLBImage` / `GLBMaterialAux`), `src/scene_loader.cpp` (`GLBTexCtx`, `resolve_texture` `$GLB[...]` + channel resolution, `assemble_baked_materials`), and for packed atlases `ext/Vulkan-Engine/{include/engine/core/materials/physically_based.h,src/core/materials/physically_based.cpp}` (`set_*_channel` → `dataSlot10.y`) + `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` (`packedChannels`).
 
+### Eyelash Shading Models (under evaluation)
+
+Four competing eyelash lighting models live behind **one** pipeline, selected per
+material by `EyelashMaterial::Variant` (scene JSON `"variant"`, 0–3). One shader
+with a switch — not four shader files — so every model can be compared **in the
+same frame under identical lighting**, and so a model can be flipped live in the
+GUI without a rebuild. This is deliberately temporary: once a winner is picked the
+losers get deleted and the selector collapses away.
+
+| `variant` | Model | Where it lives |
+|-----------|-------|----------------|
+| 0 | **Baseline** — the original `evalEyelashBSDF` Marschner lobes | `epic_hair_BSDF.glsl` |
+| 1 | **Matte fiber** — no R/TRT/env-sheen; wrapped fiber diffuse + forward scatter | `evalMatteLash` in `eyelash_strand.glsl` |
+| 2 | **Tapered** — root→tip thinning (geometry stage) + transmission ramp (fragment stage) | `eyelash_strand.glsl`, both stages |
+| 3 | **Coverage** — energy-conserving sub-pixel width via hashed MSAA sample masking | `eyelash_strand.glsl`, geometry stage (widening) + fragment stage (`gl_SampleMask`) |
+
+Why variant 3 matters: at normal framing a `thickness: 0.001` fiber projects to
+roughly **0.15 px**, so the rasterizer either drops it or draws it a full pixel wide
+at full opacity — that quantization is a large part of the "shiny wire" read. The
+model widens the quad to `min_pixel_width` and spends the inverse as partial MSAA
+coverage, so the energy is preserved.
+
+**It does NOT use fixed-function alpha-to-coverage, and must not.** Alpha-to-coverage
+derives its sample pattern from the alpha *value* alone. Every fiber in a lash line
+carries nearly the same coverage, so they all resolve onto the *same* subsample and
+the lash mass never accumulates — at character framing that collapses the whole lash
+to 1/8 intensity and the lashes visually vanish. (This is invisible in
+`eyelash_lab.json`, whose groom is ~5× larger on screen; it only shows up on a real
+character. `alphaToCoverage` is therefore explicitly `false` on the eyelash pass.)
+Instead the fragment shader writes `gl_SampleMask[0]` itself, keeping a hashed subset
+of `gl_SampleMaskIn` with stochastic rounding. The hash is keyed on the per-strand
+random plus `gl_FragCoord` — deliberately not on time or world position, so the
+pattern is stable frame to frame and the lashes don't shimmer under animation.
+Naturally this needs MSAA to have samples to spend; at `"msaa": 1` there is nothing
+to subdivide and the model degenerates to the baseline.
+
+**Landed configuration (maria, 2026-07-22).** `variant: 3` + `min_pixel_width: 1.0`
++ `use_legacy_absorption: true` + **`TT_power: 0.25`** (down from 2.5). The scalp hair
+(`maria_hair`) also got `use_legacy_absorption: true`.
+
+**Why the eyelash shader cannot just be the epic hair shader with a different TT value.**
+`evalEpicHairBSDF` has **no `Rpower`/`TTpower`/`TRTpower` factors and no `backlit` term at
+all** — its lobes are `Mp * Np * Fp * Tp * grazingTerm`, full stop. So a `hairepic`
+material would *silently ignore* `TT_power`, which is the single knob the eyelash tuning
+now depends on. Exposing those three powers plus `use_backlit` is the entire reason
+`evalEyelashBSDF` exists. On top of that the eyelash path carries the variant selector,
+and `variant: 3`'s sub-pixel coverage (quad widening + hashed `gl_SampleMask`) has no
+equivalent in the epic path — that is what gives the lash line its density. Both are load
+bearing; the two shaders cannot be collapsed as things stand.
+
+`use_legacy_absorption`, by contrast, **is** shared: it is a plain `hairepic` field on the
+common `EpicHairBSDF`, so it applies to scalp hair, brows and lashes alike. It is the only
+easy lever against the white TT blowout on *scalp* hair, since `TT_power` does nothing there.
+
+**Uniform packing.** The eyelash block rides in `dataSlot9` (`variant`,
+`sheen_scale`, `tip_taper`, `min_pixel_width`) via an `EyelashMaterial::get_uniforms()`
+override — epic hair only uses slots 1–8, so there is no UBO layout change. **Gotcha:**
+`MaterialUniforms` is consumed by hand-written GLSL blocks with no reflection, and
+the hair block ends `float variability; vec3 tintColor;`. Under std140 that `vec3`
+aligns up to offset 128 while the CPU packs the tint at 116 — so anything declared
+after it lands a slot late. `eyelash_strand.glsl` therefore declares the tint as
+three separate floats. `tintColor` is unused by both hair shaders, so the epic path
+was never affected.
+
+**Directional lights and the hair shaders (gotcha).** `DirectionalLight::get_uniforms`
+packs the light **direction** (view space, `w = 0`) into `LightUniform::position`,
+and `m_direction` points **toward** the light — that is how `physically_based.glsl`
+consumes it (`wi = normalize(position.xyz)` under `type == DIRECTIONAL_LIGHT`).
+Any shader deriving `L` must branch on the type; treating `position` as a point
+puts the light one unit from the view origin, collapsing `L` onto `V`. Both hair
+shaders had this bug (fixed 2026-07-22) and now carry the same branch, plus a
+`w = 0` transform for the `computeHairShadowCone` direction. While it was broken,
+`inBacklit` was pinned at ~0 under any directional key, which **silently disabled
+the entire TT lobe** — the dominant lobe on a dark backlit fiber.
+
+**The comparison scenes.** Two, and the distinction matters:
+
+- **`resources/scenes/eyelash_solo.json` — the one to trust.** A single groom
+  centred on a `lab_card.obj` backdrop. Compare variants by rendering it repeatedly
+  with only the material changed, so every render is the *same* groom at the *same*
+  screen position under the *same* light. This is the only fair comparison (see the
+  bias note below).
+- **`resources/scenes/eyelash_lab.json` — a quick simultaneous eyeball, not a
+  measurement.** Five copies of `models/maria/eyelashes.hair` in a 2-column ×
+  3-row grid (V0 top-left, V1 top-right, V2 mid-left, V3 mid-right, V4 bottom-left),
+  each a different variant.
+
+Notes that apply to both:
+- The key is a **far directional light**. For a directional light only `direction`
+  affects shading — `position` merely places the dummy and the shadow view — so the
+  key is aimed as a 3/4 back rim, deliberately: a front key drives `inBacklit` to 0
+  and gates TT off, hiding the very thing being compared. The cards stay readable
+  because the IBL lights them, not the key.
+- The backdrop card means lashes are judged both in silhouette (in the gaps) and
+  against a surface — an isolated groom is backlit in every pixel, which biases tuning.
+- **The engine maps world −X to screen-right** (hence the 180° Y rotation on every
+  character), so the grid's X positions are mirrored to match the V0…V4 naming.
+- **A groom's vertices sit ~33 units from its object origin**, so the model matrix's
+  scale term also *translates* it. Every cell must stay at `scale: 0.55` or the grid
+  flies apart — this is not a normal "make it bigger" knob.
+
+⚠️ **The grid has a strong vertical positional bias — do not read TT across cells.**
+With *identical* material in all five cells, the top row renders ~3.2× the lash
+contrast of the bottom row, and under a `TT_power` boost only the top row develops a
+highlight at all (the rows below stay at the card value). Verified reproducible with
+the mesh declaration order reversed, so it follows **position**, not draw order.
+Disabling `adv_shadows` barely changes it, so it is *not* the shared hair voxel volume,
+and a long lens (which cuts the `dot(-L,V)` spread to ~10%) does not fix it either —
+**the mechanism is still unexplained**. Also note run-to-run renders of this scene are
+**not deterministic**: repeating the same render gives ~1.0 mean abs diff per cell, so
+small numeric comparisons here are meaningless.
+
 ### Hair-to-Scalp Surface Binding
 
 Strand hair (`.hair` — scalp hair, eyebrows, eyelashes) can be bound to a character head's surface so it sits on the skin (no clip / no float), follows the head's **morph + skeletal** animation, and keeps each strand's silhouette. Neural `.ply` hair is out of scope (deprecated).
@@ -179,6 +291,7 @@ When no mesh declares `bind_to`, both viewers auto-discover the head (first morp
 - **Animatable geometry keeps two ring buffers, not one.** Besides the deformed-vertex VBO ring, `Geometry::cycle_animatable_upload` also rings the **position SSBO** (`vao.posSSBO`, one `Vec4`/vertex), because the hair voxelization (`HAIR_VOXELIZATION_PASS`, `OPTICAL_DENSITY` mode), SSAO and SSR read strand positions from that bindless buffer — not the VBO. The bindless descriptor is re-pointed at the live region each frame (`forward_pass`/`hair_voxelization_pass` `update_uniforms` pass `readOffset = posFrameOffset`). Without this the hair's volumetric self-shadow/scattering freezes at the groom pose while the visible strands move (the strand model matrix is ~identity — animation is baked into the vertices). `RING == 3` for both rings (DOUBLE buffering; bump to 4 for TRIPLE).
 - Per-frame reconstruction is CPU-side (mirrors `apply_deformation`); fine for moderate strand counts (GPU compute path is possible future work). A static (non-animated) head reconstructs once.
 - Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export now drives the binders too (same `setup_hair_binding()` + per-frame `binder->update()` as HairViewer), so exported video matches the interactive view.
+- **SLViewer's first captured frame has no surface-bound strand hair** (bald: no scalp hair, brows or lashes); frames 1+ are correct. Binding itself succeeds — suspect the animatable-geometry ring being drawn before the binder has written it. **When measuring anything from a headless dump, read the last frame, never `frame_00000.png`.** Open issue, see PLAN.md.
 
 **Key files:** `src/hair_binding.{h,cpp}` (`HairBinder`: bind / update / sidecar IO), `src/gui.{h,cpp}` (`HairBindWidget`), `src/application.cpp` (`setup_hair_binding()` + per-frame `binder->update()`), `src/scene_loader.{h,cpp}` (`bind_to`/`binding` → `LoadResult::hairBindings`), and engine hooks `Geometry::{get_deformed_vertices,get_strand_offsets,set_animatable,upload_vertices,update_bounds}` + strand-offset capture in `Tools::Loaders::load_hair`.
 

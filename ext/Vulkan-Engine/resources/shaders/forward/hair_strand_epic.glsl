@@ -607,14 +607,29 @@ void main() {
                 directFraction *= solidOcclusion;
             }
 
-            vec3  L         = normalize(scene.lights[i].position.xyz - g_pos);
+            // A DirectionalLight packs its *direction* (view space, w=0) into the
+            // position slot, so it must not be treated as a point — doing so puts
+            // the light one unit from the view origin, which collapses L onto V
+            // (a headlight). Same branch physically_based.glsl already uses.
+            vec3  L         = scene.lights[i].type != DIRECTIONAL_LIGHT
+                                  ? normalize(scene.lights[i].position.xyz - g_pos)
+                                  : normalize(scene.lights[i].position.xyz);
             float inBacklit = saturate(dot(-L, V));
 
+            // Initialized: `visibility` is only assigned under advShadows but is
+            // read unconditionally below, so with adv_shadows off this was an
+            // uninitialized read feeding the scattering term.
             HairTransmittanceMask transMask;
+            transMask.visibility = 1.0;
             if (material.advShadows > 0.0)
             {
+                // Same directional-light caveat as L above: transform the stored
+                // vector as a direction (w=0), not as a world point.
+                vec3 coneDir = scene.lights[i].type != DIRECTIONAL_LIGHT
+                                   ? normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz - g_modelPos)
+                                   : normalize((camera.invView * vec4(scene.lights[i].position, 0.0)).xyz);
                 transMask.visibility = computeHairShadowCone(
-                    g_modelPos, normalize((camera.invView * vec4(scene.lights[i].position, 1.0)).xyz - g_modelPos), physicalSigma, material.shadowKnob );
+                    g_modelPos, coneDir, physicalSigma, material.shadowKnob );
             }
             // Fold solid-mesh occlusion into the transmittance mask so dual scattering
             // also sees the head/body — otherwise the scatter lobe lights hair through opaque casters.

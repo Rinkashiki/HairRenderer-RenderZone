@@ -81,6 +81,22 @@ Graphics::MaterialUniforms HairEpicMaterial::get_uniforms() const {
     return uniforms;
 }
 
+Graphics::MaterialUniforms EyelashMaterial::get_uniforms() const {
+    // Everything epic hair packs (slots 1-8) plus the eyelash-only block. Slots
+    // 9-11 are unused by the epic hair path, so this adds no UBO layout change.
+    //-----------------
+    // float variant;        // EyelashMaterial::Variant — selects the lighting model
+    // float sheenScale;     // env specular sheen damp (was hardcoded 0.15)
+    // float tipTaper;       // root->tip thickness / transmission taper
+    // float minPixelWidth;  // sub-pixel coverage floor
+    //-----------------
+    Graphics::MaterialUniforms uniforms = HairEpicMaterial::get_uniforms();
+
+    uniforms.dataSlot9 = {float(m_variant), m_sheenScale, m_tipTaper, m_minPixelWidth};
+
+    return uniforms;
+}
+
 } // namespace Core
 
 VULKAN_ENGINE_NAMESPACE_END

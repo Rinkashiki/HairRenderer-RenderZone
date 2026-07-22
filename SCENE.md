@@ -167,6 +167,7 @@ Discriminated by `"type"`:
 | `pbr` | `PhysicallyBasedMaterial` |
 | `haircard` | `HairCardMaterial` |
 | `hairepic` | `HairEpicMaterial` |
+| `eyelash` | `EyelashMaterial` (see §6.3) |
 | `hair` | `HairMaterial` (Marschner) |
 | `hairdisney` | `HairDisneyMaterial` |
 | `unlit` | `UnlitMaterial` |
@@ -254,6 +255,8 @@ All Layer A and Layer B fields are **optional** and gated by their respective `h
 | `eumelanine` | float | `0.6` |
 | `pheomelanine` | float | `0.3` |
 | `use_pigmentation` | bool | `false` |
+| `use_backlit` | bool | `false` |
+| `use_legacy_absorption` | bool | `false` |
 | `use_scatter` | bool | `true` |
 | `use_glints` | bool | `true` |
 | `adv_shadows` | bool | `true` |
@@ -263,6 +266,40 @@ All Layer A and Layer B fields are **optional** and gated by their respective `h
 | `tip_bleaching` | float | `0.0` |
 | `tip_falloff` | float | `8.0` |
 | `variability` | float | `0.1` |
+
+`use_legacy_absorption` picks which TT absorption model the Marschner transmission
+lobe uses. Off (the default) takes Epic's `exp(-absorption * …)` branch, which for a
+**dark** fiber barely absorbs (`Tp ≈ 0.6–0.7` per channel) — combined with a high
+`TT_power` it drives every channel past 1.0 at once, and the backlit lobe clips to a
+white specular-looking streak. On, it takes `pow(baseColor, …)`, which lands nearer
+`0.3` and preserves the colour ratio, so the same lobe stays golden. Worth setting
+on dark grooms (lashes, brows, dark hair).
+
+#### `eyelash` — every `hairepic` field, plus a lighting-model selector
+
+Type `"eyelash"` takes **all** the fields above (it is a `HairEpicMaterial` subclass)
+but renders through `eyelash_strand.glsl`, which actually reads `R_power` /
+`TT_power` / `TRT_power` / `use_backlit` — the epic hair path ignores those. On top
+of that it carries four eyelash-only fields:
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `variant` | int | `0` | Which lighting model to run — see below. |
+| `sheen_scale` | float | `0.15` | Damp on the environment specular sheen. Was a hardcoded constant. Ignored by `variant 1`, which has no specular response. |
+| `tip_taper` | float | `0.0` | `variant 2` only. Root→tip thinning + transmission ramp. `0` = uniform fiber. |
+| `min_pixel_width` | float | `1.0` | `variant 3` only. Pixel floor below which a fiber is widened and its alpha reduced to match. |
+
+| `variant` | Model |
+|-----------|-------|
+| `0` | **Baseline** — `evalEyelashBSDF`, the original Marschner lobes. |
+| `1` | **Matte fiber** — no R, no TRT, no env sheen; wrapped fiber diffuse + forward scatter. |
+| `2` | **Tapered** — baseline plus a root→tip thickness and transmission taper. |
+| `3` | **Coverage** — baseline plus energy-conserving sub-pixel coverage (hashed MSAA sample masking). |
+
+These are competing candidates under evaluation, not a settled feature — see
+`resources/scenes/eyelash_lab.json`, which renders all four side by side. Once one
+wins, the losers and this selector go away. Note `variant 3` needs MSAA to have
+samples to spend: at `"msaa": 1` it degenerates to the baseline.
 
 ### 6.4 `hair`
 

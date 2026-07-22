@@ -1,0 +1,159 @@
+{
+  "name": "eyelash_lab",
+
+  "camera": {
+    "position": [0.0, 0.0, -58.8],
+    "near": 0.1,
+    "far": 100.0,
+    "fov": 9.5
+  },
+
+  "lights": [
+    {
+      "type": "directional",
+      "name": "Key",
+      "position": [-31.5, 26.0, 29.0],
+      "direction": [-0.63, 0.52, 0.58],
+      "intensity": 6.0,
+      "cast_shadows": false,
+      "dummy_mesh": "sphere.obj",
+      "dummy_visible": false
+    }
+  ],
+
+  "materials": {
+    "lash_base": {
+      "type": "eyelash",
+      "thickness": 0.001,
+      "use_pigmentation": true,
+      "eumelanine": 0.45,
+      "pheomelanine": 0.2,
+      "roughness": 0.65,
+      "specular": 0.05,
+      "R_power": 0.25,
+      "TT_power": 2.5,
+      "TRT_power": 0.2,
+      "use_backlit": true,
+      "scatter_boost": 0.15,
+      "root_darkening": 0.2,
+      "variability": 0.2,
+      "use_glints": false,
+      "sheen_scale": 0.15,
+      "variant": 0
+    },
+    "backdrop": {
+      "type": "pbr",
+      "albedo": [0.35, 0.28, 0.25],
+      "albedo_weight": 1.0,
+      "metalness": 0.0,
+      "roughness": 0.6
+    }
+  },
+  "meshes": [
+    {
+      "name": "V0_Baseline",
+      "type": "hair",
+      "file": "models/maria/eyelashes.hair",
+      "position": [3.402, -30.545, -5.968],
+      "scale": 0.55,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": { "base": "lash_base", "variant": 0 }
+    },
+    {
+      "name": "V1_Matte",
+      "type": "hair",
+      "file": "models/maria/eyelashes.hair",
+      "position": [-3.398, -30.545, -5.968],
+      "scale": 0.55,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": { "base": "lash_base", "variant": 1 }
+    },
+    {
+      "name": "V2_Tapered",
+      "type": "hair",
+      "file": "models/maria/eyelashes.hair",
+      "position": [3.402, -33.445, -5.968],
+      "scale": 0.55,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": { "base": "lash_base", "variant": 2, "tip_taper": 1.0 }
+    },
+    {
+      "name": "V3_Coverage",
+      "type": "hair",
+      "file": "models/maria/eyelashes.hair",
+      "position": [-3.398, -33.445, -5.968],
+      "scale": 0.55,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": { "base": "lash_base", "variant": 3, "min_pixel_width": 1.0 }
+    },
+    {
+      "name": "V4_Baseline_LegacyAbsorption",
+      "type": "hair",
+      "file": "models/maria/eyelashes.hair",
+      "position": [3.402, -36.345, -5.968],
+      "scale": 0.55,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": { "base": "lash_base", "variant": 0, "use_legacy_absorption": true }
+    },
+
+    {
+      "name": "Card_V0",
+      "type": "obj",
+      "file": "models/lab_card.obj",
+      "position": [3.4, 2.9, 1.2],
+      "scale": [6.4, 2.6, 1.0],
+      "material": "backdrop"
+    },
+    {
+      "name": "Card_V1",
+      "type": "obj",
+      "file": "models/lab_card.obj",
+      "position": [-3.4, 2.9, 1.2],
+      "scale": [6.4, 2.6, 1.0],
+      "material": "backdrop"
+    },
+    {
+      "name": "Card_V2",
+      "type": "obj",
+      "file": "models/lab_card.obj",
+      "position": [3.4, 0.0, 1.2],
+      "scale": [6.4, 2.6, 1.0],
+      "material": "backdrop"
+    },
+    {
+      "name": "Card_V3",
+      "type": "obj",
+      "file": "models/lab_card.obj",
+      "position": [-3.4, 0.0, 1.2],
+      "scale": [6.4, 2.6, 1.0],
+      "material": "backdrop"
+    },
+    {
+      "name": "Card_V4",
+      "type": "obj",
+      "file": "models/lab_card.obj",
+      "position": [3.4, -2.9, 1.2],
+      "scale": [6.4, 2.6, 1.0],
+      "material": "backdrop"
+    }
+  ],
+
+  "scene": {
+    "ambient_color": [0.05, 0.05, 0.05],
+    "ambient_intensity": 1.0,
+    "skybox": {
+      "hdri": "textures/studio_demo.hdr",
+      "intensity": 1.0,
+      "rotation": 0.0
+    },
+    "use_ibl": true,
+    "fog": { "enabled": false }
+  },
+
+  "renderer": {
+    "clear_color": [0.0, 0.0, 0.0, 1.0],
+    "sss_scatter_lut": "textures/scatterDistance/monk05.png",
+    "msaa": 8,
+    "dof": { "enabled": false }
+  }
+}

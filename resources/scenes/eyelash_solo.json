@@ -1,0 +1,91 @@
+{
+  "name": "eyelash_solo",
+
+  "camera": {
+    "position": [0.0, 0.0, -9.0],
+    "near": 0.1,
+    "far": 100.0,
+    "fov": 40.0
+  },
+
+  "lights": [
+    {
+      "type": "directional",
+      "name": "Key",
+      "position": [-31.5, 26.0, 29.0],
+      "direction": [-0.63, 0.52, 0.58],
+      "intensity": 6.0,
+      "cast_shadows": false,
+      "dummy_mesh": "sphere.obj",
+      "dummy_visible": false
+    }
+  ],
+
+  "materials": {
+    "lash": {
+      "type": "eyelash",
+      "thickness": 0.001,
+      "use_pigmentation": true,
+      "eumelanine": 0.45,
+      "pheomelanine": 0.2,
+      "roughness": 0.65,
+      "specular": 0.05,
+      "R_power": 0.25,
+      "TT_power": 2.5,
+      "TRT_power": 0.2,
+      "use_backlit": true,
+      "scatter_boost": 0.15,
+      "root_darkening": 0.2,
+      "variability": 0.2,
+      "use_glints": false,
+      "sheen_scale": 0.15,
+      "variant": 0
+    },
+    "backdrop": {
+      "type": "pbr",
+      "albedo": [0.35, 0.28, 0.25],
+      "albedo_weight": 1.0,
+      "metalness": 0.0,
+      "roughness": 0.6
+    }
+  },
+
+  "meshes": [
+    {
+      "name": "Lash",
+      "type": "hair",
+      "file": "models/maria/eyelashes.hair",
+      "position": [0.002, -33.445, -5.968],
+      "scale": 0.55,
+      "rotation": [90.0, 180.0, 180.0],
+      "material": "lash"
+    },
+    {
+      "name": "Card",
+      "type": "obj",
+      "file": "models/lab_card.obj",
+      "position": [0.0, 0.0, 1.2],
+      "scale": [9.0, 4.0, 1.0],
+      "material": "backdrop"
+    }
+  ],
+
+  "scene": {
+    "ambient_color": [0.05, 0.05, 0.05],
+    "ambient_intensity": 1.0,
+    "skybox": {
+      "hdri": "textures/studio_demo.hdr",
+      "intensity": 1.0,
+      "rotation": 0.0
+    },
+    "use_ibl": true,
+    "fog": { "enabled": false }
+  },
+
+  "renderer": {
+    "clear_color": [0.0, 0.0, 0.0, 1.0],
+    "sss_scatter_lut": "textures/scatterDistance/monk05.png",
+    "msaa": 8,
+    "dof": { "enabled": false }
+  }
+}

@@ -39,7 +39,28 @@
       "specular": 0.4,
       "root_darkening": 0.3,
       "variability": 0.25,
-      "scatter_boost": 1.0
+      "scatter_boost": 1.0,
+      "use_legacy_absorption": true
+    },
+    "javi_eyelashes": {
+      "type": "eyelash",
+      "thickness": 0.001,
+      "use_pigmentation": true,
+      "eumelanine": 0.9,
+      "pheomelanine": 0.2,
+      "roughness": 0.65,
+      "specular": 0.05,
+      "R_power": 0.25,
+      "TT_power": 0.25,
+      "TRT_power": 0.2,
+      "use_backlit": true,
+      "use_legacy_absorption": true,
+      "scatter_boost": 0.15,
+      "root_darkening": 0.2,
+      "variability": 0.2,
+      "use_glints": false,
+      "variant": 3,
+      "min_pixel_width": 1.0
     }
   },
   "meshes": [
@@ -100,7 +121,7 @@
     {
       "name": "Eyelashes",
       "type": "hair",
-      "file": "models/nadia/eyelashes.hair",
+      "file": "models/javi/eyelashes.hair",
       "position": [
         -0.01,
         -0.61,
@@ -112,7 +133,7 @@
         180.0,
         180.0
       ],
-      "material": "javi_hair",
+      "material": "javi_eyelashes",
       "bind_to": "Javi"
     }
   ],

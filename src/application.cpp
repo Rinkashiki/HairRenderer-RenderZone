@@ -112,8 +112,16 @@ void HairViewer::setup() {
 static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::string& declaredPath) {
     auto* binder = new hair_binding::HairBinder(hair, head);
     std::string side = !declaredPath.empty() ? declaredPath : (hair->get_file_route() + ".hbnd");
+    // A missing sidecar leaves the binder unbound, which silently renders the
+    // groom at its raw (off-frame) position — a bald character with no error.
+    // Say so instead.
     if (std::filesystem::exists(side))
-        binder->load(side);
+    {
+        if (!binder->load(side))
+            LOG_ERROR("hair binding: failed to load sidecar '" + side + "' for '" + hair->get_name() + "'");
+    } else
+        LOG_ERROR("hair binding: no sidecar at '" + side + "' — '" + hair->get_name() +
+                  "' stays unbound and will render off-frame");
     return binder;
 }
 
@@ -168,6 +176,19 @@ void HairViewer::update() {
         float _z            = light->get_position().x * sin(rotationAngle) + light->get_position().z * cos(rotationAngle);
 
         light->set_position({_x, light->get_position().y, _z});
+
+        // A directional light shades purely from its direction — its position only
+        // places the dummy and the shadow view. Rotating position alone would leave
+        // the lighting frozen, so spin the direction by the same angle.
+        if (light->get_light_type() == LightType::DIRECTIONAL)
+        {
+            auto* dir = static_cast<DirectionalLight*>(light);
+            Vec3  d   = dir->get_direction();
+            dir->set_direction({d.x * cos(rotationAngle) - d.z * sin(rotationAngle),
+                                d.y,
+                                d.x * sin(rotationAngle) + d.z * cos(rotationAngle)});
+        }
+
         static_cast<UnlitMaterial*>(static_cast<Mesh*>(light->get_children().front())->get_material(0))->set_color({light->get_color() * 4.0f, 1.0f});
     }
 
