@@ -138,20 +138,45 @@ static Core::Light* build_light(const json&        jl,
 // Resolve a texture reference:
 //   "$GLB[<name>]"          — embedded GLB image by name (baked self-contained assets)
 //   "$GLB[<name>:<r|g|b|a>]" — a single channel of that image (unpacks ORM: R=occlusion,
-//                             G=roughness, B=metallic), replicated to grayscale
+//                             G=roughness, B=metallic; CS: R=curvature, G=scattering)
 //   "$GLB[<N>]"             — legacy: embedded image by index
-//   any other non-empty str — a texture path relative to resourcesPath.
+//   any other non-empty str — a texture path relative to resourcesPath, optionally
+//                             with a ":<r|g|b|a>" channel suffix.
 // Decoded images are cached per mesh so a shared reference decodes only once.
+//
+// `outChannel` (optional) is how a packed atlas stays ONE texture: slots that can
+// sample an arbitrary channel in-shader (roughness/metallic/occlusion/curvature/
+// scattering) pass it, get the whole image back, and hand the channel index to the
+// material. Slots that don't pass it fall back to unpacking the channel into its own
+// replicated grayscale texture (correct, but one full image per channel).
 static Core::Texture* resolve_texture(const json&        jvalue,
                                       const std::string& resourcesPath,
                                       GLBTexCtx&         glbTextures,
-                                      TextureFormatType  fmt) {
+                                      TextureFormatType  fmt,
+                                      int*               outChannel = nullptr) {
     if (jvalue.is_null())
         return nullptr;
 
-    const std::string ref = jvalue.get<std::string>();
+    std::string ref = jvalue.get<std::string>();
     if (ref.empty())
         return nullptr;
+
+    // Trailing ":<r|g|b|a>" on a plain path — same packed-atlas meaning as inside $GLB[].
+    auto parse_channel = [](std::string& s) -> int {
+        const auto colon = s.rfind(':');
+        if (colon == std::string::npos || colon + 2 != s.size())
+            return -1;
+        int c = -1;
+        switch (s[colon + 1]) {
+            case 'r': c = 0; break;
+            case 'g': c = 1; break;
+            case 'b': c = 2; break;
+            case 'a': c = 3; break;
+        }
+        if (c >= 0)
+            s = s.substr(0, colon);
+        return c;
+    };
 
     // "$GLB[...]" — embedded image (name, name:channel, or numeric index).
     if (ref.rfind("$GLB[", 0) == 0) {
@@ -159,20 +184,17 @@ static Core::Texture* resolve_texture(const json&        jvalue,
         if (close == std::string::npos)
             return nullptr;
         std::string inner   = ref.substr(5, close - 5);
-        int         channel = -1;
-        const auto  colon   = inner.rfind(':');
-        if (colon != std::string::npos && colon + 2 == inner.size()) {
-            switch (inner[colon + 1]) {
-                case 'r': channel = 0; break;
-                case 'g': channel = 1; break;
-                case 'b': channel = 2; break;
-                case 'a': channel = 3; break;
-            }
-            if (channel >= 0)
-                inner = inner.substr(0, colon);
+        int         channel = parse_channel(inner);
+
+        // The caller can sample the channel itself: keep the atlas whole and shared.
+        if (channel >= 0 && outChannel)
+        {
+            *outChannel = channel;
+            channel     = -1;
         }
 
-        const std::string key = inner + (channel >= 0 ? (":" + std::to_string(channel)) : "");
+        const std::string key = inner + (channel >= 0 ? (":" + std::to_string(channel)) : "") +
+                                "|" + std::to_string((int)fmt);
         auto              it  = glbTextures.cache.find(key);
         if (it != glbTextures.cache.end())
             return it->second;
@@ -205,8 +227,26 @@ static Core::Texture* resolve_texture(const json&        jvalue,
         return tex;
     }
 
+    const int fileChannel = parse_channel(ref);
+    if (fileChannel >= 0)
+    {
+        if (outChannel)
+            *outChannel = fileChannel;
+        else
+            LOG_WARN("scene_loader: channel suffix on '" + ref +
+                     "' ignored — this texture slot always samples R");
+    }
+
+    // Cache loose paths too, so a packed atlas shared by several slots (ORM, CS)
+    // is read and decoded once per mesh.
+    const std::string fileKey = ref + "|" + std::to_string((int)fmt);
+    auto              it      = glbTextures.cache.find(fileKey);
+    if (it != glbTextures.cache.end())
+        return it->second;
+
     auto* tex = new Core::Texture();
     Tools::Loaders::load_texture(tex, resourcesPath + ref, fmt);
+    glbTextures.cache[fileKey] = tex;
     return tex;
 }
 
@@ -235,15 +275,31 @@ static Core::IMaterial* build_pbr(const json&        jm,
     if (jm.contains("normal_texture"))
         mat->set_normal_texture(resolve_texture(jm["normal_texture"], resourcesPath, glbTextures,
                                                 TEXTURE_FORMAT_TYPE_NORMAL));
+    // Roughness / metallic / occlusion and curvature / scattering may each be one
+    // channel of a shared packed atlas (ORM, CS). resolve_texture then returns the
+    // whole image and reports which channel to sample, so the atlas stays one texture.
+    int channel = 0;
     if (jm.contains("roughness_texture"))
+    {
+        channel = 0;
         mat->set_roughness_texture(resolve_texture(jm["roughness_texture"], resourcesPath, glbTextures,
-                                                   TEXTURE_FORMAT_TYPE_LINEAR));
+                                                   TEXTURE_FORMAT_TYPE_LINEAR, &channel));
+        mat->set_roughness_channel(channel);
+    }
     if (jm.contains("metallic_texture"))
+    {
+        channel = 0;
         mat->set_metallic_texture(resolve_texture(jm["metallic_texture"], resourcesPath, glbTextures,
-                                                  TEXTURE_FORMAT_TYPE_LINEAR));
+                                                  TEXTURE_FORMAT_TYPE_LINEAR, &channel));
+        mat->set_metallic_channel(channel);
+    }
     if (jm.contains("occlusion_texture"))
+    {
+        channel = 0;
         mat->set_occlusion_texture(resolve_texture(jm["occlusion_texture"], resourcesPath, glbTextures,
-                                                   TEXTURE_FORMAT_TYPE_LINEAR));
+                                                   TEXTURE_FORMAT_TYPE_LINEAR, &channel));
+        mat->set_occlusion_channel(channel);
+    }
     if (jm.contains("emissive_texture"))
         mat->set_emissive_texture(resolve_texture(jm["emissive_texture"], resourcesPath, glbTextures,
                                                   TEXTURE_FORMAT_TYPE_COLOR));
@@ -251,11 +307,19 @@ static Core::IMaterial* build_pbr(const json&        jm,
         mat->set_bent_normal_texture(resolve_texture(jm["bent_normal_texture"], resourcesPath, glbTextures,
                                                      TEXTURE_FORMAT_TYPE_NORMAL));
     if (jm.contains("curvature_texture"))
+    {
+        channel = 0;
         mat->set_curvature_texture(resolve_texture(jm["curvature_texture"], resourcesPath, glbTextures,
-                                                   TEXTURE_FORMAT_TYPE_LINEAR));
+                                                   TEXTURE_FORMAT_TYPE_LINEAR, &channel));
+        mat->set_curvature_channel(channel);
+    }
     if (jm.contains("scattering_texture"))
+    {
+        channel = 0;
         mat->set_scattering_texture(resolve_texture(jm["scattering_texture"], resourcesPath, glbTextures,
-                                                    TEXTURE_FORMAT_TYPE_LINEAR));
+                                                    TEXTURE_FORMAT_TYPE_LINEAR, &channel));
+        mat->set_scattering_channel(channel);
+    }
     if (jm.contains("clothes_mask_texture"))
         mat->set_clothes_mask_texture(resolve_texture(jm["clothes_mask_texture"], resourcesPath, glbTextures,
                                                       TEXTURE_FORMAT_TYPE_LINEAR));

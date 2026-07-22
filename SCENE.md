@@ -306,10 +306,23 @@ All Layer A and Layer B fields are **optional** and gated by their respective `h
 A `texref` is a JSON string:
 
 - `"path/to/file.png"` — relative to `resourcesPath`; loaded via `Tools::Loaders::load_texture`. Color-channel textures use `TEXTURE_FORMAT_TYPE_COLOR`; normal/tangent maps use `TEXTURE_FORMAT_TYPE_NORMAL`.
+- `"path/to/file.png:<r|g|b|a>"` — one channel of a **packed atlas** (see below).
 - `"$GLB[<name>]"` — an image embedded in the same mesh's GLB, by glTF image name (only meaningful when the mesh `type` is `"glb"`). Used by **baked** self-contained GLBs (see CLAUDE.md → "Self-Contained Character GLBs").
-- `"$GLB[<name>:<r|g|b|a>]"` — a single channel of an embedded image, replicated to grayscale. Used to unpack an ORM map: R = occlusion, G = roughness, B = metallic.
+- `"$GLB[<name>:<r|g|b|a>]"` — one channel of an embedded packed atlas.
 - `"$GLB[N]"` — legacy: embedded image by index. Out-of-range indexes log a warning and resolve to null.
 - `null` or `""` — no texture.
+
+**Packed atlases.** A `:<channel>` suffix says "this map is one channel of a shared image". It is honoured by the five slots the shader can swizzle — `roughness_texture`, `metallic_texture`, `occlusion_texture`, `curvature_texture`, `scattering_texture` — which then share **one** decoded texture and sample their own channel, e.g.
+
+```json
+"occlusion_texture":  "textures/alex/T-Alex-ORM.png:r",
+"roughness_texture":  "textures/alex/T-Alex-ORM.png:g",
+"metallic_texture":   "textures/alex/T-Alex-ORM.png:b",
+"curvature_texture":  "textures/alex/T-Alex-CS.png:r",
+"scattering_texture": "textures/alex/T-Alex-CS.png:g"
+```
+
+Any other slot logs a warning and ignores the suffix (it always samples R). Without a suffix, behaviour is unchanged: the whole image is loaded and sampled from R.
 
 **Baked GLBs.** When a character GLB has been baked (each glTF material carries an engine block in `extras.vkfw_material`), the mesh's `material` / `extra_materials` / `primitive_materials` fields are **optional** — the baked block is the base and the scene JSON only supplies overrides, merged per-key (`merge_patch`, JSON wins). An unbaked GLB behaves exactly as before (the JSON defines the whole material). See CLAUDE.md and `tools/bake_glb_material.py`.
 

@@ -1,0 +1,62 @@
+{
+  "material": {
+    "type": "pbr",
+    "albedo_texture": "textures/maria/T-Maria_BaseColor.PNG",
+    "normal_texture": "textures/maria/T-Maria-Normal.PNG",
+    "bent_normal_texture": "textures/maria/T-Maria-BentNormal.png",
+    "occlusion_texture": "textures/maria/T-Maria-ORM.png:r",
+    "roughness_texture": "textures/maria/T-Maria-ORM.png:g",
+    "metallic_texture": "textures/maria/T-Maria-ORM.png:b",
+    "curvature_texture": "textures/maria/T-Maria-CS.png:r",
+    "scattering_texture": "textures/maria/T-Maria-CS.png:g",
+    "clothes_mask_texture": "textures/maria/T-Maria_ClothesMask.PNG",
+    "eye_mask_texture": "textures/maria/T-Maria-EyeMask.PNG",
+    "detail_normal_texture": "textures/skin/normal_detail.png",
+    "detail_cavity_texture": "textures/skin/cavity_detail.png",
+    "detail_tiling": 48.0,
+    "detail_normal_strength": 0.5,
+    "cavity_spec_occlusion": 0.65,
+    "dual_lobe_mix": 0.2,
+    "dual_lobe_roughness_soft": 0.6,
+    "sheen_intensity": 0.3,
+    "albedo": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "albedo_weight": 1.0,
+    "metalness": 0.0,
+    "roughness": 1.0,
+    "roughness_weight": 1.0,
+    "occlusion_weight": 1.0
+  },
+  "extra_materials": [
+    {
+      "type": "pbr",
+      "albedo": [
+        1.0,
+        0.98,
+        0.92
+      ],
+      "roughness": 0.3,
+      "metalness": 0.0
+    },
+    {
+      "type": "pbr",
+      "albedo": [
+        0.8,
+        0.3,
+        0.35
+      ],
+      "roughness": 0.35,
+      "metalness": 0.0
+    }
+  ],
+  "primitive_materials": [
+    0,
+    1,
+    1,
+    2,
+    2
+  ]
+}

@@ -233,14 +233,16 @@ def main():
         entries.extend(file_entries)
 
     if not entries:
-        print("[precompile_shaders] no shaders compiled — aborting",
+        print("[precompile_shaders] no shaders compiled - aborting",
               file=sys.stderr)
         return 1
 
     emit_cpp(entries, args.output)
     total = sum(len(e[1]) for e in entries)
+    # ASCII only: this runs as a CMake custom command, and a non-UTF-8 console
+    # (Windows cp1252) turns a stray unicode char into a build-breaking exit 1.
     print(f"[precompile_shaders] {len(entries)} stages compiled, "
-          f"{total/1024:.1f} KiB SPIR-V → {args.output}")
+          f"{total/1024:.1f} KiB SPIR-V -> {args.output}")
     if skipped:
         print(f"[precompile_shaders] {len(skipped)} file(s) skipped: "
               f"{', '.join(skipped)}",

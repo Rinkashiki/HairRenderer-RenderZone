@@ -57,7 +57,7 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     bool    hasDetailCavityTexture;
     // slot10: cavity / dual-lobe scalars
     float   cavitySpecOcclusion;
-    float   _slot10_pad;          // was cavitySSSAttenuation; SSS is cavity-agnostic now
+    float   packedChannels;       // 2 bits per packed-atlas map: 0-1 rough, 2-3 metal, 4-5 AO, 6-7 curvature, 8-9 scattering
     float   dualLobeMix;
     float   dualLobeRoughnessSoft;
     // slot11: Jimenez-style Disney sheen (peach fuzz)
@@ -181,7 +181,7 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     bool    hasDetailCavityTexture;
     // slot10: cavity / dual-lobe scalars
     float   cavitySpecOcclusion;
-    float   _slot10_pad;          // was cavitySSSAttenuation; SSS is cavity-agnostic now
+    float   packedChannels;       // 2 bits per packed-atlas map: 0-1 rough, 2-3 metal, 4-5 AO, 6-7 curvature, 8-9 scattering
     float   dualLobeMix;
     float   dualLobeRoughnessSoft;
     // slot11: Jimenez-style Disney sheen (peach fuzz)
@@ -342,9 +342,12 @@ void setupBRDFProperties(){
             // TO DO ...
         }
     } else {
-        brdf.roughness = material.hasRoughnessTexture ? mix(material.roughness, texture(maskRoughTex, v_uv).r, material.roughnessWeight) : material.roughness;
-        brdf.metalness = material.hasMetallicTexture ? mix(material.metalness, texture(metalTex, v_uv).r, material.metalnessWeight) : material.metalness;
-        brdf.ao = material.hasAOTexture ? mix(material.occlusion, texture(occlusionTex, v_uv).r, material.occlusionWeight) : material.occlusion;
+        // Roughness / metalness / AO may be three channels of ONE packed image (ORM),
+        // so each picks its own channel instead of always reading .r.
+        int packed = int(material.packedChannels);
+        brdf.roughness = material.hasRoughnessTexture ? mix(material.roughness, texture(maskRoughTex, v_uv)[packed & 3], material.roughnessWeight) : material.roughness;
+        brdf.metalness = material.hasMetallicTexture ? mix(material.metalness, texture(metalTex, v_uv)[(packed >> 2) & 3], material.metalnessWeight) : material.metalness;
+        brdf.ao = material.hasAOTexture ? mix(material.occlusion, texture(occlusionTex, v_uv)[(packed >> 4) & 3], material.occlusionWeight) : material.occlusion;
     }
     brdf.F0 = vec3(0.04);
     brdf.F0 = mix(brdf.F0, brdf.albedo, brdf.metalness);
@@ -469,7 +472,7 @@ void main() {
                 float FV       = pow(1.0 - NoV, 3.0);
                 float NoL_s    = max(dot(smoothNormalWS, wi), 0.0);
                 float fuzzMask = material.hasCurvatureTexture
-                    ? mix(0.3, 1.0, texture(curvatureTex, v_uv).r)
+                    ? mix(0.3, 1.0, texture(curvatureTex, v_uv)[(int(material.packedChannels) >> 6) & 3])
                     : 1.0;
                 vec3  sheen = sheenTint * material.sheenIntensity
                             * FV * NoL_s * fuzzMask * skinMask
@@ -501,7 +504,7 @@ void main() {
             vec3 diffIrrPerLight = kD * NdotL_diff_rgb * radiance * shadowFactor;
             if (material.hasCurvatureTexture && skinMask > 0.0)
             {
-                float curvature   = texture(curvatureTex, v_uv).r;
+                float curvature   = texture(curvatureTex, v_uv)[(int(material.packedChannels) >> 6) & 3];
                 vec3  wrapped     = preIntegratedSkinDiffuse(NdotL_smooth_raw, curvature);
                 vec3  diffWrapped = kD * brdf.albedo / PI * radiance * wrapped * shadowFactor;
                 color += (diffWrapped - diffBase) * skinMask;
@@ -619,7 +622,7 @@ void main() {
     // The scattering texture drives this per-texel so thin/translucent regions
     // like ears and nose tips scatter more than thick ones like forehead;
     // skinMask zeros it out on clothes regions (when clothes mask is bound).
-    float scatterMask = hasScatteringTexture ? texture(scatteringTex, v_uv).r : 1.0;
+    float scatterMask = hasScatteringTexture ? texture(scatteringTex, v_uv)[(int(material.packedChannels) >> 8) & 3] : 1.0;
     outAlbedoMask  = vec4(brdf.albedo, scatterMask * skinMask);
 
     // outDiffuseIrr.a is the skin gate consumed by ssss.glsl: 1.0 = full SSS

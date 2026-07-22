@@ -218,6 +218,23 @@ Character `.glb` files now carry their own materials + textures; the scene JSON 
 
 **Verified:** baked `maria` A/B'd against the original (identical) before in-place migration; HairViewer builds clean. **Pending:** user spot-check of `alex`/`javi` in-place, and Git-LFS re-add of the four GLBs (`git add --renormalize resources/models/*/*.glb`) before commit.
 
+### Re-bake with pre-packed ORM / CS maps + bent normals (2026-07-22)
+
+New texture set uploaded for all four avatars: **ORM** (R=AO, G=roughness, B=metallic) and **CS** (R=curvature, G=scattering) replace the separate AO/Roughness/Curvature/Scattering maps, which were deleted; **BentNormal** is now supplied for all four (previously only Maria had one, unused). Channel layouts confirmed by inspecting the images before wiring anything (ORM.B and CS.B are all-zero).
+
+**Problem hit first:** the scenes had already been slimmed by the previous bake, so the baker had no material blocks left to read — the source of truth had effectively been consumed. Fixed structurally, see recipes below.
+
+**Implemented:**
+- **Packed atlases cost one texture, not one per channel.** The user asked why binding `metallic_texture` to `ORM:b` would cost anything when the GLB stores one ORM image. It did, because `resolve_texture` unpacked each channel into its own replicated grayscale texture (the shader hard-sampled `.r`). Now: `PhysicallyBasedMaterial` gained `set_{roughness,metallic,occlusion,curvature,scattering}_channel`, packed as five 2-bit fields into `dataSlot10.y` — the previously **unused** `_slot10_pad`, so the UBO layout is unchanged — and `physically_based.glsl` reads `texture(tex, uv)[channel]` at its 6 sample sites. `resolve_texture` gained an `outChannel` out-param: slots that pass it get the whole shared image back, slots that don't keep the old unpack path. Skin VRAM per character ≈ **1.34 GB → 537 MB** (5 8K textures → 2).
+- **Channel suffix on plain paths too** (`"textures/alex/T-Alex-ORM.png:g"`), so non-baked scenes can use packed maps directly. Loose paths are now cached per mesh (keyed by path + format), so a shared atlas is read once; the `$GLB` cache key gained the format too (it could previously alias two formats of one image).
+- **`tools/bake_recipes/<char>.json`** — the re-bakeable source of truth for each character's material (`material` / `extra_materials` / `primitive_materials`, pointing at the loose maps). Baker gained `--materials <recipe>`, `--in-glb <source>` (bake from the unbaked original), and `--force`; it refuses to bake on top of an already-baked GLB (would strand the old images as orphaned buffer data), passes pre-packed atlases through as-is while still auto-repacking separate O/R/M maps, and skips rewriting an already-slim scene.
+- **`bent_normal_texture` wired in** for all four (bent-normal IBL irradiance — the shader already supported it; no scene ever used it).
+- `tools/precompile_shaders.py`: replaced a `→` in the summary line with `->`. Pre-existing bug — on a cp1252 Windows console it raised `UnicodeEncodeError` *after* writing the output, failing the SLViewer build with MSB8066.
+
+**Re-baked** all four from the unbaked originals (`git cat-file blob 286078a~1:…`) — `maria` 335 MB, `alex` 358 MB, `nadia` 349 MB, `javi` 381 MB (6 materials incl. the hearing-aid slots). Scene JSONs untouched (already slim).
+
+**Verified:** HairViewer + SLViewer build clean; `physically_based.glsl` compiles under `glslc` (80 stages embedded, only the 3 documented dead-code skips). All four scenes run `--frames 10` with exactly the June baseline of validation messages (5 pre-existing descriptor-pool warnings + 1 pre-existing swapchain-semaphore error) — no missing images, no material errors. **Pending:** user visual check of all four (bent normal is a deliberate look change), and Git-LFS re-add before commit.
+
 ### Performance regression from *Fixed shadows on hair* — host-visible hair `posSSBO` (2026-06-24)
 
 FPS dropped from ~35-40 to ~30 after *Fixed shadows on hair* (`6c635e4`); verified by removing that whole commit on a `develop2` branch (→ 35-40 again). The commit's only **net-new per-frame GPU cost** was the position-SSBO change (the `2026-06-19` entry): it moved hair's `posSSBO` from device-local (`GPU_ONLY`, uploaded once) to a host-visible (`CPU_TO_GPU`) ring updated every frame. (Its shader change removed the voxel cone-trace, but that was later reverted, so per-fragment shading matches the `65820d4` baseline — the regression is the buffer, not shading.)

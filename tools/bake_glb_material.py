@@ -7,13 +7,40 @@ glTF material embeds the engine material block the scene currently defines:
 
   * Standard glTF slots (baseColor / metallic-roughness / occlusion / normal) are
     written so the GLB opens sensibly in any glTF viewer. Roughness + Metallic + AO
-    are repacked into a single ORM image (R=occlusion, G=roughness, B=metallic) as
-    glTF requires.
+    live in a single ORM image (R=occlusion, G=roughness, B=metallic) as glTF requires —
+    either supplied pre-packed by the artist, or repacked here from separate maps.
   * The full engine material block is written verbatim into
     `material.extras.vkfw_material` (a JSON string), with every `*_texture` path
-    replaced by a `$GLB[<image name>]` reference (or `$GLB[<orm>:<channel>]` for the
-    unpacked roughness/metallic/occlusion). The engine reads THIS block; the standard
-    slots are decoration for external tools.
+    replaced by a `$GLB[<image name>]` reference (or `$GLB[<image>:<channel>]` for a
+    channel of a packed atlas). The engine reads THIS block; the standard slots are
+    decoration for external tools.
+
+Packed source maps
+------------------
+A texture path may carry a channel suffix, which means "this map is one channel of a
+shared atlas". Embed the atlas once, reference it per slot:
+
+    "occlusion_texture":  "textures/alex/T-Alex-ORM.png:r",
+    "roughness_texture":  "textures/alex/T-Alex-ORM.png:g",
+    "metallic_texture":   "textures/alex/T-Alex-ORM.png:b",
+    "curvature_texture":  "textures/alex/T-Alex-CS.png:r",
+    "scattering_texture": "textures/alex/T-Alex-CS.png:g"
+
+The engine binds ONE decoded texture for all of them and samples the right channel per
+slot, so a packed atlas costs one image on disk and one texture in VRAM. Slots without a
+suffix behave as before (whole image, sampled from R). Separate occlusion/roughness/
+metallic maps with no suffix are still auto-repacked into an ORM here.
+
+Material source
+---------------
+By default the blocks come from the scene JSON's `glb` mesh entry. Once a scene has been
+slimmed (its materials now live in the GLB) there is nothing left to read, so pass a
+recipe instead — a small JSON holding just the material fields:
+
+    { "material": {...}, "extra_materials": [...], "primitive_materials": [...] }
+
+Recipes live in `tools/bake_recipes/<character>.json` and are the re-bakeable source of
+truth for each character's materials.
 
 Then it emits a slimmed scene JSON with the baked `material` / `extra_materials` /
 `primitive_materials` fields removed from the character mesh (they now live in the GLB).
@@ -23,8 +50,7 @@ a partially-baked GLB + JSON that fills the gaps still works.
 Usage:
     python tools/bake_glb_material.py resources/scenes/nadia.json
     python tools/bake_glb_material.py resources/scenes/nadia.json \
-        --out-glb resources/models/nadia/nadia.glb \
-        --out-scene resources/scenes/nadia.json
+        --materials tools/bake_recipes/nadia.json --in-glb nadia.orig.glb --inplace
     python tools/bake_glb_material.py resources/scenes/nadia.json --suffix .baked   # safe dev output
 
 Defaults (no --out-*): writes <glb>.baked.glb and <scene>.baked.json so originals
@@ -56,8 +82,9 @@ TEXTURE_KEYS = [
     "curvature_texture", "scattering_texture", "clothes_mask_texture",
     "eye_mask_texture", "detail_normal_texture", "detail_cavity_texture",
 ]
-# Slots repacked into one ORM image (channel index in RGBA).
+# Slots repacked into one ORM image (channel index in RGBA) when supplied unpacked.
 ORM_KEYS = {"occlusion_texture": 0, "roughness_texture": 1, "metallic_texture": 2}
+CHANNELS = "rgba"
 
 
 def log(msg):
@@ -67,6 +94,16 @@ def log(msg):
 def image_name(path):
     """Stable, unique-per-character image name from a texture path."""
     return Path(path).stem
+
+
+def split_ref(val):
+    """'textures/x/ORM.png:g' -> ('textures/x/ORM.png', 1). No suffix -> (path, None)."""
+    if not isinstance(val, str) or not val:
+        return None, None
+    head, sep, tail = val.rpartition(":")
+    if sep and len(tail) == 1 and tail in CHANNELS:
+        return head, CHANNELS.index(tail)
+    return val, None
 
 
 # ─── binary-blob surgery ─────────────────────────────────────────────────────
@@ -109,9 +146,12 @@ def load_gray(path):
 # ─── material baking ─────────────────────────────────────────────────────────
 
 def build_orm(block, resources):
-    """Repack occlusion/roughness/metallic grayscale maps into one RGBA ORM image.
-    Returns (PIL.Image, name) or (None, None) if the block has none of them."""
-    present = {k: block[k] for k in ORM_KEYS if isinstance(block.get(k), str) and block[k]}
+    """Repack separate occlusion/roughness/metallic grayscale maps into one RGBA ORM
+    image. Slots already pointing at a packed atlas (`path:channel`) are skipped — they
+    are embedded as-is. Returns (PIL.Image, name) or (None, None) if there is nothing
+    left to pack."""
+    present = {k: block[k] for k in ORM_KEYS
+               if isinstance(block.get(k), str) and block[k] and split_ref(block[k])[1] is None}
     if not present:
         return None, None
     # Base size from the first present channel.
@@ -137,30 +177,36 @@ def bake_material(gltf, blob, block, resources, img_cache):
     std = {"baseColor": None, "normal": None, "orm": None,
            "baseColorFactor": None, "metallicFactor": None, "roughnessFactor": None}
 
-    # ORM (occlusion + roughness + metallic) -> one image, channel refs.
+    # Legacy path: separate occlusion/roughness/metallic grayscale maps -> one ORM.
     orm_img, orm_name = build_orm(block, resources)
     if orm_img is not None:
         orm_tex = add_png(gltf, blob, png_bytes_of(orm_img), orm_name, img_cache)
         std["orm"] = orm_tex
         for key, ci in ORM_KEYS.items():
-            if isinstance(block.get(key), str) and block[key]:
-                extras[key] = f"$GLB[{orm_name}:{'rgba'[ci]}]"
+            if isinstance(block.get(key), str) and block[key] and split_ref(block[key])[1] is None:
+                extras[key] = f"$GLB[{orm_name}:{CHANNELS[ci]}]"
 
-    # Remaining textures -> embed original file bytes verbatim (identical pixels,
-    # native compression; the engine forces RGBA at decode time regardless).
+    # Every remaining texture -> embed the original file bytes verbatim (identical
+    # pixels, native compression; the engine forces RGBA at decode time regardless).
+    # A `path:channel` source is an atlas: embedded once (add_png dedupes by name),
+    # referenced per slot with its channel.
     for key in TEXTURE_KEYS:
-        if key in ORM_KEYS:
-            continue
         val = block.get(key)
         if not isinstance(val, str) or not val:
             continue
-        name = image_name(val)
-        tex = add_png(gltf, blob, (resources / val).read_bytes(), name, img_cache)
-        extras[key] = f"$GLB[{name}]"
+        path, channel = split_ref(val)
+        if channel is None and key in ORM_KEYS:
+            continue  # already folded into the built ORM above
+        name = image_name(path)
+        tex = add_png(gltf, blob, (resources / path).read_bytes(), name, img_cache)
+        extras[key] = f"$GLB[{name}]" if channel is None else f"$GLB[{name}:{CHANNELS[channel]}]"
         if key == "albedo_texture":
             std["baseColor"] = tex
         elif key == "normal_texture":
             std["normal"] = tex
+        elif key in ORM_KEYS:
+            # Pre-packed ORM supplied by the artist — use it for the glTF slots directly.
+            std["orm"] = tex
 
     # Standard glTF scalar factors (best-effort, decoration only).
     if isinstance(block.get("albedo"), list) and len(block["albedo"]) >= 3:
@@ -228,10 +274,15 @@ def main():
     ap = argparse.ArgumentParser(description="Bake scene-JSON materials into a self-contained GLB.")
     ap.add_argument("scene", help="scene JSON path")
     ap.add_argument("--resources", help="resources root (default: <scene>/../..)")
+    ap.add_argument("--materials", help="recipe JSON holding material/extra_materials/"
+                                        "primitive_materials (use once the scene is slimmed)")
+    ap.add_argument("--in-glb", help="source GLB to bake (default: the scene's glb mesh file). "
+                                     "Point this at the unbaked original when re-baking.")
     ap.add_argument("--out-glb", help="output GLB path")
     ap.add_argument("--out-scene", help="output slimmed scene JSON path")
     ap.add_argument("--suffix", default=".baked", help="suffix for default outputs (default: .baked)")
     ap.add_argument("--inplace", action="store_true", help="overwrite the original GLB and scene JSON")
+    ap.add_argument("--force", action="store_true", help="bake even if the input GLB is already baked")
     args = ap.parse_args()
 
     scene_path = Path(args.scene).resolve()
@@ -245,14 +296,33 @@ def main():
         sys.exit("no glb mesh in scene")
     mesh_entry = meshes[glb_idx]
     glb_path = resources / mesh_entry["file"]
-    log(f"scene={scene_path.name}  glb={glb_path}  resources={resources}")
+    in_glb = Path(args.in_glb).resolve() if args.in_glb else glb_path
 
-    slots = resolve_blocks(mesh_entry)
+    # Material source: a recipe if given (the scene may already be slimmed), else the
+    # scene's own mesh entry.
+    if args.materials:
+        src = json.loads(Path(args.materials).read_text())
+        log(f"materials from recipe {args.materials}")
+    else:
+        src = mesh_entry
+    log(f"scene={scene_path.name}  in={in_glb.name}  resources={resources}")
+
+    slots = resolve_blocks(src)
     if not slots:
-        sys.exit("no bakeable inline materials found in the glb mesh entry")
-    prim_mats = mesh_entry.get("primitive_materials")
+        sys.exit("no bakeable inline materials found (pass --materials <recipe.json> "
+                 "if the scene has already been slimmed)")
+    prim_mats = src.get("primitive_materials")
 
-    gltf = GLTF2().load(str(glb_path))
+    gltf = GLTF2().load(str(in_glb))
+
+    # Baking appends images; re-baking an already-baked GLB would keep the old ones as
+    # orphaned buffer data. Re-bake from the unbaked original instead.
+    already = [i for i, m in enumerate(gltf.materials)
+               if isinstance(m.extras, dict) and "vkfw_material" in m.extras]
+    if already and not args.force:
+        sys.exit(f"{in_glb.name} is already baked (materials {already}). Pass --in-glb "
+                 f"<unbaked original>, or --force to bake on top anyway.")
+
     blob = bytearray(gltf.binary_blob())
     if not gltf.samplers:
         gltf.samplers.append(Sampler())
@@ -306,8 +376,12 @@ def main():
     # Slim the scene: drop baked material fields from the glb mesh entry.
     slim = copy.deepcopy(scene)
     sm = slim["meshes"][glb_idx]
-    for k in ("material", "extra_materials", "primitive_materials"):
-        sm.pop(k, None)
+    removed = [k for k in ("material", "extra_materials", "primitive_materials") if k in sm]
+    for k in removed:
+        sm.pop(k)
+    if not removed and args.inplace:
+        log(f"scene {scene_path.name} already slim; left untouched")
+        return
     # For non-inplace output, repoint the mesh at the baked GLB so the slimmed scene
     # is self-consistent (originals stay untouched for A/B comparison).
     if not args.inplace:

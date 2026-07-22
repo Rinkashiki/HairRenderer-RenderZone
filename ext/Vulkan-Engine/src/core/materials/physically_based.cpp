@@ -37,8 +37,16 @@ Graphics::MaterialUniforms PhysicallyBasedMaterial::get_uniforms() const {
                                m_detailNormalStrength,
                                m_hasDetailNormalTexture ? 1.0f : 0.0f,
                                m_hasDetailCavityTexture ? 1.0f : 0.0f};
+    // slot10.y: 2-bit channel index per packed-atlas map, so several slots can bind
+    // the SAME image (ORM = AO/rough/metal, CS = curvature/scattering) instead of
+    // one unpacked texture per channel. Bits 0-1 rough, 2-3 metal, 4-5 AO,
+    // 6-7 curvature, 8-9 scattering. All-zero (=R) is the plain single-map default.
+    int packedChannels = (m_roughnessChannel & 3) | ((m_metallicChannel & 3) << 2) |
+                         ((m_occlusionChannel & 3) << 4) | ((m_curvatureChannel & 3) << 6) |
+                         ((m_scatteringChannel & 3) << 8);
+
     uniforms.dataSlot10 = Vec4{m_cavitySpecOcclusion,
-                               0.0f, // was cavitySSSAttenuation (removed: SSS now cavity-agnostic)
+                               float(packedChannels),
                                m_dualLobeMix,
                                m_dualLobeRoughnessSoft};
 

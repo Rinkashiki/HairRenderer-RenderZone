@@ -59,6 +59,16 @@ class PhysicallyBasedMaterial : public IMaterial
     bool m_hasEyeMaskTexture      = false;
     int  m_maskType               = -1;
 
+    // Channel to sample for maps that may come from a packed atlas (ORM / CS).
+    // 0=R 1=G 2=B 3=A. Default R keeps single-channel/grayscale maps working.
+    // These let several slots bind the SAME texture (one decoded 8K image instead
+    // of one per channel) — the shader picks the channel per slot.
+    int m_roughnessChannel  = 0;
+    int m_metallicChannel   = 0;
+    int m_occlusionChannel  = 0;
+    int m_curvatureChannel  = 0;
+    int m_scatteringChannel = 0;
+
     // Layer B microdetail (pore-scale realism)
     float m_detailTiling           = 8.0f;
     float m_detailNormalStrength   = 0.5f;
@@ -350,6 +360,29 @@ class PhysicallyBasedMaterial : public IMaterial
         m_textureBindingState[SCATTERING] = false;
         m_textures[SCATTERING]            = t;
         m_isDirty                         = true;
+    }
+
+    // Packed-atlas channel selection (0=R 1=G 2=B 3=A). Set alongside the texture
+    // when the map is one channel of a shared image (e.g. ORM: AO=R, rough=G, metal=B).
+    inline void set_roughness_channel(int c) {
+        m_roughnessChannel = c;
+        m_isDirty          = true;
+    }
+    inline void set_metallic_channel(int c) {
+        m_metallicChannel = c;
+        m_isDirty         = true;
+    }
+    inline void set_occlusion_channel(int c) {
+        m_occlusionChannel = c;
+        m_isDirty          = true;
+    }
+    inline void set_curvature_channel(int c) {
+        m_curvatureChannel = c;
+        m_isDirty          = true;
+    }
+    inline void set_scattering_channel(int c) {
+        m_scatteringChannel = c;
+        m_isDirty           = true;
     }
 
     inline ITexture* get_clothes_mask_texture() {

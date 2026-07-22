@@ -114,8 +114,12 @@ Loaded data flows: `Vertex[]` + `uint32_t[]` → `Core::Geometry::fill()` → `C
 Character `.glb` files can carry their **own materials and textures** so the scene JSON only needs overrides (or nothing). The character GLBs (`nadia`, `alex`, `maria`, `javi`) are **baked** this way; their scene JSONs no longer declare `material` / `extra_materials` / `primitive_materials` for the character mesh.
 
 **How a material is stored in the GLB (hybrid):**
-- **Standard glTF slots** — baseColor, metallic-roughness, occlusion, normal, and factors — are written so the GLB opens sensibly in any glTF viewer. Roughness + Metallic + AO are repacked into a single **ORM** image (R=occlusion, G=roughness, B=metallic), as glTF requires.
-- **The full engine material block** is written verbatim into each glTF material's `extras.vkfw_material` (a JSON string — the same schema `build_pbr` consumes). Texture references are `$GLB[<image name>]`, or `$GLB[<image>:<r|g|b|a>]` for the ORM channels. **The engine reads this block**; the standard slots are decoration for external tools.
+- **Standard glTF slots** — baseColor, metallic-roughness, occlusion, normal, and factors — are written so the GLB opens sensibly in any glTF viewer. Roughness + Metallic + AO live in a single **ORM** image (R=occlusion, G=roughness, B=metallic), as glTF requires.
+- **The full engine material block** is written verbatim into each glTF material's `extras.vkfw_material` (a JSON string — the same schema `build_pbr` consumes). Texture references are `$GLB[<image name>]`, or `$GLB[<image>:<r|g|b|a>]` for one channel of a packed atlas. **The engine reads this block**; the standard slots are decoration for external tools.
+
+**Packed atlases (ORM / CS) cost one texture, not one per channel.** The characters ship two packed maps: **ORM** (R=AO, G=roughness, B=metallic) and **CS** (R=curvature, G=scattering). A `$GLB[<image>:<channel>]` reference in a slot the shader can swizzle — roughness, metallic, occlusion, curvature, scattering — resolves to the **whole** decoded image, shared by every slot that names it; the channel index travels to the GPU instead. `PhysicallyBasedMaterial` packs the five 2-bit indices into `dataSlot10.y` (`packedChannels` in `physically_based.glsl` — the old unused `_slot10_pad`, so the UBO layout is unchanged), and each sample site reads `texture(tex, uv)[channel]` rather than `.r`. Result: ORM + CS = 2 decoded 8K textures instead of 5 (~537 MB vs ~1.34 GB of VRAM per character). Slots that *can't* swizzle fall back to the old behaviour — unpack the channel into its own replicated grayscale texture. Un-suffixed references and loose single-channel maps are unaffected (channel defaults to R).
+
+Source paths accept the same suffix, so a non-baked scene JSON can point straight at a packed map: `"roughness_texture": "textures/alex/T-Alex-ORM.png:g"`. `resolve_texture` caches loose paths per mesh, so the atlas is read once there too.
 
 **Loader layering (per material slot, low→high priority)** — see `scene_loader.cpp::assemble_baked_materials`:
 1. glTF standard fields
@@ -126,18 +130,27 @@ So the final material equals the JSON wherever the JSON sets a field, and the GL
 
 **Geometry→slot mapping.** With `primitive_materials` present the loader uses it (legacy behaviour preserved); otherwise each geometry uses **its own glTF material index** as the slot, so a fully-slimmed scene needs no slot mapping. The baker bakes each glTF material with the block of whatever JSON slot it resolved to, so multi-material characters (e.g. Javi's hearing-aid parts) reconstruct correctly without `primitive_materials`.
 
+**Bake recipes — `tools/bake_recipes/<character>.json`.** Once a scene is slimmed its materials live only in the GLB, so there is nothing left for the baker to read. The recipes are the re-bakeable **source of truth** for each character's material: a small JSON holding just `material` / `extra_materials` / `primitive_materials`, with texture paths pointing at the loose maps under `resources/textures/<char>/`. Edit a recipe, re-run the baker, and the GLB is regenerated — this is how you iterate on a character's materials now.
+
 **Baker — `tools/bake_glb_material.py`** (needs `pygltflib` + `Pillow`):
 ```bash
-# Bake a scene's character GLB in place (slims the scene JSON too):
+# Re-bake a character from its recipe (the normal path today).
+# --in-glb must be the UNBAKED original: baking appends images, so baking on top of a
+# baked GLB would strand the old ones as orphaned buffer data (the baker refuses unless --force).
+git cat-file blob 286078a~1:resources/models/nadia/nadia.glb > /tmp/nadia.orig.glb
+python tools/bake_glb_material.py resources/scenes/nadia.json \
+    --materials tools/bake_recipes/nadia.json --in-glb /tmp/nadia.orig.glb --inplace
+
+# First-time bake of a scene that still declares its materials (also slims the scene JSON):
 python tools/bake_glb_material.py resources/scenes/nadia.json --inplace
 # Safe dev output (writes <glb>.baked.glb + <scene>.baked.json, originals untouched):
 python tools/bake_glb_material.py resources/scenes/nadia.json
 ```
-It reads the scene's `material` / `extra_materials` / `primitive_materials`, embeds the referenced PNGs (original bytes, verbatim — identical pixels), builds the ORM, writes the standard slots + `extras.vkfw_material`, and emits the slimmed scene. Re-runnable.
+It reads the material blocks (recipe if `--materials`, else the scene's `material` / `extra_materials` / `primitive_materials`), embeds the referenced PNGs (original bytes, verbatim — identical pixels), passes pre-packed atlases through as-is while still auto-repacking separate O/R/M maps into an ORM, writes the standard slots + `extras.vkfw_material`, and emits the slimmed scene. Re-runnable. Texture paths in a recipe are used **only at bake time**, but keep their on-disk case exact (several maps are `.PNG`) so re-baking works on Linux too.
 
-**Size note.** These characters use 8K skin maps, so a baked GLB is large (~250–300 MB vs ~21 MB). This is inherent to the source textures (full-res verbatim embedding was chosen for pixel-identical results). `*.glb` under `resources/` is **Git-LFS tracked** (`.gitattributes`) — commit the baked GLBs through LFS, not as plain blobs. Because the maps are baked into the GLB, the **SLViewer distributable does not ship the loose `resources/textures/<char>/` folders** (they'd be ~1.2 GB of duplicated bytes) — see the `install(DIRECTORY … resources/textures … PATTERN "<char>" EXCLUDE)` rule in `CMakeLists.txt`.
+**Size note.** These characters use 8K skin maps, so a baked GLB is large (~335–380 MB vs ~21 MB). This is inherent to the source textures (full-res verbatim embedding was chosen for pixel-identical results). `*.glb` under `resources/` is **Git-LFS tracked** (`.gitattributes`) — commit the baked GLBs through LFS, not as plain blobs. Because the maps are baked into the GLB, the **SLViewer distributable does not ship the loose `resources/textures/<char>/` folders** (they'd be ~1.2 GB of duplicated bytes) — see the `install(DIRECTORY … resources/textures … PATTERN "<char>" EXCLUDE)` rule in `CMakeLists.txt`.
 
-**Key files:** `tools/bake_glb_material.py` (baker), `ext/Vulkan-Engine/src/tools/loaders.cpp` (`load_GLB` + `GLBMaterialAux` + `load_PNG_from_memory`; `SetImagesAsIs` keeps the 8K maps raw and they're decoded on demand), `ext/Vulkan-Engine/include/engine/tools/loaders.h` (`GLBImage` / `GLBMaterialAux`), `src/scene_loader.cpp` (`GLBTexCtx`, `resolve_texture` `$GLB[...]` resolution, `assemble_baked_materials`).
+**Key files:** `tools/bake_glb_material.py` (baker) + `tools/bake_recipes/*.json` (material source of truth), `ext/Vulkan-Engine/src/tools/loaders.cpp` (`load_GLB` + `GLBMaterialAux` + `load_PNG_from_memory`; `SetImagesAsIs` keeps the 8K maps raw and they're decoded on demand), `ext/Vulkan-Engine/include/engine/tools/loaders.h` (`GLBImage` / `GLBMaterialAux`), `src/scene_loader.cpp` (`GLBTexCtx`, `resolve_texture` `$GLB[...]` + channel resolution, `assemble_baked_materials`), and for packed atlases `ext/Vulkan-Engine/{include/engine/core/materials/physically_based.h,src/core/materials/physically_based.cpp}` (`set_*_channel` → `dataSlot10.y`) + `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` (`packedChannels`).
 
 ### Hair-to-Scalp Surface Binding
 
