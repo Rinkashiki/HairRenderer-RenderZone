@@ -80,6 +80,105 @@ Geometry* Geometry::create_cube() {
 
     return g;
 }
+
+
+static void add_neighbor(std::vector<std::vector<uint32_t>>& neighbors, uint32_t a, uint32_t b) {
+    auto& list = neighbors[a];
+
+    if (std::find(list.begin(), list.end(), b) == list.end())
+        list.push_back(b);
+}
+
+std::vector<DirectionalTension> Geometry::compute_mesh_tension(const std::vector<Graphics::Vertex>& deformed) {
+ 
+    const size_t numVerts = m_properties.vertexData.size();
+    std::vector<DirectionalTension> tension(numVerts, {Vec2(1.0f, 0.0f), 0.0f});
+
+    // Build adjacency list
+    std::vector<std::vector<uint32_t>> neighbours(numVerts);
+
+    for (size_t i = 0; i < m_properties.vertexIndex.size(); i += 3) {
+        uint32_t a = m_properties.vertexIndex[i + 0];
+        uint32_t b = m_properties.vertexIndex[i + 1];
+        uint32_t c = m_properties.vertexIndex[i + 2];
+
+        add_neighbor(neighbours, a, b);
+        add_neighbor(neighbours, a, c);
+
+        add_neighbor(neighbours, b, a);
+        add_neighbor(neighbours, b, c);
+
+        add_neighbor(neighbours, c, a);
+        add_neighbor(neighbours, c, b);
+    }
+    
+    // Compute directional tension for each vertex
+    for (size_t v = 0; v < numVerts; ++v) {
+        if (neighbours[v].empty())
+            continue;
+        
+        const Graphics::Vertex& vert = m_properties.vertexData[v];
+
+        // --- Tension Strength ---
+        float ratioSum = 0.0f;  
+        for ( uint32_t n : neighbours[v]) {
+            float originalLength = glm::length(vert.pos - m_properties.vertexData[n].pos);
+            float deformedLength = glm::length(deformed[v].pos - deformed[n].pos);
+
+            if (originalLength > 1e-6f) {
+                ratioSum += deformedLength / originalLength;
+            }
+        }
+
+        float averageRatio = ratioSum / neighbours[v].size();
+        float rawTension = 1.0f - averageRatio; 
+        
+        tension[v].tension = m_tensionStrength * rawTension + m_tensionBias;
+
+        // --- Tension Direction ( Right Cauchy-Green deformation tensor) ---
+
+        if (neighbours[v].size() < 2)
+            continue;
+
+        Vec3 bitangent = glm::cross(vert.normal, vert.tangent);
+
+        Mat2 A(0.0f); 
+        Mat2 B(0.0f); 
+
+        for (uint32_t n : neighbours[v])
+        {
+            Vec3 edge0_3d = m_properties.vertexData[n].pos - vert.pos;
+            Vec3 edge1_3d = deformed[n].pos - deformed[v].pos;
+
+            // Project 3D edges onto the local tangent/bitangent plane (3D -> 2D).
+            Vec2 e0(glm::dot(edge0_3d, vert.tangent), glm::dot(edge0_3d, bitangent));
+            Vec2 e1(glm::dot(edge1_3d, vert.tangent), glm::dot(edge1_3d, bitangent));
+
+            A += glm::outerProduct(e1, e0);
+            B += glm::outerProduct(e0, e0);
+        }
+
+        if (std::abs(glm::determinant(B)) < 1e-9f)
+           continue; 
+
+        Mat2 F = A * glm::inverse(B);   // Deformation gradient
+        Mat2 C = glm::transpose(F) * F; // Right Cauchy-Green deformation tensor ( cancel out rotation)
+
+        float Cxx = C[0][0];
+        float Cyy = C[1][1];
+        float Cxy = C[0][1];
+          
+        // Compute the principal angle of the strain tensor (direction of maximum stretch)
+        float theta = 0.5f * std::atan2(2.0f * Cxy, Cxx - Cyy);
+        Vec2 dir(std::cos(theta), std::sin(theta)); 
+
+        tension[v].direction = dir;
+        
+
+    }
+    return tension;
+}
+
 void Geometry::apply_deformation(const std::vector<float>& morphWeights, const std::vector<Mat4>& jointMatrices) {
     if (!m_VAO.loadedOnGPU) return;
 
@@ -99,6 +198,10 @@ void Geometry::apply_deformation(const std::vector<float>& morphWeights, const s
                 deformed[v].pos += target.deltaPos[v] * w;
         }
     }
+
+    // --- Mesh tension from morph deformations ---
+    std::vector<DirectionalTension> tension = compute_mesh_tension(deformed);
+
 
     // --- Skeletal skinning ---
     if (m_properties.skinData.has_value() && !jointMatrices.empty()) {

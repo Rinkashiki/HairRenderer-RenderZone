@@ -45,6 +45,7 @@ struct Vertex {
     Vec2 texCoord;
     Vec3 color;
 
+
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
         bindingDescription.binding   = 0;

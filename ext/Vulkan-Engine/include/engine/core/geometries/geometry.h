@@ -42,6 +42,13 @@ struct MorphTargetData {
     std::vector<std::string> targetNames;
 };
 
+// Per-vertex directional tension data.Stores the direction and strength of tension for each vertex.
+struct DirectionalTension {
+    Vec2 direction;
+    float tension;
+    
+};
+
 struct GeometricData {
     std::vector<uint32_t>         vertexIndex;
     std::vector<Graphics::Vertex> vertexData;
@@ -76,8 +83,14 @@ class Geometry
     GeometricData m_properties = {};
     size_t        m_materialID = 0;
 
+    float m_tensionStrength = 1.0f;
+    float m_tensionBias     = 0.0f;
+
+    std::vector<DirectionalTension> compute_mesh_tension(const std::vector<Graphics::Vertex>& deformed);
+
     friend Graphics::VertexArrays* const get_VAO(Geometry* g);
     friend Graphics::BLAS* const         get_BLAS(Geometry* g);
+ 
 
   public:
     Geometry() {

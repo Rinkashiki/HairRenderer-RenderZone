@@ -1,4 +1,5 @@
 \build
 .vscode
+.vs
 imgui.ini
 \temp_box
