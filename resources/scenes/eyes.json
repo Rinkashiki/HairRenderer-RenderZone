@@ -2,7 +2,7 @@
   "name": "eyes",
 
   "camera": {
-    "position": [0.0, 2.5, -10.0],
+    "position": [0.0, 0.0, 0.0],
     "near":     0.1,
     "far":      100.0,
     "fov":      40.0
@@ -44,7 +44,7 @@
       "type":           "glb",
       "file":           "models/eyes/SMPLX_Eyes.glb",
       "glb_mesh_index": -1,
-      "position":       [0.0, -12.6, 0.2],
+      "position":       [0.0, 0.0, 0.0],
       "scale":          10.0,
       "rotation":       [0.0, 180.0, 0.0],
       "material": {
