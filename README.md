@@ -24,6 +24,37 @@
    cmake ..
    ```
 
+## CONTROLS (HairViewer)
+
+### Camera & app
+| Input | Action |
+|-------|--------|
+| `W` / `A` / `S` / `D` | Move camera forward / left / back / right |
+| `E` / `Q` | Move camera up / down |
+| `R` | Reset camera to its initial pose |
+| Left-mouse drag | Orbit / look (camera is in `ORBITAL` mode) |
+| `F11` | Toggle fullscreen |
+| `L` | Toggle light animation |
+| `P` | Freeze / unfreeze the animation pose |
+| `Esc` | Quit |
+
+### Transform gizmo
+Pick an object in the **EXPLORER** panel to target it; the gizmo is driven from
+the **OBJECT PROPERTIES** panel (TRANSFORM GIZMO section) and drawn over the 3D
+view. Drag an axis/plane/ring to move, rotate or scale the selection. Camera
+look is suppressed while the pointer is over or dragging the gizmo, so the two
+never fight.
+
+| Input | Action |
+|-------|--------|
+| `1` / `2` / `3` | Switch to Move / Rotate / Scale |
+| `X` | Toggle World ↔ Local space |
+| Panel: **Pivot at geometry center** | Draw & pivot the gizmo at the mesh's geometry-bounds center instead of its object origin (non-destructive; meshes only) |
+| Panel: **Snap** + step | Constrain drags to a grid / angle / scale step |
+
+> Gizmo hotkeys are `1/2/3` and `X` (not the usual `W/E/R`) on purpose — the
+> camera already owns `W`, `E` and `R`.
+
 ## PROJECT STRUCTURE
 
 Applicaiton links against an older version of Vulkan-Engine (pretty rusty version but enough for demos).
@@ -44,7 +75,7 @@ Application loads an avatar and a hair mesh and renders it.
     * **`PhysicallyBasedMaterial`**: Standard PBR materials used for the character's head and eyes (supporting albedo, roughness, and metalness).
     * **`HairEpicMaterial`**: A specialized material with advanced parameters (such as strand thickness) designed specifically for realistic hair rendering.
 * **Resource Loading & Neural Avatars**: Utilizes `Tools::Loaders` for standard assets (PLY files, textures). For heavy neural hair models, it implements a multi-threaded approach (`std::thread` via `hair_loaders::load_neural_hair`) to load assets in the background without freezing the application.
-* **User Interface (`m_interface`)**: Manages the overlay GUI. It provides a scene hierarchy viewer (`sceneWidget`) and allows for real-time editing of object properties (`objectWidget`).
+* **User Interface (`m_interface`)**: Manages the overlay GUI. It provides a scene hierarchy viewer (`sceneWidget`), real-time editing of object properties (`objectWidget`), and an **ImGuizmo-based transform gizmo** (`gizmoWidget`) for moving/rotating/scaling the selected object directly in the viewport (see **CONTROLS** above).
 
 ### ⚙️ Vulkan Engine Details
 

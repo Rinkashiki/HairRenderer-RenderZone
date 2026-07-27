@@ -6,6 +6,19 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
+### Viewport object selection + selection outline (future work, deferred 2026-07-27)
+
+Follow-ups to the transform gizmo (see Done 2026-07-27). Both reach into the
+renderer, so they were deliberately deferred to not stall the gizmo work:
+- **Click-to-select in the viewport.** Today selection is Explorer-only. Needs
+  either GPU object-ID picking (an extra pass writing a per-object ID target,
+  read back on click) or CPU ray-vs-mesh tests against the scene meshes.
+- **Selection outline.** A stencil-based or jump-flood outline pass in the
+  forward renderer to highlight the selected object.
+
+Neither is large individually, but both touch passes / the render loop, unlike
+the gizmo which was ~UI-only.
+
 ### Eyelash shading study — round 1 awaiting user judgement (2026-07-22)
 
 **Goal (user):** decide what the eyelash shader *should be*, methodically, instead of tuning the existing one further. Approach agreed: an isolated test scene with several competing models rendered side by side, then roll the winner out to all four characters (only maria has an `eyelash` material today).
@@ -406,6 +419,49 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### Transform gizmos (ImGuizmo) for the selected object (2026-07-27)
+
+**Goal (user):** interactive move/rotate/scale gizmos for scene assets, using
+ImGuizmo for now (swappable for a custom system later, so the project isn't
+stalled on gizmo tech).
+
+**Implemented:**
+- Vendored ImGuizmo (MIT, v1.92.5) at `ext/Vulkan-Engine/thirdparty/imguizmo/`,
+  compiled **into the imgui target** so it shares `imgui.h`/`imgui_internal.h` +
+  the single `GImGui` context and links wherever imgui does.
+- One-line engine seam: `ImGuizmo::BeginFrame()` after `ImGui::NewFrame()` in
+  `GUIOverlay::render()` (`ext/Vulkan-Engine/src/tools/gui.cpp`). That is the
+  *only* engine coupling — everything else is app-layer, so a custom gizmo later
+  is a clean swap.
+- `GizmoWidget` (`src/gui.{h,cpp}`) in the OBJECT PROPERTIES panel: reads the
+  Scene Explorer selection + active camera, draws the manipulator to the
+  background draw list (over 3D, under panels), writes the dragged transform back
+  onto the `Object3D`. Move/Rotate/Scale + World/Local + Snap, hotkeys `1/2/3`
+  and `X` (camera owns `W/E/R`). Camera mouse-look gated on
+  `ImGuizmo::IsUsing() || IsOver()` (`application.h::mouse_callback`).
+- **Pivot at geometry center** toggle (user request, "like Blender's Origin to
+  Geometry" but non-destructive): re-seats the gizmo at the union of every
+  sub-geometry's bounds center (`mesh_geometry_center_local`) — assets here often
+  sit ~33 units off their origin. Manipulation switched to a world-space **delta**
+  (`gizmoAfter * inverse(gizmoBefore)` applied to the object world matrix) so
+  rotate/scale pivot about the gizmo; with the pivot at the origin it collapses
+  byte-for-byte to a plain absolute manipulation. Meshes only; lights/camera fall
+  back to origin.
+
+**Gotchas handled:** the camera projection's Vulkan Y-flip (`m_proj[1][1] *= -1`)
+is undone on the copy handed to ImGuizmo (else mirrored draw + inverted vertical
+drag); world↔local conversion goes through `get_parent()` for parented meshes
+(bound hair); rotation writeback via `DecomposeMatrixToComponents` (Euler
+degrees, XYZ order matches the engine's `get_model_matrix`).
+
+**Verified:** HairViewer builds clean (Debug); `--frames 10` harness shows only
+the pre-existing swapchain-semaphore / descriptor-pool messages (ImGuizmo touches
+no descriptors/semaphores); user confirmed both the base gizmo and the
+geometry-center pivot work interactively. Docs: CLAUDE.md "Transform Gizmos
+(ImGuizmo)" section + README CONTROLS. SLViewer links the code but is headless
+(never draws a gizmo). Future work (viewport click-select + outline) split into
+its own Open entry.
 
 ### Dedicated eyelash shader + material (2026-07-20)
 
