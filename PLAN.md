@@ -420,6 +420,38 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Bound-hair hard lighting seam under root-motion animation (2026-07-27)
+
+**Symptom (user):** captured from SLViewer with `nadia.json` + `dance_anim.json`
+(video `output.mp4`), the groom showed a **hard planar line splitting it into two
+differently-lit halves** — clearest on a back-of-head view (dark upper half / lighter
+lower half).
+
+**Root cause.** `HairBinder::update()` rebuilds + uploads the deformed strand
+vertices every frame but was **not** refreshing the geometry's CPU-side bounds.
+The hair voxel volume's world AABB is built in `resource_manager.cpp` from
+`mesh->get_bounding_volume()->min/maxCoords`, which derive (`BoundingSphere::setup`)
+from those geometry bounds. So the voxel cube stayed **frozen at the bind (rest)
+pose** while the animation carried the hair through world space **via vertex
+deformation** — the strand model matrix stays ~identity (motion is skinning baked
+into vertices, not a matrix transform), so resource_manager's `model * localAABB`
+path can't compensate. As the head translated, the fixed cube's boundary plane
+swept across the displaced hair, and the volume lookup (`getOpticalDensity` /
+SH decode: `uvw = (worldPos - minCoord)/(maxCoord - minCoord)` then `clamp`) went
+discontinuous at the face — a seam.
+
+**Fix.** `src/hair_binding.cpp` `HairBinder::update()` now calls
+`hairGeom->update_bounds(m_workVerts)` + `m_hair->setup_volume()` after the
+per-frame reconstruction, so the bounds (and thus the voxel world cube + the
+frustum sphere) track the animated hair. Only the animated-head path runs it —
+the static-head early-return already sets bounds once at bind/load. One place,
+so both HairViewer and SLViewer (which share `binder->update()`) are fixed.
+
+**Verification.** Rebuilt SLViewer (Release) and rendered the full `nadia` +
+`dance_anim` clip headless (2323 frames, 960×720, MSAA 8). Inspected front,
+profile, back-of-head, and far-translated mid-dance frames — the seam is gone at
+every angle; scattering is smooth across the whole groom.
+
 ### Transform gizmos (ImGuizmo) for the selected object (2026-07-27)
 
 **Goal (user):** interactive move/rotate/scale gizmos for scene assets, using

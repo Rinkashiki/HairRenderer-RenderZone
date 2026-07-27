@@ -241,6 +241,18 @@ void HairBinder::update() {
     // (the VBO may not be uploaded yet on the first frames after load).
     if (hairGeom->upload_vertices(m_workVerts))
         m_reconstructedOnce = true;
+
+    // Keep the CPU-side bounds in sync with this frame's deformed strands. The
+    // hair voxel volume's world AABB is built (resource_manager.cpp) from the
+    // mesh bounding volume, which derives from these geometry bounds. Without
+    // this refresh the bounds stay frozen at the bind (rest) pose while the
+    // animation carries the hair through world space via vertex deformation
+    // (the model matrix stays ~identity) — so the fixed voxel cube's boundary
+    // plane sweeps across the moved hair and the volume lookup goes
+    // discontinuous at the face: a hard lighting seam splitting the groom.
+    // (Only runs on the animated-head path; the static head returned early.)
+    hairGeom->update_bounds(m_workVerts);
+    m_hair->setup_volume();
 }
 
 // ─── sidecar IO ──────────────────────────────────────────────────────────────
