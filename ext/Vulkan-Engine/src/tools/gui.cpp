@@ -1,4 +1,5 @@
 #include <engine/tools/gui.h>
+#include <ImGuizmo.h>
 
 VULKAN_ENGINE_NAMESPACE_BEGIN
 namespace Tools
@@ -26,6 +27,9 @@ void GUIOverlay::render()
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+        // Must be called every frame right after ImGui::NewFrame() so any
+        // GizmoWidget rendered during the panel pass can draw its manipulator.
+        ImGuizmo::BeginFrame();
         for (auto p : m_panels)
         {
             p->render(m_extent);

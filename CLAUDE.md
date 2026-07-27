@@ -89,6 +89,62 @@ Resources flow between passes through the dependency table + `link_previous_imag
 - **RHI** (`Graphics/` folder): Low-level Vulkan abstraction (device, swapchain, command buffers, images, descriptors). Should generally remain untouched.
 - Uses classic `VkRenderPass` objects, **not** `VK_KHR_dynamic_rendering`.
 
+### Transform Gizmos (ImGuizmo)
+
+HairViewer has interactive translate/rotate/scale gizmos for the object currently
+selected in the Scene Explorer. Built on **ImGuizmo** (MIT), vendored at
+`ext/Vulkan-Engine/thirdparty/imguizmo/` and compiled **into the imgui target**
+(so it shares `imgui.h`/`imgui_internal.h` and the single `GImGui` context and
+links wherever imgui does). SLViewer is headless — it links the code but never
+draws a gizmo.
+
+**Integration seam.** The engine's `GUIOverlay::render()` does
+`NewFrame → panels → Render` in one call, and ImGuizmo must draw *between*
+`NewFrame` and `Render`. So the wiring is:
+1. One line in the engine (`src/tools/gui.cpp`): `ImGuizmo::BeginFrame()` right
+   after `ImGui::NewFrame()`.
+2. A `GizmoWidget` (app layer, `src/gui.{h,cpp}`) added to the OBJECT PROPERTIES
+   panel. Because it renders as a normal child widget it runs inside the
+   NewFrame/Render window; it draws the manipulator to
+   `ImGui::GetBackgroundDrawList()` (over the 3D view, under the panels) and
+   reads the selection from the `SceneExplorerWidget`.
+
+**Gotchas handled (don't regress these):**
+- **Vulkan Y-flip.** `Camera::get_projection()` carries `m_proj[1][1] *= -1`;
+  ImGuizmo expects a standard GL projection, so the widget undoes the flip on a
+  *copy* (`proj[1][1] *= -1`) before `Manipulate`. Without it the gizmo draws
+  mirrored and vertical drags invert.
+- **World ↔ local.** `Manipulate` works in world space; the widget feeds it
+  `obj->get_model_matrix()` (parent × local) and converts the result back with
+  `inverse(parent->get_model_matrix())` before decomposing. `Object3D` stores
+  rotation as **Euler degrees**, so writeback goes through
+  `DecomposeMatrixToComponents` → `set_position/rotation/scale`. Both the engine
+  and ImGuizmo compose rotation in XYZ order, so the round-trip is consistent.
+- **Camera vs gizmo input.** The camera controller owns **W/A/S/D + Q/E + R**,
+  so gizmo op hotkeys are `1/2/3` (move/rotate/scale) and `X` (world/local) to
+  avoid the collision. Camera mouse-look is suppressed while
+  `ImGuizmo::IsUsing() || IsOver()` (see `application.h::mouse_callback`).
+
+**"Pivot at geometry center" toggle.** Assets here often sit far from their
+object origin (a groom is ~33 units off), so the gizmo can be re-seated at the
+**geometry-bounds center** (union of every sub-geometry's min/max, read from
+`Geometry::get_properties()` — no engine change, nothing mutated). It's
+**non-destructive**: the object's stored transform/origin is untouched — unlike
+Blender's "Set Origin" this only moves where the gizmo draws and pivots. The
+manipulation is done by applying the gizmo's world-space **delta**
+(`gizmoAfter * inverse(gizmoBefore)`) to the object's real world matrix, so
+rotate/scale pivot about the gizmo rather than the origin; with the pivot at the
+origin `gizmo == objWorld` and it collapses to a plain absolute manipulation
+(identical to the pre-toggle path). Ignored for non-mesh selections
+(lights/camera fall back to the origin). Helper: `mesh_geometry_center_local` in
+`src/gui.cpp`.
+
+**Key files:** `ext/Vulkan-Engine/thirdparty/imguizmo/` (vendored source) +
+`thirdparty/imgui/CMakeLists.txt` (compiles it in), `ext/Vulkan-Engine/src/tools/gui.cpp`
+(`BeginFrame`), `src/gui.{h,cpp}` (`GizmoWidget`), `src/application.h` (input gate).
+It's deliberately swappable for a custom gizmo system later — the only engine
+coupling is the one `BeginFrame` line.
+
 ### Asset Loading
 
 All loading goes through `Tools::Loaders::load_3D_file()` (`ext/Vulkan-Engine/src/tools/loaders.cpp`), which dispatches by file extension:

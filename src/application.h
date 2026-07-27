@@ -6,6 +6,7 @@
 #include <engine/core.h>
 #include <engine/systems.h>
 #include <engine/tools/controller.h>
+#include <ImGuizmo.h>
 
 #include "gui.h"
 #include "hair_loader.h"
@@ -105,6 +106,11 @@ class HairViewer
             return; // still loading — controller/GUI not built yet
 
         if (m_interface.overlay->wants_to_handle_input())
+            return;
+
+        // Don't let the camera orbit while the transform gizmo is grabbed or
+        // hovered — the drag belongs to ImGuizmo.
+        if (ImGuizmo::IsUsing() || ImGuizmo::IsOver())
             return;
 
         m_controller->handle_mouse((float)xpos, (float)ypos);
