@@ -123,6 +123,22 @@ void SLApplication::init() {
 
     setup();
 
+    // Warm-up render — fixes the "bald first frame".
+    //
+    // Geometry is uploaded to the GPU *lazily* on the first render() (see
+    // ResourceManager::upload_geometry_data): it seeds animatable-VBO ring region 0
+    // with the raw groom vertices and only then flips loadedOnGPU=true. Until that
+    // happens HairBinder::update() → Geometry::upload_vertices() no-ops (it bails on
+    // !loadedOnGPU), so on a cold frame 0 the binder's deformed vertices never reach
+    // the GPU and the hair draws its seeded groom region — off-frame, i.e. bald.
+    //
+    // One throwaway render here forces that first upload. It runs *before* the
+    // capture callback is registered, so nothing is written to disk (render() guards
+    // a null pre-submit callback), and it does not advance the animation or the frame
+    // counter — the video is unchanged. Afterwards loadedOnGPU is true, so the very
+    // first *captured* frame's binder->update() actually writes the bound strands.
+    m_renderer->render(m_scene);
+
     m_capture.init(m_renderer->get_device(), static_cast<uint32_t>(m_width), static_cast<uint32_t>(m_height));
     m_renderer->set_pre_submit_callback(m_capture.get_callback());
 }

@@ -180,19 +180,24 @@ switched off. The lab needs re-rendering before its round-1 conclusions mean any
 field is also backwards: the engine's convention is **direction points toward the light** (that is how
 `physically_based.glsl` consumes it), and the lab sets `-normalize(position)`.
 
-**2. SLViewer's first captured frame renders without surface-bound strand hair — OPEN, not fixed.**
-Frame 0 of every headless export is **bald** (no scalp hair, brows or lashes); frames 1+ are correct.
-Binding itself succeeds — it is the first frame only. Proven by making the strand materials 20x
-brighter and thicker: frame 0 stayed pixel-identical, frame 1 showed the hair.
-- *Impact on the record:* last session's "maria re-rendered unchanged (no regression)" check and the
-  V0-vs-V3 eye-crop diffs were both computed from frame 0, i.e. **from two bald renders** — those
-  numbers are meaningless and should not be relied on.
-- *Workaround in any harness:* read the **last** frame, never `frame_00000.png`.
-- *Likely cause to check:* the animatable-geometry ring (`Geometry::cycle_animatable_upload`) — the
-  renderer probably draws a ring slot the binder has not written yet on the first frame. Whether this
-  is only a first-frame warm-up or a permanent one-frame lag is **not yet established** (the probe
-  scene was static, so lag is invisible). A non-captured warm-up frame in `SLApplication::run` would
-  fix the symptom; the lag question needs a moving test.
+**2. SLViewer's first captured frame renders without surface-bound strand hair — FIXED 2026-07-27.**
+Frame 0 of every headless export used to be **bald** (no scalp hair, brows or lashes); frames 1+ were
+correct. Binding itself succeeded — it was the first frame only. Proven by making the strand materials
+20x brighter and thicker: frame 0 stayed pixel-identical, frame 1 showed the hair.
+- *Root cause (confirmed):* geometry is uploaded to the GPU *lazily* on the first `render()`
+  (`ResourceManager::upload_geometry_data` → `Device::upload_vertex_arrays` seeds animatable-VBO ring
+  region 0 with the raw groom vertices, then sets `loadedOnGPU=true`). On a cold frame 0 the binder's
+  `update()` ran *before* that upload, so `Geometry::upload_vertices` bailed on `!loadedOnGPU` and the
+  binder's deformed vertices never reached the GPU — the draw showed the seeded groom region (off-frame
+  = bald). It was a first-frame warm-up issue, **not** a permanent one-frame lag.
+- *Fix:* `SLApplication::init()` now runs one throwaway warm-up `render(m_scene)` after `setup()` and
+  *before* the capture callback is registered — it forces the lazy upload, writes nothing to disk
+  (`render()` guards a null pre-submit callback), and does not advance the animation or frame counter.
+- *Verification (A/B):* warm-up off → `mean|frame0−frame1|` ≈ 1.5 (≈7× the ~0.2 run-to-run noise
+  floor); warm-up on → ≈ 0.2 (noise-level). `frame_00000.png` is now safe to read.
+- *Impact on the old record:* last session's "maria re-rendered unchanged (no regression)" check and
+  the V0-vs-V3 eye-crop diffs were computed from frame 0, i.e. **from two bald renders** — those
+  numbers were meaningless. Re-measure from the fixed build if they still matter.
 - Both viewers now **log an error** when a hair sidecar is missing or fails to load, instead of
   silently rendering an off-frame groom.
 
