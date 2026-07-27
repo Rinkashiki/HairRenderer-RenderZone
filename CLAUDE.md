@@ -452,12 +452,17 @@ The installed layout:
 SLViewer-windows\
 ├── SLViewer.exe          # /MT static MSVC runtime — no VC++ redist. Shaders baked in as SPIR-V.
 ├── ffmpeg.exe            # bundled static ffmpeg GPL build (BtbN win64)
-├── vulkan-1.dll          # Vulkan loader from %VULKAN_SDK%\Bin\
+├── vulkan-1.dll          # Vulkan loader (from %VULKAN_SDK%\Bin\, or System32 fallback)
+├── shaderc_shared.dll    # Shaderc — a load-time import even though SLViewer never calls it
 ├── THIRD_PARTY_NOTICES.txt
 └── resources\            # same tree as Linux — no shaders\
 ```
 
-`vulkan-1.dll` is located automatically from `%VULKAN_SDK%\Bin\` at configure time. If the env var is not set, CMake emits a warning and the DLL must be copied manually. The MSVC runtime is compiled in statically (`/MT`), so no VC++ Redistributable is required on the target machine.
+`vulkan-1.dll` and `shaderc_shared.dll` are both located automatically at configure time and bundled next to the exe. If either is missing, CMake emits a warning and the DLL must be copied manually. The MSVC runtime is compiled in statically (`/MT`), so no VC++ Redistributable is required on the target machine.
+
+**Why `shaderc_shared.dll` is bundled even though SLViewer uses baked SPIR-V.** The engine is a static lib that links the Shaderc **import** lib (`shaderc_shared`) on Windows, because the SDK's static `shaderc_combined.lib` is built `/MD` and won't link into this `/MT` build (unresolved `__imp_exp2` etc.). So *every* exe linking the engine — SLViewer included — carries a **load-time** dependency on `shaderc_shared.dll` and won't launch without it, even though SLViewer never actually calls Shaderc (HairViewer does, at runtime). Target machines have no Vulkan SDK, so the DLL is shipped. Linux is unaffected: it links the static `shaderc_combined.a`, so there's no runtime DLL. To drop the dependency entirely, a `/MT`-built static Shaderc would be needed (the SDK doesn't provide one).
+
+**`vulkan-1.dll` source.** Preferred from `%VULKAN_SDK%\Bin\`, but recent SDKs (1.4.x) no longer ship the loader there — it's installed to `System32` by the runtime installer / GPU driver, so the CMake rule falls back to `%WINDIR%\System32\vulkan-1.dll`. Bundling the Windows loader is safe because it discovers ICDs via the registry, not SDK-relative paths (this is why Linux deliberately does *not* bundle `libvulkan.so.1`). Even unbundled, most target machines resolve `vulkan-1.dll` from `System32` via the default DLL search path — which is why a missing loader is rarely the first error seen, but a missing `shaderc_shared.dll` (present nowhere but the SDK) always is.
 
 **Note**: The ffmpeg `.zip` for Windows is downloaded at configure time (same as Linux). If the download fails, system `ffmpeg` on `PATH` is used as a fallback at runtime.
 

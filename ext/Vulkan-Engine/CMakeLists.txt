@@ -67,10 +67,18 @@ target_include_directories(VulkanEngine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inclu
 # Configure vulkan path
 target_link_directories(VulkanEngine PUBLIC ${VULKAN_SDK_ROOT})
 # Link libraries
-if (WIN32) 
-    set(SHADERC_LIB "shaderc_shared")  
-elseif(UNIX) 
-    set(SHADERC_LIB "shaderc_combined.a")  
+if (WIN32)
+    # shaderc_shared (import lib for shaderc_shared.dll), NOT the static
+    # shaderc_combined: the SDK ships shaderc_combined.lib built against the dynamic
+    # CRT (/MD), but this distributable is /MT (static runtime, no VC++ redist). That
+    # mismatch fails to link (unresolved __imp_exp2 etc.). So we link the DLL and ship
+    # shaderc_shared.dll alongside the exe (see the install rule in the root
+    # CMakeLists). HairViewer needs Shaderc at runtime; SLViewer imports it only at
+    # load (baked SPIR-V at runtime), so the DLL must be present for both to launch.
+    set(SHADERC_LIB "shaderc_shared")
+elseif(UNIX)
+    # Linux gets the static archive (no /MT/MD split there), so no runtime DLL needed.
+    set(SHADERC_LIB "shaderc_combined.a")
 endif()
 target_link_libraries(VulkanEngine PUBLIC 
 

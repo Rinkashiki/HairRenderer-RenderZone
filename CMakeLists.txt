@@ -323,24 +323,54 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/textu
         DESTINATION resources)
 
 # -----------------------------------------------------------------------------
-# 8. Windows runtime DLLs (vulkan-1.dll)
+# 8. Windows runtime DLLs (vulkan-1.dll + shaderc_shared.dll)
 # -----------------------------------------------------------------------------
 if(WIN32)
     # Prefer VULKAN_SDK env var (set by LunarG installer).
     # Fall back to the directory next to the import library found by find_package.
-    set(_vulkan_dll "")
+    # TO_CMAKE_PATH normalizes backslashes to forward slashes; the raw VULKAN_SDK
+    # value (e.g. C:\VulkanSDK\1.4.x) otherwise lands verbatim in cmake_install.cmake
+    # and fails with "Invalid character escape '\V'".
+    set(_vulkan_bin "")
     if(DEFINED ENV{VULKAN_SDK})
-        set(_vulkan_dll "$ENV{VULKAN_SDK}/Bin/vulkan-1.dll")
+        file(TO_CMAKE_PATH "$ENV{VULKAN_SDK}/Bin" _vulkan_bin)
     elseif(DEFINED Vulkan_LIBRARY)
         get_filename_component(_vulkan_lib_dir "${Vulkan_LIBRARY}" DIRECTORY)
-        set(_vulkan_dll "${_vulkan_lib_dir}/vulkan-1.dll")
+        set(_vulkan_bin "${_vulkan_lib_dir}")
     endif()
 
-    if(NOT "${_vulkan_dll}" STREQUAL "" AND EXISTS "${_vulkan_dll}")
+    # Recent SDKs (1.4.x) no longer ship vulkan-1.dll under Bin/ — the loader is
+    # installed to System32 by the runtime installer / GPU driver instead. Try the
+    # SDK first, then fall back to System32. Bundling the Windows loader is safe: it
+    # discovers ICDs via the registry, not SDK-relative paths (unlike Linux, §9).
+    set(_vulkan_dll "")
+    if(NOT "${_vulkan_bin}" STREQUAL "" AND EXISTS "${_vulkan_bin}/vulkan-1.dll")
+        set(_vulkan_dll "${_vulkan_bin}/vulkan-1.dll")
+    else()
+        file(TO_CMAKE_PATH "$ENV{WINDIR}/System32/vulkan-1.dll" _sys_vulkan_dll)
+        if(EXISTS "${_sys_vulkan_dll}")
+            set(_vulkan_dll "${_sys_vulkan_dll}")
+        endif()
+    endif()
+
+    if(NOT "${_vulkan_dll}" STREQUAL "")
         install(FILES "${_vulkan_dll}" DESTINATION .)
         message(STATUS "[SLViewer] vulkan-1.dll found: ${_vulkan_dll}")
     else()
         message(WARNING "[SLViewer] vulkan-1.dll not found — deployment on a machine without the Vulkan runtime will fail. Set VULKAN_SDK or install the LunarG Vulkan SDK.")
+    endif()
+
+    # shaderc_shared.dll: the engine links the Shaderc *import* lib on Windows (the
+    # static shaderc_combined.lib is /MD-only and won't link into this /MT build), so
+    # every exe — SLViewer included — carries a load-time dependency on this DLL and
+    # won't launch without it, even though SLViewer never calls Shaderc at runtime
+    # (it ships baked SPIR-V). Target machines have no Vulkan SDK, so bundle it.
+    set(_shaderc_dll "${_vulkan_bin}/shaderc_shared.dll")
+    if(NOT "${_vulkan_bin}" STREQUAL "" AND EXISTS "${_shaderc_dll}")
+        install(FILES "${_shaderc_dll}" DESTINATION .)
+        message(STATUS "[SLViewer] shaderc_shared.dll found: ${_shaderc_dll}")
+    else()
+        message(WARNING "[SLViewer] shaderc_shared.dll not found — the installed SLViewer.exe will fail to launch on a machine without the Vulkan SDK. Set VULKAN_SDK or install the LunarG Vulkan SDK.")
     endif()
 endif()
 
