@@ -107,9 +107,147 @@ vec3 eye_shade(vec3 color, vec3 albedo, vec3 objNormal, float eyeAmount) {
 // new UVs, which correspond to the iris texel we're supposed to be seeing. Simulates
 // the effect of light refraction on the cornea.
 // NOTE : Implements Parallax Occlusion Mapping.
-vec2 eye_parallax_uv(vec2 uv, vec3 viewTS) {
+vec2 eye_parallax_uv_old(vec2 uv, vec3 viewTS) {
 	// Basic temporary implementation for testing.
 	float irisDepth = 0.04;
 	vec2 newUV = uv - viewTS.xy / max(viewTS.z, 0.2) * irisDepth;
 	return newUV;
+}
+vec2 eye_parallax_uv(
+    vec2 uv,
+    vec3 objNormal,
+    vec3 worldNormal,
+    vec3 worldPos,
+    float irisDepth)
+{
+    vec3 V =
+        normalize(camera.position.xyz-worldPos);
+
+    float cornea =
+        smoothstep(
+            EYE_AO_RIM,
+            EYE_AO_CORNEA,
+            dot(normalize(objNormal),EYE_IRIS_AXIS));
+
+    vec3 R =
+        refract(
+            -V,
+            normalize(worldNormal),
+            1.0/1.376);
+
+    vec2 shift =
+        R.xy *
+        irisDepth *
+        cornea;
+
+    return uv-shift;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Cornea refraction
+///////////////////////////////////////////////////////////////////////////////
+
+const float CORNEA_IOR = 1.376;
+
+// Position of the iris plane in object space.
+//
+// Assumes:
+//
+// cornea apex : +1
+// eye center  :  0
+//
+// Tune this until the iris "sits" correctly.
+const float IRIS_Z = 0.72;
+
+// Radius of the iris disc in object space.
+// Used for mapping the hit position back into UVs.
+const float IRIS_RADIUS = 0.46;
+
+vec2 eye_refract_uv(
+    vec2 uv,
+    vec3 objPos,
+    vec3 objNormal,
+    vec3 worldPos,
+    vec3 worldNormal)
+{
+	// objPos = objPos + objNormal * 2.0;
+
+    //----------------------------------------------------
+    // World-space view direction
+    //----------------------------------------------------
+
+    vec3 Vws =
+        normalize(camera.position.xyz - worldPos);
+
+    //----------------------------------------------------
+    // Convert to object space
+    //----------------------------------------------------
+
+    mat3 invModel =
+        transpose(mat3(object.model));
+
+    vec3 Vos =
+        normalize(invModel * Vws);
+
+    //----------------------------------------------------
+    // Refract into the eye
+    //----------------------------------------------------
+
+    vec3 R =
+        refract(
+            -Vos,
+            normalize(objNormal),
+            1.0 / CORNEA_IOR);
+
+    //----------------------------------------------------
+    // Ray misses?
+    //----------------------------------------------------
+
+    if(abs(R.z) < 1e-5)
+        return uv;
+
+    //----------------------------------------------------
+    // Intersect iris plane
+    //----------------------------------------------------
+
+    float t =
+        (IRIS_Z - objPos.z) / R.z;
+
+    if(t <= 0.0)
+        return uv;
+
+    vec3 hit =
+        objPos + R * t;
+
+    //----------------------------------------------------
+    // Convert hit position to iris UV
+    //----------------------------------------------------
+
+    vec2 irisUV =
+        hit.xy / IRIS_RADIUS;
+
+    irisUV =
+        irisUV * 0.5 + 0.5;
+
+    //----------------------------------------------------
+    // Cornea mask
+    //----------------------------------------------------
+
+    float cornea =
+        smoothstep(
+            EYE_AO_RIM,
+            EYE_AO_CORNEA,
+            dot(
+                normalize(objNormal),
+                normalize(EYE_IRIS_AXIS)));
+
+    //----------------------------------------------------
+    // Blend
+    //----------------------------------------------------
+
+    return mix(
+        uv,
+        irisUV,
+        cornea);
 }
