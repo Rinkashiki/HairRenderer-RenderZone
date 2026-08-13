@@ -241,6 +241,20 @@ vec3 preIntegratedSkinDiffuse(float NdotL, float curvature) {
 
 
 void setupBRDFProperties(){
+	// UVs of the current sample taken for this fragment
+	vec2 sampleUV = v_uv; // by default, keep the original value as defined by the mesh's data.
+	if((int(material.materialFlags) & 8) != 0) // if is eye mat
+	{
+		sampleUV = eye_refract_uv
+		(
+			v_uv,
+			v_pos,
+			v_objNormal,
+			v_modelNormal,
+			v_modelPos
+		);
+	}
+
     // Skin coverage. Clothes mask and eye mask both use the white = excluded
     // convention, so skin survives only where BOTH are black. This gates the
     // microdetail build below and every skin-specific lighting term in main().
@@ -248,15 +262,15 @@ void setupBRDFProperties(){
     bool  _hasClothesMask = (_flags & 4) != 0;
     bool  _hasEyeMask     = (_flags & 8) != 0;
     skinMask = (_hasClothesMask ? (1.0 - texture(clothesMaskTex, v_uv).r) : 1.0)
-             * (_hasEyeMask     ? (1.0 - texture(eyeMaskTex,     v_uv).r) : 1.0);
+             * (_hasEyeMask     ? (1.0 - texture(eyeMaskTex,     v_uv).r) : 1.0); // NOTE : Mask lookups remain with the original UVs because there is no need to change it, but this should work with the modified sampleUV as well.
 
     // Microdetail (pore normal + cavity) is skin-only: fade its strength out on
     // clothes and eyes so brdf.normal collapses to the base/eye normal there.
     float effDetailStrength = material.detailNormalStrength * skinMask;
 
   //Setting input surface properties
-    brdf.albedo = material.hasAlbdoTexture ? mix(material.albedo.rgb, texture(albedoTex, v_uv).rgb, material.albedoWeight) : material.albedo.rgb;
-    brdf.opacity =  material.hasAlbdoTexture ?  mix(material.opacity, texture(albedoTex, v_uv).a, material.opacityWeight) :material.opacity;
+    brdf.albedo = material.hasAlbdoTexture ? mix(material.albedo.rgb, texture(albedoTex, sampleUV).rgb, material.albedoWeight) : material.albedo.rgb;
+    brdf.opacity =  material.hasAlbdoTexture ?  mix(material.opacity, texture(albedoTex, sampleUV).a, material.opacityWeight) :material.opacity;
 
     // Normal: if neither a base normal map nor a detail normal map is bound,
     // fall back to the vertex normal directly. Going through v_TBN when the
@@ -264,7 +278,7 @@ void setupBRDFProperties(){
     // poisons all downstream shading.
     if (material.hasNormalTexture || material.hasDetailNormalTexture) {
         vec3 baseTangentN = material.hasNormalTexture
-            ? (texture(normalTex, v_uv).rgb * 2.0 - 1.0)
+            ? (texture(normalTex, sampleUV).rgb * 2.0 - 1.0)
             : vec3(0.0, 0.0, 1.0);
         smoothNormalWS = normalize(v_TBN * baseTangentN);
 
@@ -273,7 +287,7 @@ void setupBRDFProperties(){
         // at per-channel mip-LOD bias to produce the d'Eon hybrid diffuse normals.
         vec3 detailTangentN = baseTangentN;
         if (material.hasDetailNormalTexture) {
-            vec2 dUV = v_uv * material.detailTiling;
+            vec2 dUV = sampleUV * material.detailTiling;
             // Sharp detail for specular (LOD 0).
             vec3 dN_spec = texture(detailNormalTex, dUV).rgb * 2.0 - 1.0;
             dN_spec.xy *= effDetailStrength;
@@ -321,8 +335,8 @@ void setupBRDFProperties(){
     }
 
     if(material.hasMaskTexture) {
-        // vec4 mask = pow(texture(maskRoughTex, v_uv).rgba, vec4(2.2)); //Correction linearize color
-        vec4 mask = texture(maskRoughTex, v_uv).rgba; //Correction linearize color
+        // vec4 mask = pow(texture(maskRoughTex, sampleUV).rgba, vec4(2.2)); //Correction linearize color
+        vec4 mask = texture(maskRoughTex, sampleUV).rgba; //Correction linearize color
         if(material.maskType == 0) { //HDRP UNITY
 		    //Unity HDRP uses glossiness not roughness pipeline, so it has to be inversed
             brdf.roughness = 1.0 - mask.a;
@@ -336,14 +350,14 @@ void setupBRDFProperties(){
             // TO DO ...
         }
     } else {
-        brdf.roughness = material.hasRoughnessTexture ? mix(material.roughness, texture(maskRoughTex, v_uv).r, material.roughnessWeight) : material.roughness;
-        brdf.metalness = material.hasMetallicTexture ? mix(material.metalness, texture(metalTex, v_uv).r, material.metalnessWeight) : material.metalness;
-        brdf.ao = material.hasAOTexture ? mix(material.occlusion, texture(occlusionTex, v_uv).r, material.occlusionWeight) : material.occlusion;
+        brdf.roughness = material.hasRoughnessTexture ? mix(material.roughness, texture(maskRoughTex, sampleUV).r, material.roughnessWeight) : material.roughness;
+        brdf.metalness = material.hasMetallicTexture ? mix(material.metalness, texture(metalTex, sampleUV).r, material.metalnessWeight) : material.metalness;
+        brdf.ao = material.hasAOTexture ? mix(material.occlusion, texture(occlusionTex, sampleUV).r, material.occlusionWeight) : material.occlusion;
     }
     brdf.F0 = vec3(0.04);
     brdf.F0 = mix(brdf.F0, brdf.albedo, brdf.metalness);
 
-    brdf.emission =  material.hasEmissiveTexture ? mix(material.emissiveColor, texture(emissiveTex, v_uv).rgb, material.emissiveWeight) : material.emissiveColor;
+    brdf.emission =  material.hasEmissiveTexture ? mix(material.emissiveColor, texture(emissiveTex, sampleUV).rgb, material.emissiveWeight) : material.emissiveColor;
     brdf.emission *= material.emissionIntensity;
 }
 
@@ -382,7 +396,7 @@ void main() {
     vec3 backIrr = vec3(0.0);
     for(int i = 0; i < scene.numLights; i++) {
         //If inside light area influence
-        if(isInAreaOfInfluence(scene.lights[i], v_pos)){
+        if(isInAreaOfInfluence(scene.lights[i], v_pos)) {
 
             vec3 wi = scene.lights[i].type != DIRECTIONAL_LIGHT ? normalize(scene.lights[i].position - v_pos) : normalize(scene.lights[i].position.xyz);
             vec3 radiance = scene.lights[i].color * computeAttenuation(scene.lights[i], v_pos) * scene.lights[i].intensity;
