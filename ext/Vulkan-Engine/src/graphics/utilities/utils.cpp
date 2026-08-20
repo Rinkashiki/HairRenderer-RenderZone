@@ -172,11 +172,12 @@ void Utils::log_available_gpus(std::multimap<int, VkPhysicalDevice> candidates) 
     LOG_DEBUG("---------------------");
     LOG_DEBUG("Suitable Devices");
     LOG_DEBUG("---------------------");
+    LOG_DEBUG(std::string{"Number of Candidate GPUs: "} + std::to_string(candidates.size()) + std::string{"\n"});
     for (const auto& candidate : candidates)
     {
         VkPhysicalDeviceProperties deviceProperties;
         vkGetPhysicalDeviceProperties(candidate.second, &deviceProperties);
-        LOG_DEBUG(deviceProperties.deviceName);
+        LOG_DEBUG(std::string{"( name = "} + std::string{deviceProperties.deviceName} + std::string{", score = "} + std::to_string(candidate.first));
     }
     LOG_DEBUG("---------------------");
 }

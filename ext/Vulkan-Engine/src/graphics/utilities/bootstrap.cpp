@@ -97,7 +97,7 @@ VkPhysicalDevice Booter::pick_graphics_card_device(VkInstance instance, VkSurfac
 #ifndef NDEBUG
     Utils::log_available_gpus(candidates);
 #endif // !NDEBUG
-
+    
     // Check if the best candidate is suitable at all
     if (candidates.rbegin()->first > 0)
     {
@@ -142,8 +142,11 @@ int Booter::rate_device_suitability(VkPhysicalDevice device, VkSurfaceKHR surfac
         Utils::SwapChainSupportDetails swapChainSupport = Utils::query_swapchain_support(device, surface);
         swapChainAdequate                               = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
         if (!swapChainAdequate)
+        {
             return 0;
-    } else
+        }
+    }
+    else
     {
         return 0;
     }
@@ -164,6 +167,13 @@ bool Booter::check_device_extension_support(VkPhysicalDevice device, std::vector
     {
         requiredExtensions.erase(extension.extensionName);
     }
+
+    #ifndef NDEBUG
+    for (auto x : requiredExtensions)
+    {
+        LOG_DEBUG("Extension not supported: " + std::string{x});
+    }
+    #endif
 
     return requiredExtensions.empty();
 }
