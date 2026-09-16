@@ -47,6 +47,9 @@ struct GeometricData {
     std::vector<Graphics::Vertex> vertexData;
     std::vector<Graphics::Voxel>  voxelData;
 
+    std::vector<Mat2> restEdgeInv;             // tringle mesh rest-pose edge inverse
+    bool              strainRestBuilt = false; // flag to indicate if the rest-pose edge inverse has been built
+
     // Stats
     Vec3 maxCoords;
     Vec3 minCoords;
@@ -104,6 +107,8 @@ class Geometry
     // straight into a static VBO. Prevents the CPU from overwriting a region the
     // GPU is still reading for an in-flight frame.
     void cycle_animatable_upload(const void* data, size_t size);
+
+    void compute_strain_tensor(std::vector<Graphics::Vertex>& deformed);
 
   public:
     Geometry() {

@@ -80,6 +80,107 @@ Geometry* Geometry::create_cube() {
 
     return g;
 }
+
+void Geometry::compute_strain_tensor(std::vector<Graphics::Vertex>& deformed) {
+    // 1. Precompute the inverse rest-shape matrix for each triangle 
+    if (!m_properties.strainRestBuilt)
+    {
+        m_properties.restEdgeInv.clear();
+        m_properties.restEdgeInv.reserve(m_properties.vertexIndex.size() / 3);
+
+        for (size_t i = 0; i < m_properties.vertexIndex.size(); i += 3)
+        {
+            uint32_t a = m_properties.vertexIndex[i + 0];
+            uint32_t b = m_properties.vertexIndex[i + 1];
+            uint32_t c = m_properties.vertexIndex[i + 2];
+
+            Vec3 edge0 = m_properties.vertexData[b].pos - m_properties.vertexData[a].pos;
+            Vec3 edge1 = m_properties.vertexData[c].pos - m_properties.vertexData[a].pos;
+
+            Vec3 T = glm::normalize(m_properties.vertexData[a].tangent);
+            Vec3 N = glm::normalize(m_properties.vertexData[a].normal);
+            Vec3 B = glm::normalize(glm::cross(T, N));
+
+            Vec2 e0(glm::dot(edge0, T), glm::dot(edge0, B));
+            Vec2 e1(glm::dot(edge1, T), glm::dot(edge1, B));
+
+            Mat2 Dm;
+            Dm[0] = e0;
+            Dm[1] = e1;
+
+            if (std::abs(glm::determinant(Dm)) < 1e-8f)
+            {
+                m_properties.restEdgeInv.push_back(Mat2(1.0f));
+                continue;
+            }
+
+            m_properties.restEdgeInv.push_back(glm::inverse(Dm));
+        }
+        m_properties.strainRestBuilt = true;
+    }
+
+    // 2. Temporary accumulation buffers for averaging strain tensors across shared vertices
+    std::vector<Vec3>     accumulatedTensor(deformed.size(), Vec3(0.0f));
+    std::vector<uint32_t> contributionCount(deformed.size(), 0);
+
+    // 3. Compute the Right Cauchy-Green deformation tensor per triangle
+    for (size_t i = 0; i < m_properties.vertexIndex.size(); i += 3)
+    {
+        uint32_t a = m_properties.vertexIndex[i + 0];
+        uint32_t b = m_properties.vertexIndex[i + 1];
+        uint32_t c = m_properties.vertexIndex[i + 2];
+
+        size_t tri = i / 3;
+
+        // 3D edges of the triangle in the current deformed pose
+        Vec3 edge0_3d = deformed[b].pos - deformed[a].pos;
+        Vec3 edge1_3d = deformed[c].pos - deformed[a].pos;
+
+        // Local tangent/bitangent frame for the deformed face
+        Vec3 T = glm::normalize(deformed[a].tangent);
+        Vec3 N = glm::normalize(deformed[a].normal);
+        Vec3 B = glm::normalize(glm::cross(T, N));
+
+        // Project 3D edges onto the local 2D tangent plane (T, B)
+        Vec2 e0(glm::dot(edge0_3d, T), glm::dot(edge0_3d, B));
+        Vec2 e1(glm::dot(edge1_3d, T), glm::dot(edge1_3d, B));
+
+        Mat2 Ds;
+        Ds[0] = e0;
+        Ds[1] = e1;
+
+        // Deformation gradient tensor (F) and Right Cauchy-Green tensor (C = F^T * F)
+        Mat2 F = Ds * m_properties.restEdgeInv[tri];
+        Mat2 C = glm::transpose(F) * F;
+
+        // Unique symmetric components of the 2D tensor
+        float Cxx = C[0][0];
+        float Cyy = C[1][1];
+        float Cxy = C[0][1];
+
+        Vec3 triangleTensor(Cxx, Cyy, Cxy);
+
+        // Accumulate into the three vertices of the face
+        accumulatedTensor[a] += triangleTensor;
+        accumulatedTensor[b] += triangleTensor;
+        accumulatedTensor[c] += triangleTensor;
+
+        contributionCount[a]++;
+        contributionCount[b]++;
+        contributionCount[c]++;
+    }
+
+    // 4. Compute final vertex averages and write to the output buffer for VBO transfer
+    for (size_t v = 0; v < deformed.size(); ++v)
+    {
+        if (contributionCount[v] == 0)
+            continue;
+
+        deformed[v].strain = accumulatedTensor[v] / static_cast<float>(contributionCount[v]);
+    }
+}
+
+
 void Geometry::apply_deformation(const std::vector<float>& morphWeights, const std::vector<Mat4>& jointMatrices) {
     if (!m_VAO.loadedOnGPU) return;
 
@@ -148,6 +249,10 @@ void Geometry::apply_deformation(const std::vector<float>& morphWeights, const s
             deformed[v].tangent = glm::normalize(skinnedTangent);
         }
     }
+
+    // --- Strain tensor from morph deformations ---
+    compute_strain_tensor(deformed);
+
 
     // Retain the deformed buffer so surface-bound hair can read the animated
     // head surface this frame (see GeometricData::deformedVertexData).
