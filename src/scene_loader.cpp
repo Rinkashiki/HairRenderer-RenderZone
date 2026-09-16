@@ -348,6 +348,26 @@ static Core::IMaterial* build_pbr(const json&        jm,
     }
     if (jm.contains("sheen_intensity"))
         mat->set_sheen_intensity(jm["sheen_intensity"].get<float>());
+    // Face culling — off by default (IMaterial's MaterialSettings default).
+    // Needed for meshes authored with deliberately inward-facing normals (e.g.
+    // an oral-cavity shell modeled to only show its inside), where rendering
+    // both sides makes the outward-facing side (never meant to be seen) show
+    // through with backwards lighting.
+    if (jm.contains("culling")) {
+        const std::string c = jm["culling"].get<std::string>();
+        if (c == "none") {
+            mat->set_enable_culling(false);
+        } else if (c == "back") {
+            mat->set_enable_culling(true);
+            mat->set_culling_type(BACK_CULLING);
+        } else if (c == "front") {
+            mat->set_enable_culling(true);
+            mat->set_culling_type(FRONT_CULLING);
+        } else {
+            throw std::runtime_error("scene_loader: material 'culling' must be "
+                "'back', 'front', or 'none' (got '" + c + "')");
+        }
+    }
     // Note: per-channel detail-normal blur biases (detail_blur_r/g/b) are
     // intentionally NOT JSON-driven — they're derived from the renderer's
     // sss_scatter_lut so the d'Eon hybrid normals stay consistent with the
@@ -367,7 +387,7 @@ static Core::IMaterial* build_pbr(const json&        jm,
          "detail_tiling", "detail_normal_strength",
          "cavity_spec_occlusion",
          "dual_lobe_mix", "dual_lobe_roughness_soft",
-         "sheen_color", "sheen_intensity"},
+         "sheen_color", "sheen_intensity", "culling"},
         "material(pbr)");
 
     return mat;

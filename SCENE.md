@@ -196,6 +196,7 @@ Discriminated by `"type"`:
 | `emissive_weight` | float | `1.0` |
 | `emission_intensity` | float | `1.0` |
 | `reflective` | bool | `false` |
+| `culling` | `"back"` \| `"front"` \| `"none"` | `"none"` | Face culling for this material. Off by default (both sides drawn). Use `"front"` for shells authored with inward-facing normals that are only meant to be seen from inside (the mouth-cavity meshes of the teeth model); `"back"` for ordinary closed geometry when you want the back faces gone. |
 
 **Skin realism — authored maps (Layer A).** All optional; absence falls back to the standard non-skin PBR path. Loaded as linear data maps (not sRGB).
 

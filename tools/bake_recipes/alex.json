@@ -33,30 +33,49 @@
   "extra_materials": [
     {
       "type": "pbr",
+      "albedo_texture": "textures/teeth/T_Teeth_BaseColor.png",
+      "normal_texture": "textures/teeth/T_Teeth_Normal.png",
+      "occlusion_texture": "textures/teeth/T_Teeth_ORM.png:r",
+      "roughness_texture": "textures/teeth/T_Teeth_ORM.png:g",
+      "metallic_texture": "textures/teeth/T_Teeth_ORM.png:b",
       "albedo": [
         1.0,
-        0.98,
-        0.92
+        1.0,
+        1.0
       ],
-      "roughness": 0.3,
+      "albedo_weight": 1.0,
+      "roughness_weight": 1.0,
+      "occlusion_weight": 1.0,
       "metalness": 0.0
     },
     {
       "type": "pbr",
+      "albedo_texture": "textures/teeth/T_Teeth_BaseColor.png",
+      "normal_texture": "textures/teeth/T_Teeth_Normal.png",
+      "occlusion_texture": "textures/teeth/T_Teeth_ORM.png:r",
+      "roughness_texture": "textures/teeth/T_Teeth_ORM.png:g",
+      "metallic_texture": "textures/teeth/T_Teeth_ORM.png:b",
       "albedo": [
-        0.8,
-        0.3,
-        0.35
+        1.0,
+        1.0,
+        1.0
       ],
-      "roughness": 0.35,
-      "metalness": 0.0
+      "albedo_weight": 1.0,
+      "roughness_weight": 1.0,
+      "occlusion_weight": 1.0,
+      "metalness": 0.0,
+      "culling": "front"
     }
   ],
   "primitive_materials": [
     0,
-    1,
-    1,
     2,
-    2
+    2,
+    2,
+    2,
+    1,
+    1,
+    1,
+    1
   ]
 }

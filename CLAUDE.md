@@ -208,6 +208,66 @@ It reads the material blocks (recipe if `--materials`, else the scene's `materia
 
 **Key files:** `tools/bake_glb_material.py` (baker) + `tools/bake_recipes/*.json` (material source of truth), `ext/Vulkan-Engine/src/tools/loaders.cpp` (`load_GLB` + `GLBMaterialAux` + `load_PNG_from_memory`; `SetImagesAsIs` keeps the 8K maps raw and they're decoded on demand), `ext/Vulkan-Engine/include/engine/tools/loaders.h` (`GLBImage` / `GLBMaterialAux`), `src/scene_loader.cpp` (`GLBTexCtx`, `resolve_texture` `$GLB[...]` + channel resolution, `assemble_baked_materials`), and for packed atlases `ext/Vulkan-Engine/{include/engine/core/materials/physically_based.h,src/core/materials/physically_based.cpp}` (`set_*_channel` → `dataSlot10.y`) + `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` (`packedChannels`).
 
+### Teeth / Mouth Model Pipeline (`tools/rig_teeth_glb.py`)
+
+The characters carry a shared, textured mouth model (upper/lower teeth, teeth
+interior, mouth cavity, tongue, uvula — maps in `resources/textures/teeth/`)
+that replaces the flat-colored SMPL-X teeth. It is placed in Blender and
+re-exported, then **must** go through `tools/rig_teeth_glb.py` before baking —
+a raw Blender export does not work in this engine for four independent reasons:
+
+1. **No skinning.** The mouth meshes come out as plain static nodes under the
+   armature root, so they would never follow the jaw. The script injects
+   100%-weight skinning through the face's skin: `*Lower*` + Tongue → `jaw`,
+   `*Upper*` + Uvula → `head` (SMPL-X joint names; override with `--jaw/--head`
+   or per node with `--bind NODE=jaw|head`).
+2. **Node transforms are ignored.** `load_GLB` iterates `gltf.meshes` directly and
+   never applies node TRS, so the mouth's node offset is baked into its vertices
+   (relative to the face node).
+3. **`geometry[0]` must be the face.** `Mesh::advance_animation`,
+   `BoundingSphere::setup`, `attach_animation` and the hair binder all take the
+   first geometry as "the head". Blender lists the mouth meshes first; the script
+   reorders. Getting this wrong shows up as hair not rendering / wrong bounds.
+4. **Cavity shells.** `MouthCavity_*` and `Teeth_Interior_*` are authored with
+   inward-facing normals and are only meant to be seen from inside (Blender:
+   backface culling on). The script detects them (fraction of inward triangles,
+   `--cavity-threshold`) and gives them their own glTF material so the bake can
+   set `"culling": "front"` on that slot (see SCENE.md). Face culling is off by
+   default for every material, so without this they render both sides.
+
+The script also drops the invisible `GumsAttachmentOverlay_*` helpers, strips
+Blender's re-embedded images and compacts the buffer (277 MB → 17 MB), orders
+materials `0=face, 1=teeth, 2=cavity`, and rewrites the character's bake recipe
+(`material` = face, `extra_materials` = [teeth, cavity], `primitive_materials`).
+
+**Per-character workflow:**
+```bash
+# 1. Blender: open <char>.glb, import the teeth model, place it, export with defaults
+#    (keep the raw export OUT of resources/ — it is not committed).
+# 2. Rig + update recipe
+python tools/rig_teeth_glb.py <export.glb> --out /tmp/<char>.rigged.glb \
+    --recipe tools/bake_recipes/<char>.json
+# 3. Bake (self-contained GLB, slim scene unchanged)
+python tools/bake_glb_material.py resources/scenes/<char>.json \
+    --materials tools/bake_recipes/<char>.json --in-glb /tmp/<char>.rigged.glb --inplace
+# 4. HairViewer → HAIR BINDING panel: re-seat + Bind + Save every groom.
+#    The head's topology changed, so the old .hbnd sidecars point at the wrong
+#    triangles (the loader only validates a sidecar against the hair, not the head).
+```
+Step 4 cannot be automated from the scene JSON's hair transforms — the new
+face sits slightly differently, so a scripted bind lands ~0.06 head-units off
+the scalp (hair inside the body). The GUI's Save/Load honour a scene's declared
+`binding` path, so a test scene with its own sidecars won't overwrite another's.
+
+**Engine fixes that came out of this (both pre-existing gaps):** `load_GLB` now
+reconstructs **sparse accessors** (Blender exports morph-target deltas sparse;
+`bufferViews[-1]` used to be read → memory corruption, crash at load), and
+`load_texture` matches file extensions case-insensitively (`.PNG` was
+silently rejected). Both in `ext/Vulkan-Engine/src/tools/loaders.cpp`.
+
+**Status:** all four characters converted (2026-09-16); hair sidecars for `javi`,
+`maria`, `nadia` (and alex brows/lashes) re-bound in the GUI afterwards.
+
 ### Eyelash Shading Models (under evaluation)
 
 Four competing eyelash lighting models live behind **one** pipeline, selected per
@@ -366,7 +426,7 @@ Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. 
 
 Scenes are JSON-driven (`resources/scenes/*.json` — see @SCENE.md).
 
-- **HairViewer** loads a scene unconditionally (currently `resources/scenes/nadia.json`). To use a different scene, either edit that file or change the path in `src/application.cpp::HairViewer::setup()`.
+- **HairViewer** loads a scene unconditionally (`SCENE_PATH` in `src/application.h`, currently `resources/scenes/maria.json`). To use a different scene, either edit that file or change that constant.
 - **SLViewer** accepts an optional `--scene <path>` flag; when omitted it falls back to `resources/scenes/maria.json`.
 
 #### Engine example applications

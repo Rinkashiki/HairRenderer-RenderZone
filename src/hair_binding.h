@@ -54,6 +54,12 @@ class HairBinder {
     Core::Mesh* head_mesh() const { return m_head; }
     float       normal_offset() const { return m_normalOffset; }
 
+    // Sidecar this binder reads/writes: the scene's declared `binding` path, or
+    // <hair file>.hbnd by default. The GUI's Save/Load go through this so a
+    // scene with its own sidecars never overwrites another scene's.
+    const std::string& sidecar_path() const { return m_sidecarPath; }
+    void set_sidecar_path(const std::string& p) { m_sidecarPath = p; }
+
   private:
     // Per-strand binding to a head triangle.
     struct StrandBind {
@@ -69,6 +75,7 @@ class HairBinder {
     std::vector<Vec3>             m_localTangent;// per hair vertex, in bind root frame
     std::vector<Graphics::Vertex> m_workVerts;   // scratch buffer reused each frame
 
+    std::string m_sidecarPath;
     float m_normalOffset      = 0.0f;
     bool  m_bound             = false;
     bool  m_reconstructedOnce = false;

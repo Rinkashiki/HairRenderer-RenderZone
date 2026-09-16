@@ -322,7 +322,8 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures"
         PATTERN "alex"  EXCLUDE
         PATTERN "javi"  EXCLUDE
         PATTERN "maria" EXCLUDE
-        PATTERN "nadia" EXCLUDE)
+        PATTERN "nadia" EXCLUDE
+        PATTERN "teeth" EXCLUDE)  # shared teeth maps, baked into every character GLB
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/animations"
         DESTINATION resources)
 

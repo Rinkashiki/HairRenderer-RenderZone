@@ -68,7 +68,8 @@ void HairBindWidget::render() {
     ImGui::Checkbox("Declip to scalp", &m_declip);
 
     ImGui::Spacing();
-    const std::string side = hair->get_file_route() + ".hbnd";
+    const std::string side = !binder->sidecar_path().empty() ? binder->sidecar_path()
+                                                              : hair->get_file_route() + ".hbnd";
     if (ImGui::Button("Bind")) binder->bind(m_normalOffset, m_declip);
     ImGui::SameLine();
     if (ImGui::Button("Save")) binder->save(side);

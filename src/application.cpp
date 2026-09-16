@@ -112,6 +112,7 @@ void HairViewer::setup() {
 static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::string& declaredPath) {
     auto* binder = new hair_binding::HairBinder(hair, head);
     std::string side = !declaredPath.empty() ? declaredPath : (hair->get_file_route() + ".hbnd");
+    binder->set_sidecar_path(side);
     // A missing sidecar leaves the binder unbound, which silently renders the
     // groom at its raw (off-frame) position — a bald character with no error.
     // Say so instead.

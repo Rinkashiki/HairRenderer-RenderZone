@@ -1,6 +1,9 @@
 #include <fstream>
+#include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstring>
+#include <unordered_map>
 #include <stb_image.h>                  // declarations — implementation lives in the engine's stb_image library
 
 #define TINYGLTF_IMPLEMENTATION
@@ -406,11 +409,71 @@ void VKFW::Tools::Loaders::load_GLB(Core::Mesh* const mesh, const std::string fi
     }
 
     // --- helpers ---
-    // Returns a pointer to the first byte of an accessor's data in its buffer.
+    // Materialized copies of sparse accessors, keyed by accessor index. A sparse
+    // accessor's logical data isn't contiguous in the source buffer (that's the
+    // point — only the overridden elements are stored), so it has to be
+    // reconstructed into a dense buffer before acc_raw() can hand out a flat
+    // pointer to it. Cached (and kept alive for the rest of this load) so the
+    // reconstruction happens once per accessor no matter how many times it's read.
+    std::unordered_map<int, std::vector<uint8_t>> sparseCache;
+
+    // Returns a pointer to the first byte of an accessor's data, densified.
+    // Exporters commonly encode morph-target deltas (POSITION/NORMAL) as sparse
+    // accessors — most vertices don't move for a given blend shape — which per
+    // glTF spec means `bufferView` is absent (base data is implicitly all zero)
+    // and the accessor carries a `sparse` block of (index, value) overrides
+    // instead. A plain `model.bufferViews[acc.bufferView]` on such an accessor
+    // reads bufferViews[-1], corrupting memory.
     auto acc_raw = [&](int acc_idx) -> const uint8_t* {
         const auto& acc = model.accessors[acc_idx];
-        const auto& bv  = model.bufferViews[acc.bufferView];
-        return model.buffers[bv.buffer].data.data() + bv.byteOffset + acc.byteOffset;
+
+        // Fast path: ordinary dense accessor.
+        if (acc.bufferView >= 0 && !acc.sparse.isSparse)
+        {
+            const auto& bv = model.bufferViews[acc.bufferView];
+            return model.buffers[bv.buffer].data.data() + bv.byteOffset + acc.byteOffset;
+        }
+
+        auto it = sparseCache.find(acc_idx);
+        if (it != sparseCache.end())
+            return it->second.data();
+
+        const size_t elemSize =
+            static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(acc.componentType))) *
+            static_cast<size_t>(tinygltf::GetNumComponentsInType(static_cast<uint32_t>(acc.type)));
+
+        // Dense base: zero-filled unless a bufferView is also present (a sparse
+        // accessor may override a real base instead of an implicit zero one).
+        std::vector<uint8_t> data(elemSize * acc.count, 0);
+        if (acc.bufferView >= 0)
+        {
+            const auto&    bv   = model.bufferViews[acc.bufferView];
+            const uint8_t* base = model.buffers[bv.buffer].data.data() + bv.byteOffset + acc.byteOffset;
+            std::memcpy(data.data(), base, data.size());
+        }
+
+        if (acc.sparse.isSparse)
+        {
+            const auto&    sp      = acc.sparse;
+            const auto&    idxBV   = model.bufferViews[sp.indices.bufferView];
+            const uint8_t* idxBase = model.buffers[idxBV.buffer].data.data() + idxBV.byteOffset + sp.indices.byteOffset;
+            const auto&    valBV   = model.bufferViews[sp.values.bufferView];
+            const uint8_t* valBase = model.buffers[valBV.buffer].data.data() + valBV.byteOffset + sp.values.byteOffset;
+
+            for (int si = 0; si < sp.count; ++si)
+            {
+                size_t vertexIdx = 0;
+                switch (sp.indices.componentType)
+                {
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:  vertexIdx = idxBase[si]; break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: vertexIdx = reinterpret_cast<const uint16_t*>(idxBase)[si]; break;
+                default /* UNSIGNED_INT */:                  vertexIdx = reinterpret_cast<const uint32_t*>(idxBase)[si]; break;
+                }
+                std::memcpy(data.data() + vertexIdx * elemSize, valBase + static_cast<size_t>(si) * elemSize, elemSize);
+            }
+        }
+
+        return (sparseCache[acc_idx] = std::move(data)).data();
     };
     auto acc_count = [&](int acc_idx) -> size_t { return model.accessors[acc_idx].count; };
 
@@ -1255,6 +1318,8 @@ void VKFW::Tools::Loaders::load_texture(Core::ITexture* const texture, const std
     {
 
         std::string fileExtension = fileName.substr(dotPosition + 1);
+        std::transform(fileExtension.begin(), fileExtension.end(), fileExtension.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
 
         if (fileExtension == PNG || fileExtension == JPG)
         {
