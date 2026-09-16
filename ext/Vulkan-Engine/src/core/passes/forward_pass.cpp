@@ -302,7 +302,7 @@ void ForwardPass::setup_shader_passes() {
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/physically_based.glsl");
     PBRPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
     PBRPass->graphicSettings.attributes      = {
-        {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, true}, {UV_ATTRIBUTE, true}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, false}};
+        {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, true}, {UV_ATTRIBUTE, true}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, false}, {STRAIN_ATTRIBUTE, true}};
     PBRPass->graphicSettings.blendAttachments = blendAttachments;
     PBRPass->graphicSettings.dynamicStates    = dynamicStates;
     PBRPass->graphicSettings.samples          = samples;

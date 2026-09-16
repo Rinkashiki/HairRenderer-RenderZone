@@ -9,6 +9,7 @@ layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
 layout(location = 3) in vec3 tangent;
+layout(location = 5) in vec3 strain;
 
 //Output
 layout(location = 0) out vec3 v_pos;
@@ -20,6 +21,8 @@ layout(location = 5) out vec2 v_screenExtent;
 layout(location = 6) out mat3 v_TBN;
 // Pure object-space normal (no model matrix) — anchor for eye.glsl occlusion.
 layout(location = 9) out vec3 v_objNormal;
+// Strain vector
+layout(location = 10) out vec3 v_strain;
 
 //Uniforms
 layout(set = 1, binding = 1) uniform MaterialUniforms {
@@ -92,6 +95,7 @@ void main() {
     v_modelPos = (object.model * vec4(pos, 1.0)).xyz;
     v_modelNormal = normalize(mat3(transpose(inverse(object.model))) * normal);
     v_objNormal = normalize(normal);
+    v_strain      = strain;
 
     v_screenExtent = camera.screenExtent;
 
@@ -126,6 +130,7 @@ layout(location = 4) in vec3 v_modelPos;
 layout(location = 5) in vec2 v_screenExtent;
 layout(location = 6) in mat3 v_TBN;
 layout(location = 9) in vec3 v_objNormal;
+layout(location = 10) in vec3 v_strain;
 
 //Output
 layout(location = 0) out vec4 outColor;

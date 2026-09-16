@@ -207,7 +207,8 @@ typedef enum VertexAttributeType
     NORMAL_ATTRIBUTE   = 1,
     TANGENT_ATTRIBUTE  = 2,
     UV_ATTRIBUTE       = 3,
-    COLOR_ATTRIBUTE    = 4
+    COLOR_ATTRIBUTE    = 4,
+    STRAIN_ATTRIBUTE   = 5
 } VertexAttributeType;
 typedef enum ShadowType
 {
