@@ -56,6 +56,9 @@ Graphics::MaterialUniforms PhysicallyBasedMaterial::get_uniforms() const {
     uniforms.dataSlot11 = Vec4{m_sheenColor.x, m_sheenColor.y, m_sheenColor.z,
                                m_sheenIntensity};
 
+    // slot12 wrinkle/strain parameters (gain, sharpen, blur radius, sharpen radius). 
+    uniforms.dataSlot12 = Vec4{m_wrinkleGain, m_wrinkleSharpen, m_wrinkleBlurRadius, m_wrinkleSharpenRadius};
+
     return uniforms;
 }
 } // namespace Core

@@ -66,6 +66,11 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     // slot11: Jimenez-style Disney sheen (peach fuzz)
     vec3    sheenColor;
     float   sheenIntensity;
+    // slot12: strain params
+    float GAIN;
+    float amount;
+    float kBlur;
+    float kSharp;
 } material;
 
 void main() {
@@ -192,6 +197,11 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     // slot11: Jimenez-style Disney sheen (peach fuzz)
     vec3    sheenColor;
     float   sheenIntensity;
+    // slot12: strain params
+    float GAIN;
+    float amount;
+    float kBlur;
+    float kSharp;
 } material;
 layout(set = 2, binding = 0) uniform sampler2D albedoTex;
 layout(set = 2, binding = 1) uniform sampler2D normalTex;
