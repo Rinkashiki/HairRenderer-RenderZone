@@ -38,7 +38,17 @@ find_package(Threads REQUIRED)
 # 3. Subdirectories & External Engine
 # -----------------------------------------------------------------------------
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
- 
+
+# The standalone headless SLViewer needs a few extra host tools that HairViewer
+# does not: Python 3 + glslc + spirv-opt (to bake shaders into the binary as
+# embedded SPIR-V) and ffmpeg (to encode the exported video). Building only the
+# interactive HairViewer should not require any of them, so the whole SLViewer
+# section below is gated on this option. Turn it OFF to build HairViewer alone:
+#     cmake -DBUILD_SLVIEWER=OFF ..
+option(BUILD_SLVIEWER
+    "Build the standalone headless SLViewer (requires Python 3, glslc, spirv-opt, ffmpeg)"
+    ON)
+
 # The Vulkan-Engine subdirectory likely handles its own Vulkan linking, 
 # but we link explicitly in the app target for safety.
 add_subdirectory(ext/Vulkan-Engine)
@@ -70,6 +80,13 @@ if(MSVC)
 else()
     target_compile_options(HairViewer PRIVATE -Wall -Wextra -O3)
 endif()
+
+# =============================================================================
+# SLViewer (standalone deployment binary) + its host-tool dependencies.
+# Everything from here to the end of the file is skipped when BUILD_SLVIEWER is
+# OFF, so HairViewer builds without Python / glslc / spirv-opt / ffmpeg.
+# =============================================================================
+if(BUILD_SLVIEWER)
 
 # -----------------------------------------------------------------------------
 # 5. SLViewer Target (standalone deployment binary)
@@ -383,3 +400,5 @@ endif()
 # on other machines because that copy looks for ICDs in SDK-specific paths that
 # don't exist, causing vkCreateDevice to fail even when the GPU driver is fine.
 # Any machine capable of running Vulkan already has the system loader installed.
+
+endif() # BUILD_SLVIEWER
