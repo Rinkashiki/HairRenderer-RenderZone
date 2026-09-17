@@ -4,8 +4,59 @@
 #include <engine/tools/renderer_widget.h>
 #include <ImGuizmo.h>
 #include "hair_binding.h"
+#include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <string>
 #include <vector>
 USING_VULKAN_ENGINE_NAMESPACE
+
+// Progress shared between the scene-loader worker and the loading screen
+// drawn on the main thread. Fraction is monotonic; the stage line is whatever
+// the loader is doing right now.
+struct LoadingProgress {
+    void set(float fraction, const std::string& stage) {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        m_fraction = std::max(m_fraction.load(), fraction);
+        m_stage    = stage;
+    }
+    float       fraction() const { return m_fraction.load(); }
+    std::string stage() {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        return m_stage;
+    }
+
+  private:
+    std::atomic<float> m_fraction{0.0f};
+    std::mutex         m_mtx;
+    std::string        m_stage;
+};
+
+// Full-screen loading screen: dark gradient backdrop, title, a rounded
+// progress bar with an eased fill and a moving sheen, and the loader's current
+// stage line. Draws straight to ImGui's background draw list, so the Panel
+// hosting it only needs to exist (it is made invisible). Fonts are optional —
+// null falls back to ImGui's default.
+class LoadingScreenWidget : public Tools::Widget {
+    LoadingProgress* m_progress{nullptr};
+    ImFont*          m_titleFont{nullptr};
+    ImFont*          m_bodyFont{nullptr};
+    std::string      m_subtitle;
+    float            m_shown{0.0f}; // eased fraction actually drawn
+    double           m_lastTime{-1.0};
+
+  protected:
+    void render() override;
+
+  public:
+    LoadingScreenWidget(LoadingProgress* progress, ImFont* titleFont, ImFont* bodyFont, std::string subtitle)
+        : Tools::Widget({0.0f, 0.0f}, {0.0f, 0.0f})
+        , m_progress(progress)
+        , m_titleFont(titleFont)
+        , m_bodyFont(bodyFont)
+        , m_subtitle(std::move(subtitle)) {
+    }
+};
 
 // Bind-mode panel: pick a strand-hair mesh, seat it on the head with transform
 // sliders (live preview), then bind / save / load the surface binding. Operates

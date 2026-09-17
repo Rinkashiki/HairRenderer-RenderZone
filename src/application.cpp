@@ -1,4 +1,5 @@
 #include "application.h"
+#include "app_info.h"
 #include "scene_loader.h"
 #include <engine/engine_config.h>
 #include <atomic>
@@ -8,7 +9,7 @@
 #include <thread>
 
 void HairViewer::init(Systems::RendererSettings settings) {
-    m_window = new WindowGLFW("Hair Viewer", 1024, 1024);
+    m_window = new WindowGLFW(app_info::NAME, 1024, 1024);
 
     m_window->init();
     m_window->set_window_icon(RESOURCES_PATH "textures/icon.png");
@@ -59,17 +60,20 @@ void HairViewer::run(Systems::RendererSettings settings) {
 }
 
 void HairViewer::setup() {
-    // The JSON scene load (parse + GLB geometry + verbatim 8K texture bytes into
-    // RAM) is ~13 s of pure CPU work — long enough that, if run on the main
-    // thread, the window stops answering the compositor's ping and the OS shows
-    // "application not responding" on every launch. It touches no Vulkan/GLFW
-    // (loaders only fill CPU-side caches; GPU images are created lazily at first
-    // render — the neural-hair path already loads off-thread this way), so we run
-    // it on a worker while the main thread keeps pumping window events. See
-    // SCENE.md for the schema.
+    // The JSON scene load (parse + GLB geometry + decoding the 8K maps) is ~5 s
+    // of pure CPU work. It touches no Vulkan/GLFW (loaders only fill CPU-side
+    // caches; GPU images are created lazily at first render — the neural-hair
+    // path already loads off-thread this way), so it runs on a worker. The main
+    // thread meanwhile (1) brings the renderer up — device + every shader
+    // compile, ~2 s that used to sit *after* the load — and then (2) draws the
+    // loading screen until the worker is done. The loader is handed no renderer:
+    // the scene's renderer hooks come back in LoadResult and are applied here,
+    // on the main thread, so the worker never touches pass state while the
+    // renderer is initialising or rendering. See SCENE.md for the schema.
     std::atomic<bool>          done{false};
     std::exception_ptr         loadError;
     scene_loader::LoadResult   result;
+    LoadingProgress            progress;
 
     std::thread loader([&] {
         try {
@@ -78,29 +82,76 @@ void HairViewer::setup() {
                 RESOURCES_PATH,
                 VKFW::get_engine_resources_path(),
                 /*animationOverride*/ "",
-                m_renderer);
+                /*renderer*/ nullptr,
+                [&](float f, const std::string& stage) { progress.set(f, stage); });
         } catch (...) {
             loadError = std::current_exception();
         }
         done.store(true, std::memory_order_release);
     });
 
-    // Keep the window responsive while the scene loads. We deliberately only
-    // poll events here (no render) — the renderer's passes aren't created yet
-    // and the worker is writing renderer/scene state, so touching the renderer
-    // now would race. Polling alone is enough: "not responding" is about the
-    // event loop answering, not about presenting frames.
-    while (!done.load(std::memory_order_acquire)) {
-        m_window->poll_events();
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
-    }
-    loader.join();
+    m_renderer->init();
 
-    if (loadError)
-        std::rethrow_exception(loadError); // surface load failures as before
+    // Loading screen: an empty scene (camera only, so every pass has something
+    // valid to read) drawn through the full pipeline, with the splash widget on
+    // a throwaway GUI overlay. The renderer's ImGui context exists from init()
+    // on; the extra fonts must be registered before the first NewFrame builds
+    // the atlas, and stay available to the real GUI afterwards.
+    ImFont* titleFont = nullptr;
+    ImFont* bodyFont  = nullptr;
+    if (ImGui::GetCurrentContext()) {
+        ImGuiIO& io = ImGui::GetIO();
+        io.Fonts->AddFontDefault();
+        titleFont = io.Fonts->AddFontFromFileTTF(RESOURCES_PATH "fonts/Roboto-Medium.ttf", 46.0f);
+        bodyFont  = io.Fonts->AddFontFromFileTTF(RESOURCES_PATH "fonts/Roboto-Medium.ttf", 17.0f);
+    }
+    const std::string sceneName = std::filesystem::path(SCENE_PATH).stem().string();
+
+    // Deliberately never deleted: ~Scene and ~Object3D both free the children
+    // (double free), and nothing else in the app destroys a Scene either.
+    Scene* splashScene = new Scene(new Camera());
+    {
+        Tools::GUIOverlay splash((float)m_window->get_extent().width, (float)m_window->get_extent().height);
+        auto* panel = new Tools::Panel("##loading", 0.0f, 0.0f, 1.0f, 1.0f,
+                                       (PanelWidgetFlags)(PanelWidgetFlags::NoDecoration | PanelWidgetFlags::NoBackground |
+                                                          PanelWidgetFlags::NoInputs | PanelWidgetFlags::NoSavedSettings));
+        panel->add_child(new LoadingScreenWidget(&progress, titleFont, bodyFont, "loading " + sceneName));
+        splash.add_panel(panel);
+
+        auto splashFrame = [&] {
+            m_window->poll_events();
+            splash.set_extent({(float)m_window->get_extent().width, (float)m_window->get_extent().height});
+            splash.render();
+            m_renderer->render(splashScene);
+        };
+        while (!done.load(std::memory_order_acquire))
+            splashFrame();
+        loader.join();
+
+        if (loadError)
+            std::rethrow_exception(loadError); // surface load failures as before
+
+        // The first real frame blocks on the GPU upload (geometry + ~0.5 GB of
+        // textures); say so before it does.
+        progress.set(1.0f, "Uploading to GPU");
+        splashFrame();
+    }
+    // The splash frames gave the empty scene a (blank) TLAS; drop it now or the
+    // validation layer flags it as leaked at vkDestroyDevice. Nothing else in
+    // it ever reached the GPU. The Scene object itself is deliberately kept.
+    m_renderer->get_device()->wait();
+    Core::ResourceManager::clean_scene(splashScene);
 
     m_scene  = result.scene;
     camera   = result.camera;
+
+    if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(m_renderer)) {
+        if (!result.sssScatterLut.empty())
+            fwd->load_sss_scatter_lut(result.sssScatterLut);
+        if (result.dof.set)
+            fwd->configure_dof(result.dof.enabled, result.dof.focusDistance, result.dof.focusRange,
+                               result.dof.nearBlurScale, result.dof.farBlurScale, result.dof.maxCoC);
+    }
 
     m_controller = new Tools::Controller(camera, m_window, ControllerMovementType::ORBITAL);
 

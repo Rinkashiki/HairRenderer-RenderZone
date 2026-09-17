@@ -458,6 +458,54 @@ Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. 
 
 > **Note:** the old `resources/scenes/default.json` (Alex + `haircard`/OBJ hair) was **removed** — it segfaulted on the haircard hair path. `maria.json` is the default now.
 
+### App display name (single source of truth)
+
+The interactive app's user-facing name is spelled **once**: `APP_DISPLAY_NAME`
+in the root `CMakeLists.txt` (a cache variable, default `"Hair Viewer"`). It
+reaches the code as a compile definition and is exposed by `src/app_info.h`
+(`app_info::NAME`, `app_info::name_upper()`), which is what the window title
+and the loading screen read. Never write the name as a string literal in `src/`;
+changing the CMake variable (and reconfiguring) renames every mention. Target /
+binary names (`HairViewer`, `SLViewer`) are deliberately separate.
+
+### HairViewer startup + loading screen
+
+`HairViewer::setup()` (`src/application.cpp`) boots in three overlapped steps:
+the scene-loader thread starts first; the main thread then calls
+`m_renderer->init()` (device + every Shaderc compile — ~2 s) while the worker
+decodes; then it draws the **loading screen** until the worker joins. First real
+frame at ~6 s on the character scenes (was ~8.5 s of black window when the
+renderer initialised lazily inside frame 0, after the load).
+
+- **`LoadingScreenWidget` / `LoadingProgress`** (`src/gui.{h,cpp}`): drawn on
+  ImGui's background draw list through a throwaway `GUIOverlay`, while the
+  renderer draws an empty camera-only `Scene` through the full pipeline (every
+  pass tolerates zero meshes/lights). Fonts: `resources/fonts/Roboto-Medium.ttf`
+  (the TTF ImGui ships) is registered *after* `init()` and *before* the first
+  `NewFrame` (which builds the atlas); `AddFontDefault()` is called first so the
+  regular GUI keeps its font. **ImGui colours are linearised** (`pow 2.2`) in the
+  widget — the swapchain is sRGB and ImGui writes vertex colours straight into
+  it, so anything authored in sRGB presents washed out otherwise (this is also
+  why tiny alphas on the glow read ~3× stronger than the numbers suggest).
+- **Progress source:** `scene_loader::load_scene_json(..., ProgressFn)`. Each
+  top-level mesh owns a slice of `[0,1]` weighted by its file size on disk;
+  inside a mesh the file load is 30 % and each decoded GLB image advances the
+  rest (the 8K decodes are the bulk of the load). Stage labels are coarse
+  groups (`Loading models` / `Decoding textures`), and the app sets
+  `Uploading to GPU` for the final splash frame before the first real frame
+  blocks on the ~0.5 GB texture upload (that part isn't chunkable).
+- **Thread rule:** the worker gets `renderer = nullptr`. The scene's
+  `renderer.sss_scatter_lut` / `renderer.dof` come back in
+  `LoadResult::{sssScatterLut,dof}` and are applied on the main thread after the
+  join — they touch pass state, and the renderer is initialising/rendering while
+  the worker runs. SLViewer still passes its renderer (synchronous load).
+- **Splash scene lifetime:** never `delete`d — `~Scene` and `~Object3D` both
+  free the children (double free; nothing in the app destroys a Scene). Its GPU
+  side *is* released (`ResourceManager::clean_scene` after a `device->wait()`),
+  because the splash frames give it an empty TLAS that the validation layer
+  otherwise reports as leaked at `vkDestroyDevice`. `~Panel` had the same
+  double-delete against `~Widget` and was fixed (`widgets.h`).
+
 ### Scene Selection
 
 Scenes are JSON-driven (`resources/scenes/*.json` — see @SCENE.md).

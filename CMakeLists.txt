@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.16)
 
 project(HairRenderer VERSION 1.0.0)
 
+# Display name of the interactive app — the single place it is spelled. Reaches
+# the code as the APP_DISPLAY_NAME macro (see src/app_info.h) and drives the
+# window title, the loading screen, and anything else that prints the name.
+# Target / binary names (HairViewer, SLViewer) are separate and unchanged.
+set(APP_DISPLAY_NAME "Hair Viewer" CACHE STRING "User-facing name of the interactive viewer")
+
 # -----------------------------------------------------------------------------
 # 1. Standard C++ Setup
 # -----------------------------------------------------------------------------
@@ -73,6 +79,7 @@ endif()
 
 target_compile_definitions(HairViewer PUBLIC
     RESOURCES_PATH="${CMAKE_CURRENT_SOURCE_DIR}/resources/"
+    APP_DISPLAY_NAME="${APP_DISPLAY_NAME}"
 )
 
 if(MSVC)

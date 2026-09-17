@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -19,12 +20,52 @@ using json = nlohmann::json;
 
 namespace scene_loader {
 
+// Progress reporting for a loading screen. Each top-level mesh owns a slice
+// [base, base+span] of the unit interval, sized by its file size on disk (the
+// 8K-texture GLBs dwarf the .hair grooms); child meshes ride on their parent's
+// slice. Reports are clamped monotonic so recursion can't make the bar back up.
+struct ProgressCtx {
+    const ProgressFn* fn   = nullptr;
+    float             base = 0.0f;
+    float             span = 1.0f;
+    float             last = 0.0f;
+    std::string       stage;
+
+    // Stage lines are coarse groups ("Loading models", "Decoding textures"),
+    // not file names — one label per kind of work, so the text doesn't flicker.
+    void report(float local, const std::string& newStage) {
+        stage = newStage;
+        report(local);
+    }
+    void report(float local) {
+        if (!fn || !*fn)
+            return;
+        local = std::min(1.0f, std::max(0.0f, local));
+        last  = std::max(last, std::min(1.0f, base + span * local));
+        (*fn)(last, stage);
+    }
+};
+
 // Texture-resolution context for a single mesh: the GLB's embedded images (baked
 // self-contained materials) plus a per-mesh cache so a `$GLB[...]` reference shared
 // by several material slots decodes its image only once.
 struct GLBTexCtx {
     const Tools::Loaders::GLBMaterialAux*           aux = nullptr;
     std::unordered_map<std::string, Core::Texture*> cache;
+
+    // Decoding the embedded 8K maps is the bulk of a character's load time, so
+    // it drives the progress bar: file load = first 30 % of the mesh's slice,
+    // each newly decoded image advances the remaining 70 %.
+    ProgressCtx* progress = nullptr;
+    size_t       decoded  = 0;
+
+    void report_decode() {
+        if (!progress)
+            return;
+        const size_t total = aux ? std::max<size_t>(1, aux->images.size()) : 1;
+        progress->report(0.3f + 0.7f * (float)decoded / (float)total, "Decoding textures");
+        ++decoded;
+    }
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -221,6 +262,7 @@ static Core::Texture* resolve_texture(const json&        jvalue,
             return nullptr;
         }
 
+        glbTextures.report_decode();
         auto* tex = new Core::Texture();
         Tools::Loaders::load_PNG_from_memory(tex, img->encoded.data(), img->encoded.size(), fmt, channel);
         glbTextures.cache[key] = tex;
@@ -244,6 +286,7 @@ static Core::Texture* resolve_texture(const json&        jvalue,
     if (it != glbTextures.cache.end())
         return it->second;
 
+    glbTextures.report_decode();
     auto* tex = new Core::Texture();
     Tools::Loaders::load_texture(tex, resourcesPath + ref, fmt);
     glbTextures.cache[fileKey] = tex;
@@ -760,7 +803,8 @@ static Core::Mesh* build_mesh(const json&                     jm,
                               const std::string&              resourcesPath,
                               std::vector<PendingAttachment>& pending,
                               std::vector<PendingBind>&       pendingBinds,
-                              MaterialLibrary&                lib) {
+                              MaterialLibrary&                lib,
+                              ProgressCtx&                    progress) {
     require(jm, "type", "mesh");
     require(jm, "file", "mesh");
 
@@ -768,9 +812,12 @@ static Core::Mesh* build_mesh(const json&                     jm,
     const std::string file     = jm.at("file").get<std::string>();
     const std::string fullPath = resourcesPath + file;
 
+    progress.report(0.0f, "Loading models");
+
     auto* mesh = new Core::Mesh();
     Tools::Loaders::GLBMaterialAux glbAux; // embedded images + baked material blocks (glb only)
     GLBTexCtx                      glbCtx; // texture resolver for this mesh's materials
+    glbCtx.progress = &progress;
 
     if (type == "glb") {
         int meshIndex = jm.value("glb_mesh_index", -1);
@@ -809,6 +856,7 @@ static Core::Mesh* build_mesh(const json&                     jm,
     for (const auto& s : glbAux.geometryMaterialJson)
         if (!s.empty()) { hasBaked = true; break; }
 
+    progress.report(0.3f);
     if (type == "glb" && hasBaked) {
         assemble_baked_materials(mesh, jm, resourcesPath, glbCtx, glbAux, lib);
     } else {
@@ -858,7 +906,7 @@ static Core::Mesh* build_mesh(const json&                     jm,
     // Child meshes — transforms are inherited from this parent.
     if (jm.contains("children")) {
         for (const auto& jc : jm["children"])
-            mesh->add_child(build_mesh(jc, resourcesPath, pending, pendingBinds, lib));
+            mesh->add_child(build_mesh(jc, resourcesPath, pending, pendingBinds, lib, progress));
     }
 
     // Joint attachment — resolved after every top-level mesh is built so the
@@ -925,7 +973,12 @@ LoadResult load_scene_json(const std::string&     scenePath,
                            const std::string&     resourcesPath,
                            const std::string&     engineResourcesPath,
                            const std::string&     animationOverride,
-                           Systems::BaseRenderer* renderer) {
+                           Systems::BaseRenderer* renderer,
+                           const ProgressFn&      progress) {
+    ProgressCtx prog;
+    prog.fn = &progress;
+    prog.report(0.0f, "Reading scene");
+
     std::ifstream file(scenePath);
     if (!file.is_open())
         throw std::runtime_error("scene_loader: cannot open " + scenePath);
@@ -986,8 +1039,29 @@ LoadResult load_scene_json(const std::string&     scenePath,
     std::vector<PendingBind>       pendingBinds;
 
     if (root.contains("meshes")) {
+        // Progress slices proportional to file size (a 380 MB baked GLB vs a
+        // few-MB groom) so the bar tracks wall time rather than mesh count.
+        std::vector<double> weights;
+        double              totalWeight = 0.0;
         for (const auto& jm : root["meshes"]) {
-            Core::Mesh* mesh = build_mesh(jm, resourcesPath, pendingAttachments, pendingBinds, materialLib);
+            double w = 1.0;
+            if (jm.is_object() && jm.contains("file")) {
+                std::error_code ec;
+                const auto sz = std::filesystem::file_size(resourcesPath + jm["file"].get<std::string>(), ec);
+                if (!ec && sz > 0)
+                    w = (double)sz;
+            }
+            weights.push_back(w);
+            totalWeight += w;
+        }
+
+        size_t mi = 0;
+        for (const auto& jm : root["meshes"]) {
+            prog.span = (float)(weights[mi] / totalWeight);
+            ++mi;
+            Core::Mesh* mesh = build_mesh(jm, resourcesPath, pendingAttachments, pendingBinds, materialLib, prog);
+            prog.report(1.0f);
+            prog.base += prog.span;
             result.scene->add(mesh);
 
             if (jm.contains("animation") && firstWithAnimField == nullptr) {
@@ -1086,25 +1160,32 @@ LoadResult load_scene_json(const std::string&     scenePath,
         const auto& jr = root["renderer"];
         if (jr.contains("clear_color"))
             result.clearColor = to_vec4(jr["clear_color"], result.clearColor);
-        if (renderer && jr.contains("sss_scatter_lut")) {
-            if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(renderer))
-                fwd->load_sss_scatter_lut(resourcesPath + jr["sss_scatter_lut"].get<std::string>());
+        if (jr.contains("sss_scatter_lut"))
+            result.sssScatterLut = resourcesPath + jr["sss_scatter_lut"].get<std::string>();
+        // Depth of Field — artistic focus model (see DepthOfFieldPass).
+        if (jr.contains("dof")) {
+            const auto& jd    = jr["dof"];
+            result.dof.set    = true;
+            result.dof.enabled       = jd.value("enabled", true);
+            result.dof.focusDistance = jd.value("focus_distance", 3.0f);
+            result.dof.focusRange    = jd.value("focus_range", 0.5f);
+            result.dof.nearBlurScale = jd.value("near_blur_scale", 6.0f);
+            result.dof.farBlurScale  = jd.value("far_blur_scale", 6.0f);
+            result.dof.maxCoC        = jd.value("max_blur", 16.0f);
+            warn_unknown(jd,
+                         {"enabled", "focus_distance", "focus_range", "near_blur_scale", "far_blur_scale", "max_blur"},
+                         "renderer.dof");
         }
-        // Depth of Field — artistic focus model (see DepthOfFieldPass). Deferred
-        // through configure_dof so it survives being parsed before passes exist.
-        if (renderer && jr.contains("dof")) {
-            if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(renderer)) {
-                const auto& jd = jr["dof"];
-                fwd->configure_dof(jd.value("enabled", true),
-                                   jd.value("focus_distance", 3.0f),
-                                   jd.value("focus_range", 0.5f),
-                                   jd.value("near_blur_scale", 6.0f),
-                                   jd.value("far_blur_scale", 6.0f),
-                                   jd.value("max_blur", 16.0f));
-                warn_unknown(jd,
-                             {"enabled", "focus_distance", "focus_range", "near_blur_scale", "far_blur_scale", "max_blur"},
-                             "renderer.dof");
-            }
+        // Synchronous callers (SLViewer) get the hooks applied right here; a
+        // caller loading off-thread leaves `renderer` null and applies them from
+        // LoadResult on the main thread (configure_dof / load_sss_scatter_lut
+        // defer themselves if the passes don't exist yet).
+        if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(renderer)) {
+            if (!result.sssScatterLut.empty())
+                fwd->load_sss_scatter_lut(result.sssScatterLut);
+            if (result.dof.set)
+                fwd->configure_dof(result.dof.enabled, result.dof.focusDistance, result.dof.focusRange,
+                                   result.dof.nearBlurScale, result.dof.farBlurScale, result.dof.maxCoC);
         }
         // 'msaa' is read separately by peek_msaa() before the renderer exists;
         // tolerate it here so warn_unknown doesn't flag a legitimate field.

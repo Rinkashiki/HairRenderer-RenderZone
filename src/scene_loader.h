@@ -4,6 +4,7 @@
 #include <engine/core.h>
 #include <engine/systems.h>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,13 +22,37 @@ struct HairBindRequest {
     std::string bindingPath; // absolute sidecar path, empty if none declared
 };
 
+// renderer.dof block, verbatim (see SCENE.md). Only meaningful when `set`.
+struct DoFSettings {
+    bool  set           = false;
+    bool  enabled       = true;
+    float focusDistance = 3.0f;
+    float focusRange    = 0.5f;
+    float nearBlurScale = 6.0f;
+    float farBlurScale  = 6.0f;
+    float maxCoC        = 16.0f;
+};
+
 struct LoadResult {
     Core::Scene*  scene           = nullptr;
     Core::Camera* camera          = nullptr;
     Core::Mesh*   primaryAnimated = nullptr; // first mesh that received an animation
     Vec4          clearColor      = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
     std::vector<HairBindRequest> hairBindings; // meshes declaring bind_to
+
+    // The scene's renderer hooks, recorded so a caller that loads on a worker
+    // thread (HairViewer) can apply them on the main thread once the load has
+    // joined — both touch pass state, so they must not run while the renderer
+    // is being initialised or rendering. Also applied directly when a
+    // `renderer` is passed to load_scene_json (SLViewer's synchronous path).
+    std::string sssScatterLut; // absolute path, empty if not declared
+    DoFSettings dof;
 };
+
+// Optional progress sink for load_scene_json. `fraction` is monotonic in [0,1];
+// `stage` is a short human-readable line ("Decoding T-Alex-BaseColor"). Called
+// from whatever thread runs the load, so the receiver must be thread-safe.
+using ProgressFn = std::function<void(float fraction, const std::string& stage)>;
 
 // MSAA is baked into renderpasses/pipelines at create_passes(), so it has to be
 // known BEFORE the renderer is constructed. This light-weight peek opens the
@@ -46,7 +71,10 @@ std::optional<MSAASamples> peek_msaa(const std::string& scenePath);
                         declares one. If no mesh declares an animation, the first
                         mesh with skinning data receives it.
     renderer            Optional. When non-null, the scene's renderer.sss_scatter_lut
-                        is applied via the ForwardRenderer cast.
+                        and renderer.dof are applied via the ForwardRenderer cast
+                        (they are always recorded in LoadResult regardless).
+    progress            Optional. Receives coarse progress (per mesh file, per
+                        decoded GLB image) for a loading screen.
 
   Throws std::runtime_error on missing required fields or file-open failure.
   Tolerates unknown keys (logs a warning and ignores them).
@@ -55,7 +83,8 @@ LoadResult load_scene_json(const std::string&     scenePath,
                            const std::string&     resourcesPath,
                            const std::string&     engineResourcesPath,
                            const std::string&     animationOverride = "",
-                           Systems::BaseRenderer* renderer          = nullptr);
+                           Systems::BaseRenderer* renderer          = nullptr,
+                           const ProgressFn&      progress          = nullptr);
 
 } // namespace scene_loader
 

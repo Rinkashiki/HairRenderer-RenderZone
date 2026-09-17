@@ -128,6 +128,7 @@ class Panel : public Widget
     ~Panel() {
         for (auto widget : m_children)
             delete widget;
+        m_children.clear(); // ~Widget walks the list too
     }
 
     inline Vec2 get_padding() const {

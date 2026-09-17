@@ -79,7 +79,8 @@
         0.0,
         180.0,
         0.0
-      ]
+      ],
+	  "animation": "animations/face_anim.json"
     },
     {
       "name": "Hair",

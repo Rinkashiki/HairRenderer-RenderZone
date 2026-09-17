@@ -420,6 +420,57 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### HairViewer loading screen + overlapped startup (2026-09-17)
+
+**Goal (user):** a nice-looking loading screen with a filling progress bar when
+HairViewer launches, instead of ~8.5 s of black window.
+
+**Why it was black:** the engine's ImGui context and swapchain only exist after
+`BaseRenderer::init()`, which ran lazily inside the *first* `render()` — after
+the 5 s scene load. Nothing could be drawn during the load.
+
+**Shipped:**
+- `HairViewer::setup()` reordered: the loader thread starts first, then the main
+  thread calls `m_renderer->init()` (device + every shader compile, ~2 s that
+  used to sit *after* the load), then draws the splash until the worker joins.
+  First real frame lands at ~6 s instead of ~8.5 s.
+- `LoadingScreenWidget` + `LoadingProgress` (`src/gui.{h,cpp}`): fullscreen
+  gradient, soft glow, "HAIR VIEWER" in Roboto (`resources/fonts/`, the TTF
+  ImGui ships, Apache-2.0), eased rounded bar with a sheen sweep, grouped stage
+  line ("Loading models" / "Decoding textures" / "Uploading to GPU") + percent.
+  Drawn on ImGui's background draw list through a throwaway `GUIOverlay` while
+  the renderer draws an empty camera-only `Scene`.
+- App name de-hardcoded: `APP_DISPLAY_NAME` (root CMake cache var) →
+  `src/app_info.h` (`app_info::NAME` / `name_upper()`) drives the window title
+  and the splash title. Binary/target names untouched by design.
+- `scene_loader::load_scene_json` gained an optional `ProgressFn`; slices are
+  weighted by file size on disk and advance per decoded GLB image.
+- Thread-safety: the loader no longer touches the renderer when run
+  off-thread — `renderer.sss_scatter_lut` / `renderer.dof` are recorded in
+  `LoadResult` (`sssScatterLut`, `dof`) and applied on the main thread.
+  SLViewer's synchronous path (renderer passed) is unchanged.
+
+**Issues found + solutions:**
+- *ImGui colours double-gamma'd.* The swapchain is sRGB and ImGui writes vertex
+  colours straight into it, so a `#0b0e13` backdrop presented as `#3a4250`. The
+  widget linearises its palette (`pow 2.2`) before handing it to ImGui.
+- *`~Panel` double-deleted its children* (`~Widget` walks the same list). Fixed
+  in `widgets.h` (`m_children.clear()` after deleting) — previously latent
+  because no overlay was ever destroyed.
+- *`~Scene` / `~Object3D` both free the children.* Not fixed (nothing in the
+  app destroys a Scene); the splash `Scene` is deliberately leaked, but its
+  GPU side is released via `ResourceManager::clean_scene` — the splash frames
+  give it an empty TLAS that the validation layer otherwise reports as leaked at
+  `vkDestroyDevice`.
+
+**Verified:** Debug `HairViewer --frames 10 --log-level warn` → clean trace
+(only the two pre-existing loader-manifest warnings). Release run captured via
+X11 during load: splash appears at ~2 s, bar tracks decode progress, real scene
++ GUI (default font intact) at ~6 s. `SLViewer` headless render on `maria`
+still loads and applies the SSS LUT / DoF hooks.
+
+---
+
 ### Bound-hair hard lighting seam under root-motion animation (2026-07-27)
 
 **Symptom (user):** captured from SLViewer with `nadia.json` + `dance_anim.json`
