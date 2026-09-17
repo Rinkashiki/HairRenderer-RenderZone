@@ -1,8 +1,8 @@
 {
   "material": {
     "type": "pbr",
-    "albedo_texture": "textures/javi/T-Javi-BaseColor.PNG",
-    "normal_texture": "textures/javi/T-Javi-Normal.PNG",
+    "albedo_texture": "textures/javi/T-Javi-BaseColor.png",
+    "normal_texture": "textures/javi/T-Javi-Normal.png",
     "bent_normal_texture": "textures/javi/T-Javi-BentNormal.PNG",
     "occlusion_texture": "textures/javi/T-Javi-ORM.png:r",
     "roughness_texture": "textures/javi/T-Javi-ORM.png:g",

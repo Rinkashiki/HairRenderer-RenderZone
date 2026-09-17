@@ -400,8 +400,13 @@ void main() {
 
             float shadowFactor = 1.0;
             if(int(object.otherParams.y) == 1 && scene.lights[i].shadowCast == 1) {
-                if(scene.lights[i].shadowType == 0) //Classic
-                    shadowFactor = computeShadow(shadowMap, scene.lights[i], i, v_modelPos);
+                if(scene.lights[i].shadowType == 0) { //Classic (PCF + receiver-side biasing)
+                    // Light direction in WORLD space (uniforms are view space).
+                    vec3 Lw = scene.lights[i].type != DIRECTIONAL_LIGHT
+                            ? normalize((camera.invView * vec4(scene.lights[i].position.xyz, 1.0)).xyz - v_modelPos)
+                            : normalize(mat3(camera.invView) * scene.lights[i].position.xyz);
+                    shadowFactor = computeShadow(shadowMap, scene.lights[i], i, v_modelPos, normalize(v_modelNormal), Lw);
+                }
                 if(scene.lights[i].shadowType == 1) //VSM
                     shadowFactor = computeVarianceShadow(shadowMap, scene.lights[i], i, v_modelPos);
                 if(scene.lights[i].shadowType == 2) //Raytraced

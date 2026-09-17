@@ -267,6 +267,42 @@ silently rejected). Both in `ext/Vulkan-Engine/src/tools/loaders.cpp`.
 
 **Status:** all four characters converted (2026-09-16); hair sidecars for `javi`,
 `maria`, `nadia` (and alex brows/lashes) re-bound in the GUI afterwards.
+Teeth re-seated in all four (2026-09-17, Blender re-export →
+same rig+bake pipeline; face topology unchanged so no re-bind was needed). A
+re-export of an already-rigged GLB goes through the script unchanged — it
+re-skins the mouth meshes by name and strips Blender's re-embedded images.
+
+**LFS gotcha when re-baking.** `.gitattributes` matches `*.png` *and* `*.PNG`
+(the uppercase rule was added 2026-09-17; before it, the `*BentNormal.PNG` maps
+were committed as raw 133-byte pointer blobs). If a recipe texture is an
+un-fetched LFS pointer the baker embeds those 133 bytes **silently** — the only
+symptom is a GLB ~65 MB smaller than expected. Check with `git lfs ls-files`
+(`-` = not fetched) before baking; the previous baked GLB in `.git/lfs/objects/`
+holds every map verbatim, so a missing one can be recovered from there and
+verified against the pointer's sha256.
+
+### Shadow-map biasing (classic PCF path)
+
+Scene lights default to `BASIC_SHADOW` (nothing calls `set_shadow_type`), so the
+forward path samples the `SHADOW_PASS` output as a plain 3×3 PCF map — the VSM
+moments it writes are only consumed by the hair shaders. Two things decide whether
+close contact shadows (teeth behind lips, ~1 cm) survive:
+
+- **`shadow_near`** — the constant `shadow_bias` is in NDC depth, and perspective
+  depth precision at the receiver is `near / dist²`. The character scenes had
+  `0.1` with the key ~12 units away, which turned `shadow_bias: 0.0002` into a
+  ~0.27-unit (2.7 cm at scale 10) dead zone behind every occluder. They now use
+  `shadow_near: 1.0` (10× finer). Moving the teeth back to escape the dead zone was
+  the wrong knob — fixed 2026-09-17.
+- **Receiver-side biasing** — with the finer map the 3×3 kernel exposed slope
+  acne (per-triangle uniform darkening on surfaces tilted from the light: the
+  taps one texel over sit closer to the light by `texel·tanθ`). `computeShadow`
+  now has a 6-arg overload (`shadow_mapping.glsl`) that offsets the receiver in
+  **world space** along the normal (`texel·reach·sinθ`) and toward the light
+  (`texel·reach·tanθ`, clamped), with the texel footprint derived from
+  `light.viewProj` and the map size, so it scales with distance/fov/resolution.
+  `physically_based.glsl` calls it with the world normal and a world-space `L`
+  (via `camera.invView`); `hair_card`/`composition` still use the 4-arg form.
 
 ### Eyelash Shading Models (under evaluation)
 

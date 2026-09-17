@@ -1,15 +1,15 @@
 {
   "material": {
     "type": "pbr",
-    "albedo_texture": "textures/nadia/T-Nadia-BaseColor.PNG",
-    "normal_texture": "textures/nadia/T-Nadia-Normal.PNG",
+    "albedo_texture": "textures/nadia/T-Nadia-BaseColor.png",
+    "normal_texture": "textures/nadia/T-Nadia-Normal.png",
     "bent_normal_texture": "textures/nadia/T-Nadia-BentNormal.PNG",
     "occlusion_texture": "textures/nadia/T-Nadia-ORM.png:r",
     "roughness_texture": "textures/nadia/T-Nadia-ORM.png:g",
     "metallic_texture": "textures/nadia/T-Nadia-ORM.png:b",
     "curvature_texture": "textures/nadia/T-Nadia-CS.png:r",
     "scattering_texture": "textures/nadia/T-Nadia-CS.png:g",
-    "clothes_mask_texture": "textures/nadia/T-Nadia-ClothesMask.PNG",
+    "clothes_mask_texture": "textures/nadia/T-Nadia-ClothesMask.png",
     "eye_mask_texture": "textures/nadia/T-Nadia-EyeMask.png",
     "detail_normal_texture": "textures/skin/normal_detail.png",
     "detail_cavity_texture": "textures/skin/cavity_detail.png",

@@ -94,8 +94,8 @@ All fields optional. `fov` is vertical field-of-view in degrees.
 | `intensity` | float | engine default | |
 | `cast_shadows` | bool | `true` | |
 | `shadow_fov` | float | engine default | Degrees. |
-| `shadow_bias` | float | engine default | |
-| `shadow_near` | float | engine default | |
+| `shadow_bias` | float | engine default (`0.005`) | Constant depth bias in **NDC depth units**, so its world-space reach depends on `shadow_near` (see below). The PBR shader adds a normal-offset + slope-scaled bias on top (`computeShadow` 6-arg overload in `shadow_mapping.glsl`), so this can stay small (`0.0002` in the character scenes). |
+| `shadow_near` | float | engine default (`0.5`) | **Keep this as large as the scene allows.** Perspective depth precision at the receiver goes as `near / dist²`, so with the key ~12 units away, `0.1` → `1.0` makes the map 10× finer and shrinks the constant bias's dead zone from ~0.27 to ~0.03 world units — the difference between teeth receiving the lips' shadow or not. Nothing may sit closer to the light than this. |
 | `shadow_far` | float | engine default | |
 | `dummy_mesh` | string | (none) | Optional marker mesh from the **engine** resources (e.g. `"sphere.obj"`). Loaded as a child of the light with an `UnlitMaterial` and `cast_shadows(false)` — matches the existing light-marker pattern. |
 | `dummy_visible` | bool | `true` | Initial active state of the `dummy_mesh` orb. Set to `false` to hide it on load; the GUI checkbox still works to toggle it back on. Ignored when `dummy_mesh` is absent. |
