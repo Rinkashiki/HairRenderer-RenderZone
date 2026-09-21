@@ -9,6 +9,7 @@ layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
 layout(location = 3) in vec3 tangent;
+layout(location = 5) in vec3 strain;
 
 //Output
 layout(location = 0) out vec3 v_pos;
@@ -20,6 +21,8 @@ layout(location = 5) out vec2 v_screenExtent;
 layout(location = 6) out mat3 v_TBN;
 // Pure object-space normal (no model matrix) — anchor for eye.glsl occlusion.
 layout(location = 9) out vec3 v_objNormal;
+// Strain vector
+layout(location = 10) out vec3 v_strain;
 
 //Uniforms
 layout(set = 1, binding = 1) uniform MaterialUniforms {
@@ -63,6 +66,11 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     // slot11: Jimenez-style Disney sheen (peach fuzz)
     vec3    sheenColor;
     float   sheenIntensity;
+    // slot12: strain params
+    float GAIN;
+    float amount;
+    float kBlur;
+    float kSharp;
 } material;
 
 void main() {
@@ -92,6 +100,7 @@ void main() {
     v_modelPos = (object.model * vec4(pos, 1.0)).xyz;
     v_modelNormal = normalize(mat3(transpose(inverse(object.model))) * normal);
     v_objNormal = normalize(normal);
+    v_strain      = strain;
 
     v_screenExtent = camera.screenExtent;
 
@@ -126,6 +135,7 @@ layout(location = 4) in vec3 v_modelPos;
 layout(location = 5) in vec2 v_screenExtent;
 layout(location = 6) in mat3 v_TBN;
 layout(location = 9) in vec3 v_objNormal;
+layout(location = 10) in vec3 v_strain;
 
 //Output
 layout(location = 0) out vec4 outColor;
@@ -187,6 +197,11 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     // slot11: Jimenez-style Disney sheen (peach fuzz)
     vec3    sheenColor;
     float   sheenIntensity;
+    // slot12: strain params
+    float GAIN;
+    float amount;
+    float kBlur;
+    float kSharp;
 } material;
 layout(set = 2, binding = 0) uniform sampler2D albedoTex;
 layout(set = 2, binding = 1) uniform sampler2D normalTex;
@@ -231,6 +246,9 @@ const float backRadiancePower = 5.0;
 const float backRadianceScale = 2.0;
 const float ambient = 0.05;
 
+// Blur weights
+const float w[5] = float[](0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
+
 // Penner-style pre-integrated skin diffuse (analytical Brisebois-Hoffman variant).
 // curvature in [0,1]: 0 = flat surface (Lambert), 1 = highly curved (max wraparound).
 // Returns per-channel wrapped NdotL response; red wraps farthest (longest mean free
@@ -243,6 +261,80 @@ vec3 preIntegratedSkinDiffuse(float NdotL, float curvature) {
     wrapped = max(wrapped, vec3(0.0));
     // energy normalize so a curvature=0, NdotL=1 surface stays at 1.0
     return wrapped / (vec3(1.0) + 0.5 * w);
+}
+
+vec3 modifyNormalTex(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stretchDir,float wrinkleFactor, float smoothFactor, float compressionScale, float stretchScale, float strength) 
+{
+    vec3 base = texture(tex, dUV).rgb * 2.0 - 1.0;
+
+    // Directional BLUR (Stretching)
+    float span = smoothFactor * material.kBlur; 
+    vec3 dN_blur = vec3(0.0);
+    for (int i = 0; i < 5; ++i)
+    {
+        vec2 offset = stretchDir * (float(i - 2) * span);
+        dN_blur += (texture(tex, dUV + offset).rgb * 2.0 - 1.0) * w[i];
+    }
+
+    // Directional SHARPEN (Compression / Wrinkles)
+    float cspan = wrinkleFactor * material.kSharp; 
+    vec3 blurC = vec3(0.0);
+    for (int i = 0; i < 5; ++i)
+    {
+        vec2 offset = compressionDir * (float(i - 2) * cspan);
+        blurC += (texture(tex, dUV + offset).rgb * 2.0 - 1.0) * w[i];
+    }
+    vec3 sharp = base + material.amount * (base - blurC); 
+
+    // Smooth blending based on strain factors
+    vec3 result = base;
+    result = mix(result, dN_blur, smoothFactor);
+    result = mix(result, sharp, wrinkleFactor);
+
+    // Anisotropic scaling based on the deformation tensor
+    vec2 g = result.xy * strength;
+    float gc = dot(g, compressionDir) * compressionScale;
+    float gs = dot(g, stretchDir) * stretchScale;
+    result.xy = gc * compressionDir + gs * stretchDir;
+
+    return result;
+}
+
+vec3 modifyNormalTexLod(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stretchDir, float wrinkleFactor, float smoothFactor, float compressionScale, float stretchScale, float strength, float lod) 
+{
+    vec3 base = textureLod(tex, dUV, lod).rgb * 2.0 - 1.0;
+
+    // Directional BLUR (Stretching)
+    float span = smoothFactor * material.kBlur; 
+    vec3 dN_blur = vec3(0.0);
+    for (int i = 0; i < 5; ++i)
+    {
+        vec2 offset = stretchDir * (float(i - 2) * span);
+        dN_blur += (textureLod(tex, dUV + offset, lod).rgb * 2.0 - 1.0) * w[i];
+    }
+
+    // Directional SHARPEN (Compression / Wrinkles)
+    float cspan = wrinkleFactor * material.kSharp; 
+    vec3 blurC = vec3(0.0);
+    for (int i = 0; i < 5; ++i)
+    {
+        vec2 offset = compressionDir * (float(i - 2) * cspan);
+        blurC += (textureLod(tex, dUV + offset, lod).rgb * 2.0 - 1.0) * w[i];
+    }
+    vec3 sharp = base + material.amount * (base - blurC); 
+
+    // Smooth blending based on strain factors
+    vec3 result = base;
+    result = mix(result, dN_blur, smoothFactor);
+    result = mix(result, sharp, wrinkleFactor);
+
+    // Anisotropic scaling based on the deformation tensor
+    vec2 g = result.xy * strength;
+    float gc = dot(g, compressionDir) * compressionScale;
+    float gs = dot(g, stretchDir) * stretchScale;
+    result.xy = gc * compressionDir + gs * stretchDir;
+
+    return result;
 }
 
 
@@ -264,6 +356,28 @@ void setupBRDFProperties(){
     brdf.albedo = material.hasAlbdoTexture ? mix(material.albedo.rgb, texture(albedoTex, v_uv).rgb, material.albedoWeight) : material.albedo.rgb;
     brdf.opacity =  material.hasAlbdoTexture ?  mix(material.opacity, texture(albedoTex, v_uv).a, material.opacityWeight) :material.opacity;
 
+    // Dynamic strain information
+    float Cxx = v_strain.x;
+    float Cyy = v_strain.y;
+    float Cxy = v_strain.z;
+
+    float tr = 0.5 * (Cxx + Cyy);
+    float d  = sqrt(max(0.0, 0.25 * (Cxx - Cyy) * (Cxx - Cyy) + Cxy * Cxy));
+
+    float stretch     = sqrt(max(tr + d, 0.0)) - 1.0;
+    float compression = 1.0 - sqrt(max(tr - d, 0.0));
+
+    float theta = 0.5 * atan(2.0 * Cxy, Cxx - Cyy);
+
+    vec2 compressionDir = vec2(-sin(theta), cos(theta));
+    vec2 stretchDir     = vec2(cos(theta), sin(theta));
+
+    float wrinkleFactor = clamp(compression * material.GAIN, 0.0, 1.0);
+    float smoothFactor  = clamp(stretch * material.GAIN, 0.0, 1.0);
+
+    float compressionScale = 1.0 + wrinkleFactor;
+    float stretchScale     = 1.0 - 0.5 * smoothFactor;
+
     // Normal: if neither a base normal map nor a detail normal map is bound,
     // fall back to the vertex normal directly. Going through v_TBN when the
     // mesh lacks tangent data produces NaN (normalize of zero), which then
@@ -281,7 +395,7 @@ void setupBRDFProperties(){
         if (material.hasDetailNormalTexture) {
             vec2 dUV = v_uv * material.detailTiling;
             // Sharp detail for specular (LOD 0).
-            vec3 dN_spec = texture(detailNormalTex, dUV).rgb * 2.0 - 1.0;
+            vec3 dN_spec = modifyNormalTex( detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength);
             dN_spec.xy *= effDetailStrength;
             dN_spec.z   = max(dN_spec.z, 0.01);
             detailTangentN = normalize(vec3(baseTangentN.xy + dN_spec.xy,
@@ -297,9 +411,9 @@ void setupBRDFProperties(){
             float lutMin = max(min(min(lutD.r, lutD.g), lutD.b), 1e-4);
             vec3 detailBlurRGB = clamp(1.5 * log2(max(lutD, vec3(1e-4)) / lutMin),
                                        vec3(0.0), vec3(4.0));
-            vec3 dN_r = textureLod(detailNormalTex, dUV, detailBlurRGB.r).rgb * 2.0 - 1.0;
-            vec3 dN_g = textureLod(detailNormalTex, dUV, detailBlurRGB.g).rgb * 2.0 - 1.0;
-            vec3 dN_b = textureLod(detailNormalTex, dUV, detailBlurRGB.b).rgb * 2.0 - 1.0;
+            vec3 dN_r = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, detailBlurRGB.r);
+            vec3 dN_g = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, detailBlurRGB.g);
+            vec3 dN_b = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, detailBlurRGB.b);
             dN_r.xy *= effDetailStrength; dN_r.z = max(dN_r.z, 0.01);
             dN_g.xy *= effDetailStrength; dN_g.z = max(dN_g.z, 0.01);
             dN_b.xy *= effDetailStrength; dN_b.z = max(dN_b.z, 0.01);

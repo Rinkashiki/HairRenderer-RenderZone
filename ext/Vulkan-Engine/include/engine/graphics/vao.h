@@ -77,6 +77,7 @@ struct Vertex {
     Vec3 tangent;
     Vec2 texCoord;
     Vec3 color;
+    Vec3 strain;
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription bindingDescription{};
@@ -86,7 +87,7 @@ struct Vertex {
         return bindingDescription;
     }
     static std::vector<VkVertexInputAttributeDescription>
-    getAttributeDescriptions(bool position = true, bool normal = true, bool tangent = true, bool texCoord = true, bool color = true) {
+    getAttributeDescriptions(bool position = true, bool normal = true, bool tangent = true, bool texCoord = true, bool color = true, bool strain = true) {
         std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
         if (position)
         {
@@ -132,6 +133,15 @@ struct Vertex {
             colorAtt.format   = VK_FORMAT_R32G32B32_SFLOAT;
             colorAtt.offset   = offsetof(Vertex, color);
             attributeDescriptions.push_back(colorAtt);
+        }
+        if (strain)
+        {
+            VkVertexInputAttributeDescription strainAtt{};
+            strainAtt.binding  = 0;
+            strainAtt.location = 5;
+            strainAtt.format   = VK_FORMAT_R32G32B32_SFLOAT;
+            strainAtt.offset   = offsetof(Vertex, strain);
+            attributeDescriptions.push_back(strainAtt);
         }
 
         return attributeDescriptions;

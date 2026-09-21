@@ -76,12 +76,20 @@ class PhysicallyBasedMaterial : public IMaterial
     float m_dualLobeMix            = 0.0f;   // 0 = single-lobe (default); >0 = blend soft lobe in
     float m_dualLobeRoughnessSoft  = 0.55f;
 
+    // Wrinkle / strain parameters
+    float m_wrinkleGain          = 10.0f;  // GAIN
+    float m_wrinkleSharpen       = 1.0f;   // amount
+    float m_wrinkleBlurRadius    = 0.008f; // kBlur
+    float m_wrinkleSharpenRadius = 0.010f; // kSharpen
+
     // Peach-fuzz sheen (Jimenez-style Disney sheen). Additive grazing lobe gated
     // by the clothes mask and modulated by a fuzz mask derived from curvature
     // (high-curvature regions sheen more — matches real vellus distribution).
     // sheenIntensity = 0 disables the effect.
     Vec3  m_sheenColor     = {1.0f, 1.0f, 1.0f};
     float m_sheenIntensity = 0.0f;
+
+  
 
     enum Textures
     {
@@ -430,6 +438,43 @@ class PhysicallyBasedMaterial : public IMaterial
         m_detailNormalStrength = s;
         m_isDirty              = true;
     }
+
+    inline float get_wrinkle_gain() const {
+        return m_wrinkleGain;
+    }
+
+    inline void set_wrinkle_gain(float g) {
+        m_wrinkleGain = g;
+        m_isDirty     = true;
+    }
+
+    inline float get_wrinkle_sharpen() const {
+        return m_wrinkleSharpen;
+    }
+
+    inline void set_wrinkle_sharpen(float s) {
+        m_wrinkleSharpen = s;
+        m_isDirty        = true;
+    }
+
+    inline float get_wrinkle_blur_radius() const {
+        return m_wrinkleBlurRadius;
+    }
+
+    inline void set_wrinkle_blur_radius(float r) {
+        m_wrinkleBlurRadius = r;
+        m_isDirty           = true;
+    }
+
+    inline float get_wrinkle_sharpen_radius() const {
+        return m_wrinkleSharpenRadius;
+    }
+
+    inline void set_wrinkle_sharpen_radius(float r) {
+        m_wrinkleSharpenRadius = r;
+        m_isDirty              = true;
+    }
+
 
     inline ITexture* get_detail_cavity_texture() {
         return m_textures[DETAIL_CAVITY];
