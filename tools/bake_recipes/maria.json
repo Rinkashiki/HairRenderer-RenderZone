@@ -13,7 +13,7 @@
     "eye_mask_texture": "textures/maria/T-Maria-EyeMask.png",
     "detail_normal_texture": "textures/skin/normal_detail.png",
     "detail_cavity_texture": "textures/skin/cavity_detail.png",
-    "detail_tiling": 30.0,
+    "detail_tiling": 10.0,
     "detail_normal_strength": 1.0,
     "cavity_spec_occlusion": 0.65,
     "dual_lobe_mix": 0.2,

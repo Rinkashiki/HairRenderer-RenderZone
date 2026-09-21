@@ -383,9 +383,7 @@ void setupBRDFProperties(){
     // mesh lacks tangent data produces NaN (normalize of zero), which then
     // poisons all downstream shading.
     if (material.hasNormalTexture || material.hasDetailNormalTexture) {
-        vec3 baseTangentN = material.hasNormalTexture
-            ? (texture(normalTex, v_uv).rgb * 2.0 - 1.0)
-            : vec3(0.0, 0.0, 1.0);
+        vec3 baseTangentN = modifyNormalTex(normalTex, v_uv, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, 1.0);
         smoothNormalWS = normalize(v_TBN * baseTangentN);
 
         // Whiteout blend: xy of base + xy of detail scaled by strength, z multiplied.
