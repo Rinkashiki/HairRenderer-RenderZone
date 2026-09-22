@@ -118,6 +118,7 @@ layout(location = 4) in vec3 g_modelDir;
 layout(set = 0, binding = 2) uniform sampler2DArray shadowMap;
 layout(set = 0, binding = 4) uniform samplerCube irradianceMap;
 
+layout(set = 0, binding = 7) uniform sampler3D NpTex;
 layout(set = 0, binding = 9) uniform sampler3D hairVoxelsSh;
 layout(set = 0, binding = 13) uniform sampler3D hairVoxelsDensity;
 layout(set = 0, binding = 12) uniform sampler3D hairLUT;
@@ -464,6 +465,7 @@ void main() {
                                              V,
                                              T,
                                              directFraction,
+                                             NpTex,
                                              bsdf,
                                              inBacklit,
                                              scene.lights[i].area,

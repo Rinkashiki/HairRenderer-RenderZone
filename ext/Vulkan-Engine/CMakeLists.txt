@@ -78,7 +78,36 @@ if (WIN32)
     set(SHADERC_LIB "shaderc_shared")
 elseif(UNIX)
     # Linux gets the static archive (no /MT/MD split there), so no runtime DLL needed.
-    set(SHADERC_LIB "shaderc_combined.a")
+    #
+    # Locate libshaderc_combined.a explicitly instead of assuming it sits next to
+    # libvulkan.so. Flat SDK installs keep both in the same .../x86_64/lib, but the
+    # component-based 1.4.x installers nest the loader (.../x86_64/lib/VulkanLoader/lib/
+    # libvulkan.so) while shaderc lives elsewhere in the SDK tree. Relying on the
+    # loader's directory alone then fails to link (-lshaderc_combined not found).
+    get_filename_component(_vk_lib_dir "${Vulkan_LIBRARY}" DIRECTORY)
+    find_library(SHADERC_COMBINED_LIB
+        NAMES shaderc_combined
+        HINTS
+            "${_vk_lib_dir}"
+            "${_vk_lib_dir}/../.."
+            "$ENV{VULKAN_SDK}/lib"
+            "$ENV{VULKAN_SDK}/lib64"
+        PATH_SUFFIXES lib lib64)
+    if(NOT SHADERC_COMBINED_LIB)
+        # Fallback: search the whole SDK tree (component installs nest libs deeper).
+        get_filename_component(_vk_search_root "${_vk_lib_dir}/../.." ABSOLUTE)
+        file(GLOB_RECURSE _shaderc_hits "${_vk_search_root}/libshaderc_combined.a")
+        if(_shaderc_hits)
+            list(GET _shaderc_hits 0 SHADERC_COMBINED_LIB)
+        endif()
+    endif()
+    if(NOT SHADERC_COMBINED_LIB)
+        message(FATAL_ERROR
+            "libshaderc_combined.a not found under the Vulkan SDK. "
+            "Set VULKAN_SDK to your SDK's x86_64 directory and reconfigure.")
+    endif()
+    set(SHADERC_LIB "${SHADERC_COMBINED_LIB}")
+    message(STATUS "Found shaderc_combined: ${SHADERC_LIB}")
 endif()
 target_link_libraries(VulkanEngine PUBLIC 
 
