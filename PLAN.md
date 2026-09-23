@@ -424,7 +424,7 @@ Remaining steps once the bundling is fixed:
 
 Unified the project name: `APP_DISPLAY_NAME` = `"Zone Renderer"` (window title / loading screen), CMake `project(ZoneRenderer)`, executable target + C++ app class `HairViewer` → `ZoneRenderer`, all docs/comments. `SLViewer` unchanged. GitHub repo `HairRenderer-RenderZone` → `ZoneRenderer` (renamed by the user on GitHub; `origin` updated).
 
-**Gotcha:** `APP_DISPLAY_NAME` is a CMake `CACHE` variable, so changing its default does not affect an already-configured build dir — reconfigure with `cmake -U APP_DISPLAY_NAME ..` (done for `build/`). The old `build/HairViewer` binary was deleted.
+**Issue found:** `APP_DISPLAY_NAME` was a CMake `CACHE` variable, so the new default never reached already-configured build dirs — the `GCC-x86_64-debug` preset build still showed "Hair Viewer" in the window title and loading screen. **Fix:** made it a plain `set()` so every build dir follows `CMakeLists.txt` on its next (automatic) reconfigure. Old `HairViewer` binaries in the build dirs were deleted.
 
 **Verified:** `ZoneRenderer` target builds (Release) and `./ZoneRenderer --frames 5` exits 0.
 

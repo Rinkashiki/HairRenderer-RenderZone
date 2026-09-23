@@ -6,7 +6,9 @@ project(ZoneRenderer VERSION 1.0.0)
 # the code as the APP_DISPLAY_NAME macro (see src/app_info.h) and drives the
 # window title, the loading screen, and anything else that prints the name.
 # Target / binary names (ZoneRenderer, SLViewer) are separate and unchanged.
-set(APP_DISPLAY_NAME "Zone Renderer" CACHE STRING "User-facing name of the interactive viewer")
+# Deliberately a plain variable, not a CACHE one: a cached value sticks in every
+# already-configured build dir, so a rename here would silently not apply there.
+set(APP_DISPLAY_NAME "Zone Renderer")
 
 # -----------------------------------------------------------------------------
 # 1. Standard C++ Setup

@@ -475,15 +475,16 @@ Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. 
 ### App display name (single source of truth)
 
 The interactive app's user-facing name is spelled **once**: `APP_DISPLAY_NAME`
-in the root `CMakeLists.txt` (a cache variable, default `"Zone Renderer"`). It
+in the root `CMakeLists.txt` (`"Zone Renderer"`). It
 reaches the code as a compile definition and is exposed by `src/app_info.h`
 (`app_info::NAME`, `app_info::name_upper()`), which is what the window title
 and the loading screen read. Never write the name as a string literal in `src/`;
 changing the CMake variable (and reconfiguring) renames every mention. Target /
 binary names (`ZoneRenderer`, `SLViewer`) are deliberately separate.
-Because it is a `CACHE` variable, editing its default does **not** reach an
-already-configured build dir — reconfigure with `cmake -U APP_DISPLAY_NAME ..`
-(or pass `-DAPP_DISPLAY_NAME=...`).
+It is deliberately a **plain** variable, not a `CACHE` one: a cached value is
+frozen into every already-configured build dir (presets under `build/<preset>/`
+included), so a rename would silently not apply there — that bit the
+ZoneRenderer rename.
 
 ### ZoneRenderer startup + loading screen
 
