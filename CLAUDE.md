@@ -272,6 +272,20 @@ same rig+bake pipeline; face topology unchanged so no re-bind was needed). A
 re-export of an already-rigged GLB goes through the script unchanged — it
 re-skins the mouth meshes by name and strips Blender's re-embedded images.
 
+**Small placement nudges — skip the round trip.** `tools/offset_glb_meshes.py`
+translates the vertices of named mesh nodes *inside a baked GLB*, in place
+(POSITION data + accessor `min/max`; everything else byte-identical):
+```bash
+python tools/offset_glb_meshes.py resources/models/*/*.glb --offset 0 0.005 0   # +5 mm up
+```
+Default mesh set = the 8 mouth parts; `--meshes`, `--out`, `--dry-run`
+available. Axes are glTF's (+Y up = Blender +Z; the GLBs carry no node
+rotations). It is exactly what moving the object in Blender does, because the
+mouth meshes are 100 %-weight skinned and rest-pose `joint × IBM` is the
+identity; morph deltas are unaffected. Used 2026-09-18 to raise the teeth
+0.005 on all four characters. Note that the Blender scene is now 0.005 behind
+the GLBs — re-apply the nudge if the mouth is ever re-exported from Blender.
+
 **LFS gotcha when re-baking.** `.gitattributes` matches `*.png` *and* `*.PNG`
 (the uppercase rule was added 2026-09-17; before it, the `*BentNormal.PNG` maps
 were committed as raw 133-byte pointer blobs). If a recipe texture is an

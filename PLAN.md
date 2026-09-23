@@ -420,6 +420,46 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Teeth raised 5 mm on all four characters — in-GLB vertex offset (2026-09-18)
+
+**Goal (user):** move the mouth model up by exactly 0.005 (Blender +Z) on
+`alex`, `javi`, `maria`, `nadia` without re-exporting from Blender and
+re-running rig → bake → re-bind.
+
+**Done:** new `tools/offset_glb_meshes.py` (stdlib only) patches the POSITION
+accessors of named mesh nodes inside a GLB in place — data + `min/max` —
+and rewrites the file with everything else byte-identical (textures, skins,
+morph deltas, layout). Run once:
+`python tools/offset_glb_meshes.py resources/models/*/*.glb --offset 0 0.005 0`
+(default mesh set = the 8 mouth parts: `Teeth_Upper/Lower`,
+`Teeth_Interior_Upper/Lower`, `MouthCavity_Upper/Lower`, `Tongue`, `Uvula`;
+`--meshes`, `--out`, `--dry-run` available).
+
+**Why it is equivalent to moving the object in Blender:** the GLBs carry no
+rotation anywhere on the node chain (face `minY=0`, +Y up), so Blender +Z is
+GLB +Y; the mouth meshes are skinned 100 % to `jaw`/`head` and the rest-pose
+`joint × IBM` is the identity, so a bind-space translation of the vertices
+moves the skinned result by the same vector. Morph targets are deltas and
+need no change (the mouth meshes have none anyway). Face topology untouched →
+no `.hbnd` re-bind.
+
+**Verification:** (1) each patched GLB diffed against the LFS original —
+only the 8 position accessors differ, every Y exactly +0.005 (float32), X/Z
+and all other bytes identical (alex/javi are 4 bytes shorter: JSON-chunk
+padding). (2) SLViewer close-up of `maria` with the jaw held open (custom
+scene: camera at the mouth, DoF off): lower incisor tips moved from row 717 to
+654 (up), and a reference render of the *original* GLB with the whole
+character translated by the jaw-rotated equivalent (`0.05·cos30°` up,
+`0.05·sin30°` back, world units) lands the tips on the same row 654 — amount
+confirmed exactly. (3) `alex`/`javi`/`nadia` scenes load and render clean.
+Final in-animation judgement is the user's, manually.
+
+**Gotchas met:** `test_jaw_open.json`'s `[-0.2588,0,0,0.9659]` closes the
+jaw into the head on `maria` (chin swallows the lips); `+0.2588` opens it.
+`git show HEAD:<glb>` yields the LFS pointer — pipe through `git lfs smudge`
+to get the blob. Local `ffmpeg` still lacks `libblas.so.3` (PNG dump via
+`--keep-frames` is enough for stills).
+
 ### HairViewer loading screen + overlapped startup (2026-09-17)
 
 **Goal (user):** a nice-looking loading screen with a filling progress bar when
