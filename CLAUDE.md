@@ -24,7 +24,7 @@ This is a **Vulkan strand-based hair renderer** built on top of a custom Vulkan 
 
 ### Two-Layer Structure
 
-- **Application layer** (`src/`): `HairViewer` (in `application.h/cpp`) orchestrates the lifecycle — scene setup, camera, lights, materials, neural hair loading. GUI lives in `gui.h/cpp`. Hair-specific asset loading in `hair_loader.h/cpp`.
+- **Application layer** (`src/`): `ZoneRenderer` (in `application.h/cpp`) orchestrates the lifecycle — scene setup, camera, lights, materials, neural hair loading. GUI lives in `gui.h/cpp`. Hair-specific asset loading in `hair_loader.h/cpp`.
 - **Engine layer** (`ext/Vulkan-Engine/`): Contains the renderer, render passes, materials, RHI (Graphics/), resource management, and shader system. Headers in `include/engine/`, implementations in `src/`.
 
 ### Renderer — Forward Pipeline
@@ -91,7 +91,7 @@ Resources flow between passes through the dependency table + `link_previous_imag
 
 ### Transform Gizmos (ImGuizmo)
 
-HairViewer has interactive translate/rotate/scale gizmos for the object currently
+ZoneRenderer has interactive translate/rotate/scale gizmos for the object currently
 selected in the Scene Explorer. Built on **ImGuizmo** (MIT), vendored at
 `ext/Vulkan-Engine/thirdparty/imguizmo/` and compiled **into the imgui target**
 (so it shares `imgui.h`/`imgui_internal.h` and the single `GImGui` context and
@@ -250,7 +250,7 @@ python tools/rig_teeth_glb.py <export.glb> --out /tmp/<char>.rigged.glb \
 # 3. Bake (self-contained GLB, slim scene unchanged)
 python tools/bake_glb_material.py resources/scenes/<char>.json \
     --materials tools/bake_recipes/<char>.json --in-glb /tmp/<char>.rigged.glb --inplace
-# 4. HairViewer → HAIR BINDING panel: re-seat + Bind + Save every groom.
+# 4. ZoneRenderer → HAIR BINDING panel: re-seat + Bind + Save every groom.
 #    The head's topology changed, so the old .hbnd sidecars point at the wrong
 #    triangles (the loader only validates a sidecar against the hair, not the head).
 ```
@@ -436,7 +436,7 @@ Strand hair (`.hair` — scalp hair, eyebrows, eyelashes) can be bound to a char
 
 **How it works.** Each strand root is projected onto the nearest head triangle (rest pose); per strand we store the triangle, the barycentric coords, and every strand vertex expressed in the bind-pose root frame. Each frame the frame is rebuilt from the head's *deformed* surface vertices and the rigid delta is applied to the whole strand (rigid-per-strand → silhouette preserved). The head's deformed vertices are produced CPU-side every frame by `Geometry::apply_deformation`, so binding follows both morphs and skinning. On bind the hair is reparented under the head with an identity local transform (its model matrix equals the head's); all deformation arrives through the surface, not a joint attachment.
 
-**Interactive bind mode (HairViewer "HAIR BINDING" panel):**
+**Interactive bind mode (ZoneRenderer "HAIR BINDING" panel):**
 1. Pick the hair mesh in the dropdown (head = first morph/skinned mesh, auto-detected).
 2. Seat the hair with the **Position / Rotation / Scale** sliders (live preview). Assets are usually grossly misaligned, so this gross alignment is required before binding.
 3. **Normal offset** lifts roots along the surface normal (0 = on the skin).
@@ -450,13 +450,13 @@ Strand hair (`.hair` — scalp hair, eyebrows, eyelashes) can be bound to a char
 - `"bind_to": "<head mesh name>"` — bind onto that mesh's surface (replaces `attach_to` for bound hair).
 - `"binding": "<path.hbnd>"` — optional sidecar path (relative to resources); defaults to `<hair file>.hbnd`.
 
-When no mesh declares `bind_to`, both viewers auto-discover the head (first morph/skinned mesh) and bind every `.hair` mesh, loading each `<hair file>.hbnd` if present. The scene loader only records the request (`LoadResult::hairBindings`); each application builds the `HairBinder`. Both **HairViewer** (`src/application.cpp`) and **SLViewer** (`src/slviewer/application_sl.cpp`) run the same `setup_hair_binding()` + per-frame `binder->update()` logic, so `hair_binding.cpp` is linked into both targets (added to `SLVIEWER_SOURCES` in `CMakeLists.txt`). Without this the strand hair renders at its raw unbound groom position (off-frame).
+When no mesh declares `bind_to`, both viewers auto-discover the head (first morph/skinned mesh) and bind every `.hair` mesh, loading each `<hair file>.hbnd` if present. The scene loader only records the request (`LoadResult::hairBindings`); each application builds the `HairBinder`. Both **ZoneRenderer** (`src/application.cpp`) and **SLViewer** (`src/slviewer/application_sl.cpp`) run the same `setup_hair_binding()` + per-frame `binder->update()` logic, so `hair_binding.cpp` is linked into both targets (added to `SLVIEWER_SOURCES` in `CMakeLists.txt`). Without this the strand hair renders at its raw unbound groom position (off-frame).
 
 **Engine notes / limitations.**
 - `.hair` geometry is marked animatable (CPU-writable VBO) in `load_hair`, which excludes it from the RT BLAS (the forward hair path doesn't use it).
 - **Animatable geometry keeps two ring buffers, not one.** Besides the deformed-vertex VBO ring, `Geometry::cycle_animatable_upload` also rings the **position SSBO** (`vao.posSSBO`, one `Vec4`/vertex), because the hair voxelization (`HAIR_VOXELIZATION_PASS`, `OPTICAL_DENSITY` mode), SSAO and SSR read strand positions from that bindless buffer — not the VBO. The bindless descriptor is re-pointed at the live region each frame (`forward_pass`/`hair_voxelization_pass` `update_uniforms` pass `readOffset = posFrameOffset`). Without this the hair's volumetric self-shadow/scattering freezes at the groom pose while the visible strands move (the strand model matrix is ~identity — animation is baked into the vertices). `RING == 3` for both rings (DOUBLE buffering; bump to 4 for TRIPLE).
 - Per-frame reconstruction is CPU-side (mirrors `apply_deformation`); fine for moderate strand counts (GPU compute path is possible future work). A static (non-animated) head reconstructs once.
-- Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export now drives the binders too (same `setup_hair_binding()` + per-frame `binder->update()` as HairViewer), so exported video matches the interactive view.
+- Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export now drives the binders too (same `setup_hair_binding()` + per-frame `binder->update()` as ZoneRenderer), so exported video matches the interactive view.
 - **SLViewer's "bald first frame" (fixed 2026-07-27).** The first captured frame used to have no surface-bound strand hair (bald: no scalp hair, brows or lashes) while frames 1+ were correct. Root cause: geometry is uploaded to the GPU *lazily* on the first `render()` (`ResourceManager::upload_geometry_data` seeds animatable-VBO ring region 0 with the raw groom vertices, then flips `loadedOnGPU=true`). On a cold frame 0 the binder's `update()` ran *before* that upload, so `Geometry::upload_vertices` no-oped (`!loadedOnGPU`) and the hair drew its seeded groom region — off-frame = bald. Fix: `SLApplication::init()` now does one **throwaway warm-up `render(m_scene)`** after `setup()` and *before* the capture callback is registered (so nothing is written to disk — `render()` guards a null pre-submit callback, and it neither advances the animation nor the frame counter). That forces the lazy upload, so the first *captured* frame's `binder->update()` actually writes the bound strands. Verified by A/B: with the warm-up off, `mean|frame0−frame1|` ≈ 1.5 (≈7× the ~0.2 run-to-run noise floor); with it on, ≈ 0.2 (noise-level). `frame_00000.png` is now safe to read.
 - **Bound-hair "hard lighting seam" under root-motion animation (fixed 2026-07-27).** With an animation that carries the character across world space (e.g. `dance_anim.json` on `nadia`), the groom developed a **hard planar line splitting it into two differently-lit halves** (clearest on a back-of-head view). Root cause: `HairBinder::update()` rebuilds and uploads the deformed strand vertices every frame, but was **not** refreshing the geometry's CPU-side bounds. The hair voxel volume's world AABB is built in `resource_manager.cpp` from `mesh->get_bounding_volume()->min/maxCoords`, which derive (`BoundingSphere::setup`) from those geometry bounds. So the voxel cube stayed **frozen at the bind (rest) pose** while the animation moved the hair through world space **via vertex deformation** (the strand model matrix stays ~identity — the motion is skinning baked into vertices, *not* a matrix transform, so the `model * localAABB` path in resource_manager can't rescue it). As the head translated, the fixed cube's boundary plane swept across the displaced hair; the `getOpticalDensity`/SH lookup (`uvw = (worldPos - minCoord)/(maxCoord - minCoord)` then `clamp`) goes discontinuous at the face — inside varies in 3D, outside is pinned to the face projection — hence the seam. Fix: `update()` now calls `hairGeom->update_bounds(m_workVerts)` + `m_hair->setup_volume()` after the per-frame reconstruction, so the bounds (and thus the voxel world cube + frustum sphere) track the animated hair. Only runs on the animated-head path (the static-head early-return already set bounds once at bind/load). Verified by rendering the full `nadia` + `dance_anim` clip headless (2323 frames) and inspecting front/profile/back/far-translated frames — the seam is gone at every angle.
 
@@ -468,23 +468,26 @@ The animations loaded are in json format. The specifics of this format and its s
 
 ### Scene format
 
-Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. Known-good character scenes: `alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`. The default scene (used by SLViewer when `--scene` is omitted, and by HairViewer) is `resources/scenes/maria.json`.
+Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. Known-good character scenes: `alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`. The default scene (used by SLViewer when `--scene` is omitted, and by ZoneRenderer) is `resources/scenes/maria.json`.
 
 > **Note:** the old `resources/scenes/default.json` (Alex + `haircard`/OBJ hair) was **removed** — it segfaulted on the haircard hair path. `maria.json` is the default now.
 
 ### App display name (single source of truth)
 
 The interactive app's user-facing name is spelled **once**: `APP_DISPLAY_NAME`
-in the root `CMakeLists.txt` (a cache variable, default `"Hair Viewer"`). It
+in the root `CMakeLists.txt` (a cache variable, default `"Zone Renderer"`). It
 reaches the code as a compile definition and is exposed by `src/app_info.h`
 (`app_info::NAME`, `app_info::name_upper()`), which is what the window title
 and the loading screen read. Never write the name as a string literal in `src/`;
 changing the CMake variable (and reconfiguring) renames every mention. Target /
-binary names (`HairViewer`, `SLViewer`) are deliberately separate.
+binary names (`ZoneRenderer`, `SLViewer`) are deliberately separate.
+Because it is a `CACHE` variable, editing its default does **not** reach an
+already-configured build dir — reconfigure with `cmake -U APP_DISPLAY_NAME ..`
+(or pass `-DAPP_DISPLAY_NAME=...`).
 
-### HairViewer startup + loading screen
+### ZoneRenderer startup + loading screen
 
-`HairViewer::setup()` (`src/application.cpp`) boots in three overlapped steps:
+`ZoneRenderer::setup()` (`src/application.cpp`) boots in three overlapped steps:
 the scene-loader thread starts first; the main thread then calls
 `m_renderer->init()` (device + every Shaderc compile — ~2 s) while the worker
 decodes; then it draws the **loading screen** until the worker joins. First real
@@ -524,7 +527,7 @@ renderer initialised lazily inside frame 0, after the load).
 
 Scenes are JSON-driven (`resources/scenes/*.json` — see @SCENE.md).
 
-- **HairViewer** loads a scene unconditionally (`SCENE_PATH` in `src/application.h`, currently `resources/scenes/maria.json`). To use a different scene, either edit that file or change that constant.
+- **ZoneRenderer** loads a scene unconditionally (`SCENE_PATH` in `src/application.h`, currently `resources/scenes/maria.json`). To use a different scene, either edit that file or change that constant.
 - **SLViewer** accepts an optional `--scene <path>` flag; when omitted it falls back to `resources/scenes/maria.json`.
 
 #### Engine example applications
@@ -536,7 +539,7 @@ cmake -DBUILD_EXAMPLES=ON ..
 cmake --build .
 ```
 
-This produces four separate executables alongside `HairViewer`:
+This produces four separate executables alongside `ZoneRenderer`:
 
 | Executable | Scene | Renderer |
 |------------|-------|----------|
@@ -545,9 +548,9 @@ This produces four separate executables alongside `HairViewer`:
 | `RaytracingApp` | Environment with torii/tower/droid, raytraced shadows | DeferredRenderer |
 | `RotatingKabuto` | Single Kabuto mesh rotating in place | ForwardRenderer |
 
-Each example has its own `main.cpp` + `application.cpp/h` under `ext/Vulkan-Engine/examples/<name>/`. They share the same `-aa`, `-gui` CLI flags as HairViewer but use `EXAMPLES_RESOURCES_PATH` for assets (separate resource directory under `ext/Vulkan-Engine/examples/resources/`).
+Each example has its own `main.cpp` + `application.cpp/h` under `ext/Vulkan-Engine/examples/<name>/`. They share the same `-aa`, `-gui` CLI flags as ZoneRenderer but use `EXAMPLES_RESOURCES_PATH` for assets (separate resource directory under `ext/Vulkan-Engine/examples/resources/`).
 
-**No base class is shared** — `HairViewer` and the `Application` classes in the examples are independent parallel implementations of the same lifecycle pattern (`init → setup → tick loop → shutdown`).
+**No base class is shared** — `ZoneRenderer` and the `Application` classes in the examples are independent parallel implementations of the same lifecycle pattern (`init → setup → tick loop → shutdown`).
 
 ## Workflow
 
@@ -573,7 +576,7 @@ A Debug build enables Vulkan validation layers automatically (`NDEBUG` not defin
 
 ```bash
 # From build/
-./HairViewer --frames 10 --log-level warn
+./ZoneRenderer --frames 10 --log-level warn
 ```
 
 This renders 10 frames, captures validation layer messages to `build/debug_trace.log`, then exits cleanly.
@@ -675,7 +678,7 @@ SLViewer-windows\
 
 `vulkan-1.dll` and `shaderc_shared.dll` are both located automatically at configure time and bundled next to the exe. If either is missing, CMake emits a warning and the DLL must be copied manually. The MSVC runtime is compiled in statically (`/MT`), so no VC++ Redistributable is required on the target machine.
 
-**Why `shaderc_shared.dll` is bundled even though SLViewer uses baked SPIR-V.** The engine is a static lib that links the Shaderc **import** lib (`shaderc_shared`) on Windows, because the SDK's static `shaderc_combined.lib` is built `/MD` and won't link into this `/MT` build (unresolved `__imp_exp2` etc.). So *every* exe linking the engine — SLViewer included — carries a **load-time** dependency on `shaderc_shared.dll` and won't launch without it, even though SLViewer never actually calls Shaderc (HairViewer does, at runtime). Target machines have no Vulkan SDK, so the DLL is shipped. Linux is unaffected: it links the static `shaderc_combined.a`, so there's no runtime DLL. To drop the dependency entirely, a `/MT`-built static Shaderc would be needed (the SDK doesn't provide one).
+**Why `shaderc_shared.dll` is bundled even though SLViewer uses baked SPIR-V.** The engine is a static lib that links the Shaderc **import** lib (`shaderc_shared`) on Windows, because the SDK's static `shaderc_combined.lib` is built `/MD` and won't link into this `/MT` build (unresolved `__imp_exp2` etc.). So *every* exe linking the engine — SLViewer included — carries a **load-time** dependency on `shaderc_shared.dll` and won't launch without it, even though SLViewer never actually calls Shaderc (ZoneRenderer does, at runtime). Target machines have no Vulkan SDK, so the DLL is shipped. Linux is unaffected: it links the static `shaderc_combined.a`, so there's no runtime DLL. To drop the dependency entirely, a `/MT`-built static Shaderc would be needed (the SDK doesn't provide one).
 
 **`vulkan-1.dll` source.** Preferred from `%VULKAN_SDK%\Bin\`, but recent SDKs (1.4.x) no longer ship the loader there — it's installed to `System32` by the runtime installer / GPU driver, so the CMake rule falls back to `%WINDIR%\System32\vulkan-1.dll`. Bundling the Windows loader is safe because it discovers ICDs via the registry, not SDK-relative paths (this is why Linux deliberately does *not* bundle `libvulkan.so.1`). Even unbundled, most target machines resolve `vulkan-1.dll` from `System32` via the default DLL search path — which is why a missing loader is rarely the first error seen, but a missing `shaderc_shared.dll` (present nowhere but the SDK) always is.
 
@@ -684,7 +687,7 @@ SLViewer-windows\
 ### Embedded SPIR-V for SLViewer
 
 SLViewer ships with shaders **baked into the binary** as SPIR-V, so no GLSL
-source leaves the build tree in the distributable. HairViewer is unchanged —
+source leaves the build tree in the distributable. ZoneRenderer is unchanged —
 it still reads `.glsl` from disk and compiles via Shaderc at runtime, which
 keeps shader iteration fast for dev work.
 
@@ -706,7 +709,7 @@ keeps shader iteration fast for dev work.
 - If a registry is installed (SLViewer), look up the SPIR-V by `(filePath, stage)`
   and feed it straight to `vkCreateShaderModule` — `read_file` and Shaderc are
   skipped. A missing entry **hard-fails** with `"[Shader] No embedded SPIR-V for: ..."`.
-- If no registry is installed (HairViewer), the existing GLSL-on-disk +
+- If no registry is installed (ZoneRenderer), the existing GLSL-on-disk +
   Shaderc path runs unchanged.
 
 **Key files**:
@@ -718,7 +721,7 @@ keeps shader iteration fast for dev work.
 **Adding / editing a shader**: just edit the `.glsl` under
 `ext/Vulkan-Engine/resources/shaders/`. The custom command in `CMakeLists.txt`
 re-runs the precompile script whenever any `.glsl` changes, so the embedded
-blobs stay in sync. HairViewer picks up the change at next launch (no rebuild
+blobs stay in sync. ZoneRenderer picks up the change at next launch (no rebuild
 needed); SLViewer picks it up at next build.
 
 **Skipped shaders**: shaders with missing includes (deferred-renderer dead
@@ -824,4 +827,4 @@ python3 tools/amass_to_json.py amass_DanceDB/ resources/animations/danceDB/
   MB. Shrink with `--channels body`, a lower `--fps`, or `--no-root-motion`.
 - Output is sanity-checkable: every rotation key is `[t, [x,y,z,w]]` with a
   unit-norm quaternion; load any result with `SLViewer` or the interactive
-  `HairViewer` to verify visually.
+  `ZoneRenderer` to verify visually.

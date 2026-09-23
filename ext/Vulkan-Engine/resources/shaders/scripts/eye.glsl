@@ -19,7 +19,7 @@
 // (no gaze) — if gaze is ever added, this must be re-anchored to the socket
 // rather than the (then rotating) eyeball.
 //
-// All tuning lives here as consts. HairViewer recompiles shaders on relaunch,
+// All tuning lives here as consts. ZoneRenderer recompiles shaders on relaunch,
 // so just edit and restart — no rebuild, no GUI.
 
 // Object-space direction the cornea/iris faces. Calibrated against the Maria/Nadia

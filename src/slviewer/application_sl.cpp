@@ -160,7 +160,7 @@ void SLApplication::setup() {
     m_character = result.primaryAnimated;  // may be null if scene had no animated mesh
 
     // Place strand (.hair) meshes on the scalp. Headless export must drive the
-    // surface binders just like HairViewer, otherwise the hair renders at its raw
+    // surface binders just like ZoneRenderer, otherwise the hair renders at its raw
     // unbound groom position (off-frame) and the video comes out bald.
     setup_hair_binding(result.hairBindings);
 
@@ -187,7 +187,7 @@ void SLApplication::setup() {
 
 // Build a binder for one hair/head pair, auto-loading a sidecar: the explicitly
 // declared path if given, otherwise <hair file>.hbnd next to the asset.
-// (Mirrors HairViewer's make_binder.)
+// (Mirrors ZoneRenderer's make_binder.)
 static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::string& declaredPath) {
     auto*       binder = new hair_binding::HairBinder(hair, head);
     std::string side   = !declaredPath.empty() ? declaredPath : (hair->get_file_route() + ".hbnd");

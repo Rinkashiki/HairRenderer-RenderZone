@@ -41,7 +41,7 @@ class SLApplication
     std::filesystem::path m_tempDir;
 
     // Surface binders that snap .hair strands onto the head and reconstruct them
-    // from the deformed surface each frame (mirrors HairViewer). Without these the
+    // from the deformed surface each frame (mirrors ZoneRenderer). Without these the
     // strand hair stays at its raw, unbound groom position and renders off-frame.
     std::vector<hair_binding::HairBinder*> m_binders;
 

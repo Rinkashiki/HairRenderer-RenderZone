@@ -1,6 +1,6 @@
 # Scene JSON Module
 
-The renderer loads scenes from a JSON file at runtime. `HairViewer` loads
+The renderer loads scenes from a JSON file at runtime. `ZoneRenderer` loads
 `resources/scenes/maria.json` (see `SCENE_PATH` in `src/application.h`);
 `SLViewer` accepts an optional `--scene <path>` flag and falls back to the same
 `maria.json` when it is omitted. The parser lives in the application layer
@@ -15,7 +15,7 @@ The renderer loads scenes from a JSON file at runtime. `HairViewer` loads
 | `src/scene_loader.h` / `.cpp` | Parser. Returns `{Scene*, Camera*, Mesh* primaryAnimated, Vec4 clearColor}`. |
 | `resources/scenes/maria.json` | Default scene (Maria GLB + strand hair/brows/lashes + point light + skybox). |
 | `resources/scenes/*.json` | Other scenes (`alex`, `javi`, `nadia`, `neural_tono`, `bust_strands`). |
-| `src/application.cpp` | HairViewer wiring (loads `SCENE_PATH`, currently `maria.json`). |
+| `src/application.cpp` | ZoneRenderer wiring (loads `SCENE_PATH`, currently `maria.json`). |
 | `src/slviewer/application_sl.cpp` | SLViewer wiring (`--scene` flag overrides default). |
 
 Loading entry point:
@@ -25,7 +25,7 @@ scene_loader::LoadResult result = scene_loader::load_scene_json(
     scenePath,
     resourcesPath,           // trailing slash; root for relative mesh/texture refs
     engineResourcesPath,     // trailing slash; root for engine built-ins (sphere.obj)
-    animationOverride,       // empty for HairViewer; SLViewer's positional arg otherwise
+    animationOverride,       // empty for ZoneRenderer; SLViewer's positional arg otherwise
     renderer);               // optional; receives `renderer.sss_scatter_lut`
 ```
 
@@ -154,7 +154,7 @@ All fields optional. `fov` is vertical field-of-view in degrees.
 | `children` | array | `[]` | Nested meshes. Transforms inherited from this parent. |
 | `attach_to` | object | (none) | Parent this mesh to a specific joint of another mesh's skeleton — useful for hair/glasses/hats that should follow an animated bone. Shape: `{ "mesh": "<top-level mesh name>", "joint": "<joint name>" }`. The mesh's `position` / `rotation` / `scale` then act as **local offset relative to that joint**, so existing values may need re-tuning after attaching. Resolved after every mesh is built, so forward references are fine. Requires the referenced mesh to carry skinning data (i.e. a GLB with a skeleton). |
 | `bind_to` | string | (none) | **Strand `.hair` only.** Surface-bind this hair onto another mesh's skin so it sits on the scalp and follows **morph + skeletal** deformation (not just a bone). Value = the target head mesh's `name`. Replaces `attach_to` for bound hair (binding reparents the hair onto the head). See CLAUDE.md "Hair-to-Scalp Surface Binding". |
-| `binding` | string | `<hair file>.hbnd` | Sidecar binding file path (relative to `resourcesPath`) for `bind_to`. Optional; defaults to the `.hbnd` next to the hair asset. Created in HairViewer's **HAIR BINDING** panel (align → Bind → Save). If absent, the hair loads unbound until bound interactively. |
+| `binding` | string | `<hair file>.hbnd` | Sidecar binding file path (relative to `resourcesPath`) for `bind_to`. Optional; defaults to the `.hbnd` next to the hair asset. Created in ZoneRenderer's **HAIR BINDING** panel (align → Bind → Save). If absent, the hair loads unbound until bound interactively. |
 
 ---
 
@@ -395,9 +395,9 @@ Setting a skybox implicitly enables IBL.
 
 | Field | Notes |
 |-------|-------|
-| `clear_color` | Returned in `LoadResult.clearColor`; the application is responsible for applying it during renderer construction (HairViewer sets it in `init()` before `setup()`; SLViewer does the same). |
+| `clear_color` | Returned in `LoadResult.clearColor`; the application is responsible for applying it during renderer construction (ZoneRenderer sets it in `init()` before `setup()`; SLViewer does the same). |
 | `sss_scatter_lut` | Path applied to `ForwardRenderer::load_sss_scatter_lut` if `renderer` is non-null. Deferred internally if the renderer hasn't initialized yet. |
-| `msaa` | Hardware MSAA sample count baked into the renderpasses. Valid values: `1` (off), `4`, `8`. (Higher counts exist in the engine enum but the forward HDR target is `R32G32B32A32_SFLOAT`, which caps at 8× on most GPUs — values >8 are rejected with a warning.) Read via `scene_loader::peek_msaa()` *before* the renderer is constructed (it can't be changed live since MSAA is baked into renderpass attachment descriptions and pipelines). HairViewer honors it automatically; SLViewer keeps `--msaa` from the CLI authoritative. The GUI shows the active value read-only in the Forward Renderer panel. |
+| `msaa` | Hardware MSAA sample count baked into the renderpasses. Valid values: `1` (off), `4`, `8`. (Higher counts exist in the engine enum but the forward HDR target is `R32G32B32A32_SFLOAT`, which caps at 8× on most GPUs — values >8 are rejected with a warning.) Read via `scene_loader::peek_msaa()` *before* the renderer is constructed (it can't be changed live since MSAA is baked into renderpass attachment descriptions and pipelines). ZoneRenderer honors it automatically; SLViewer keeps `--msaa` from the CLI authoritative. The GUI shows the active value read-only in the Forward Renderer panel. |
 
 ---
 
@@ -405,7 +405,7 @@ Setting a skybox implicitly enables IBL.
 
 Per-mesh `"animation"` is **optional**. Behavior:
 
-- **HairViewer**: loads the scene's animation reference as-is. If no mesh declares one, no animation plays (rest pose).
+- **ZoneRenderer**: loads the scene's animation reference as-is. If no mesh declares one, no animation plays (rest pose).
 - **SLViewer with positional `<animation.json>` arg**: that arg **overrides** the first mesh's `animation` field. If no mesh declares an animation, the first skinned mesh receives the override. If no mesh is animated or skinned, a warning is logged and the scene renders without animation.
 
 Result lookup (`LoadResult.primaryAnimated`) returns the mesh that received the

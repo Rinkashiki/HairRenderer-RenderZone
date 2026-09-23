@@ -41,7 +41,7 @@ struct LoadResult {
     std::vector<HairBindRequest> hairBindings; // meshes declaring bind_to
 
     // The scene's renderer hooks, recorded so a caller that loads on a worker
-    // thread (HairViewer) can apply them on the main thread once the load has
+    // thread (ZoneRenderer) can apply them on the main thread once the load has
     // joined — both touch pass state, so they must not run while the renderer
     // is being initialised or rendering. Also applied directly when a
     // `renderer` is passed to load_scene_json (SLViewer's synchronous path).

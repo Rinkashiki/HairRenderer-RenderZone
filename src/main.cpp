@@ -4,7 +4,7 @@
 
 int main(int argc, char* argv[]) {
 
-    HairViewer app;
+    ZoneRenderer app;
     try
     {
         Systems::RendererSettings settings{};

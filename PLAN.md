@@ -41,7 +41,7 @@ the gizmo which was ~UI-only.
 - **V3 erased the lashes entirely on maria** — visible only once it was put on a real character, not in the lab. Fixed-function `alphaToCoverage` picks its sample pattern from the alpha *value*, so every fiber in a lash line (all at nearly the same ~0.15 px coverage) resolved onto the *same* subsample and the mass never accumulated → the whole lash line at 1/8 intensity. The lab groom is ~5× larger on screen, which hid it completely. Isolated by re-rendering with `min_pixel_width: 0.05` (widening disabled): that matched V0 to within noise, proving the geometry path was fine and the alpha was the culprit. Now `alphaToCoverage` is off and the fragment shader writes `gl_SampleMask[0]` itself — a hashed subset of `gl_SampleMaskIn` with stochastic rounding, keyed on the per-strand random + `gl_FragCoord` so it is temporally stable. **Lesson: validate a screen-space model at real character scale, not just in the lab.**
 - V1 first landed **brighter and warmer than the baseline** it exists to calm down — it skipped the dual-scattering bookkeeping and fed `baseColor` (a *scattered* fiber colour) straight into a Lambert-ish lobe. Now applies `globalScattering`/`localScattering`/`opaqueVisibility` and a `MATTE_DIFFUSE_GAIN` (0.3). All four models now sit within the same brightness band.
 
-**Verified:** HairViewer (Debug) and SLViewer both build; eyelash shader compiles under `glslc` (only the 3 documented dead-code skips); `--frames 10` on the lab scene shows only the pre-existing swapchain-semaphore/descriptor-pool messages; `maria.json` re-rendered unchanged (no regression from `alphaToCoverage`). Each grid cell was diffed pixel-wise against a single-variant reference render to prove it shows the model it is labelled with — this caught that **the engine maps world −X to screen-right**, so the grid's X positions are mirrored to match the naming.
+**Verified:** ZoneRenderer (Debug) and SLViewer both build; eyelash shader compiles under `glslc` (only the 3 documented dead-code skips); `--frames 10` on the lab scene shows only the pre-existing swapchain-semaphore/descriptor-pool messages; `maria.json` re-rendered unchanged (no regression from `alphaToCoverage`). Each grid cell was diffed pixel-wise against a single-variant reference render to prove it shows the model it is labelled with — this caught that **the engine maps world −X to screen-right**, so the grid's X positions are mirrored to match the naming.
 
 **Pending — user judgement.** Which model (or mix) wins. Then: lock params, delete the losing branches and the selector, give alex/javi/nadia `eyelash` materials, restore `SCENE_PATH`.
 
@@ -372,7 +372,7 @@ Both should come from the same source asset so cavities align with normal-map di
 10. ~~Dual-lobe specular (Layer B).~~ **Done — see `## Done` 2026-06-02.**
 11. ~~Cavity-aware SSS in `ssss.glsl` (Layer B).~~ **Done — see `## Done` 2026-06-02.**
 12. ~~Scene schema + docs.~~ **Done — see `## Done` 2026-06-02.**
-13. ~~Regression sweep (uncovered + fixed a pre-existing engine offset bug).~~ **Done — see `## Done` 2026-06-02.** Debug `HairViewer --frames 10 --log-level warn` clean across alex/javi/maria/nadia. Confirm hair, eyes, and non-skin materials unaffected.
+13. ~~Regression sweep (uncovered + fixed a pre-existing engine offset bug).~~ **Done — see `## Done` 2026-06-02.** Debug `ZoneRenderer --frames 10 --log-level warn` clean across alex/javi/maria/nadia. Confirm hair, eyes, and non-skin materials unaffected.
 
 As each step completes, move the relevant write-up into `## Done` with a date (matching the existing entries) and record issues found + fixes shipped + verification.
 
@@ -390,7 +390,7 @@ Attach `.hair` assets (scalp hair, eyebrows, eyelashes) to the character head so
 
 **Decisions (locked):** grossly-misaligned assets → interactive gross alignment needed; in-engine bind mode writing a per-asset sidecar; CPU per-frame deform (compute-pass optimization deferred); alignment UI = transform sliders + live preview (3D gizmo deferred).
 
-**Implementation order** (each phase verified with `HairViewer --frames N --log-level warn`, then a manual visual check):
+**Implementation order** (each phase verified with `ZoneRenderer --frames N --log-level warn`, then a manual visual check):
 
 1. ~~*Phase 0 — plumbing.*~~ **Done.** Retained deformed CPU vertex buffer on `Geometry` (+ `get_deformed_vertices`); per-strand `strandOffsets` captured in `load_hair`; opt-in `set_animatable` flag wired into the upload/BLAS decision (`.hair` marked animatable in `load_hair`). Added `upload_vertices` + `update_bounds`.
 2. ~~*Phase 1 — binder core.*~~ **Done.** `src/hair_binding.{h,cpp}` — `HairBinder`: nearest-triangle projection (brute force, one-time), bary + bind-pose root frame, strand points in local frame, root snap + tangent-plane **declip**. Verified: shadow proved roots land on the scalp.
@@ -419,6 +419,16 @@ Remaining steps once the bundling is fixed:
 ---
 
 ## Done
+
+### Project rename → ZoneRenderer (2026-09-23)
+
+Unified the project name: `APP_DISPLAY_NAME` = `"Zone Renderer"` (window title / loading screen), CMake `project(ZoneRenderer)`, executable target + C++ app class `HairViewer` → `ZoneRenderer`, all docs/comments. `SLViewer` unchanged. GitHub repo `HairRenderer-RenderZone` → `ZoneRenderer` (renamed by the user on GitHub; `origin` updated).
+
+**Gotcha:** `APP_DISPLAY_NAME` is a CMake `CACHE` variable, so changing its default does not affect an already-configured build dir — reconfigure with `cmake -U APP_DISPLAY_NAME ..` (done for `build/`). The old `build/HairViewer` binary was deleted.
+
+**Verified:** `ZoneRenderer` target builds (Release) and `./ZoneRenderer --frames 5` exits 0.
+
+---
 
 ### Teeth raised 5 mm on all four characters — in-GLB vertex offset (2026-09-18)
 
@@ -460,17 +470,17 @@ jaw into the head on `maria` (chin swallows the lips); `+0.2588` opens it.
 to get the blob. Local `ffmpeg` still lacks `libblas.so.3` (PNG dump via
 `--keep-frames` is enough for stills).
 
-### HairViewer loading screen + overlapped startup (2026-09-17)
+### ZoneRenderer loading screen + overlapped startup (2026-09-17)
 
 **Goal (user):** a nice-looking loading screen with a filling progress bar when
-HairViewer launches, instead of ~8.5 s of black window.
+ZoneRenderer launches, instead of ~8.5 s of black window.
 
 **Why it was black:** the engine's ImGui context and swapchain only exist after
 `BaseRenderer::init()`, which ran lazily inside the *first* `render()` — after
 the 5 s scene load. Nothing could be drawn during the load.
 
 **Shipped:**
-- `HairViewer::setup()` reordered: the loader thread starts first, then the main
+- `ZoneRenderer::setup()` reordered: the loader thread starts first, then the main
   thread calls `m_renderer->init()` (device + every shader compile, ~2 s that
   used to sit *after* the load), then draws the splash until the worker joins.
   First real frame lands at ~6 s instead of ~8.5 s.
@@ -503,7 +513,7 @@ the 5 s scene load. Nothing could be drawn during the load.
   give it an empty TLAS that the validation layer otherwise reports as leaked at
   `vkDestroyDevice`.
 
-**Verified:** Debug `HairViewer --frames 10 --log-level warn` → clean trace
+**Verified:** Debug `ZoneRenderer --frames 10 --log-level warn` → clean trace
 (only the two pre-existing loader-manifest warnings). Release run captured via
 X11 during load: splash appears at ~2 s, bar tracks decode progress, real scene
 + GUI (default font intact) at ~6 s. `SLViewer` headless render on `maria`
@@ -536,7 +546,7 @@ discontinuous at the face — a seam.
 per-frame reconstruction, so the bounds (and thus the voxel world cube + the
 frustum sphere) track the animated hair. Only the animated-head path runs it —
 the static-head early-return already sets bounds once at bind/load. One place,
-so both HairViewer and SLViewer (which share `binder->update()`) are fixed.
+so both ZoneRenderer and SLViewer (which share `binder->update()`) are fixed.
 
 **Verification.** Rebuilt SLViewer (Release) and rendered the full `nadia` +
 `dance_anim` clip headless (2323 frames, 960×720, MSAA 8). Inspected front,
@@ -578,7 +588,7 @@ drag); world↔local conversion goes through `get_parent()` for parented meshes
 (bound hair); rotation writeback via `DecomposeMatrixToComponents` (Euler
 degrees, XYZ order matches the engine's `get_model_matrix`).
 
-**Verified:** HairViewer builds clean (Debug); `--frames 10` harness shows only
+**Verified:** ZoneRenderer builds clean (Debug); `--frames 10` harness shows only
 the pre-existing swapchain-semaphore / descriptor-pool messages (ImGuizmo touches
 no descriptors/semaphores); user confirmed both the base gizmo and the
 geometry-center pivot work interactively. Docs: CLAUDE.md "Transform Gizmos
@@ -600,17 +610,17 @@ its own Open entry.
 - Scene loader: new `"eyelash"` material type (reuses `build_hairepic(jm, eyelash=true)`); exposed `use_backlit` in the parser + allowed-keys.
 - `maria.json`: added `maria_eyelashes` (type `eyelash`, specular 0.1, R_power 0.5, TT_power 2.5, TRT_power 0.4, use_backlit true, darker melanin, glints off) and pointed the Eyelashes mesh at it. Hair + eyebrows still share `maria_hair`.
 
-**Verified:** clean build; HairViewer `--frames` run exits 0, eyelash shader compiles at runtime (Shaderc), no validation errors, no unknown-key/material warnings. **Pending user visual validation** in the interactive viewer — the starting parameter values are a first pass meant for tuning (all live in `maria_eyelashes`, no code change needed to adjust). SLViewer picks up the new embedded shader at its next build.
+**Verified:** clean build; ZoneRenderer `--frames` run exits 0, eyelash shader compiles at runtime (Shaderc), no validation errors, no unknown-key/material warnings. **Pending user visual validation** in the interactive viewer — the starting parameter values are a first pass meant for tuning (all live in `maria_eyelashes`, no code change needed to adjust). SLViewer picks up the new embedded shader at its next build.
 
 ### "Application not responding" on launch — async scene load (2026-07-20)
 
 **Symptom (user, Linux):** on every launch the desktop shows "not responding"; waiting a few seconds lets it run fine, but the dialog reappears each launch.
 
-**Diagnosis (measured with temporary probes):** `init()` breakdown — window+renderer ready at ~36 ms (shaders are *not* compiled in the renderer ctor), then `setup()` blocks the **main thread for ~13.5 s** loading the scene (`scene_loader::load_scene_json` — GLB parse + verbatim 8K texture bytes into RAM), then the **first frame** takes ~3.4 s (lazy pass setup + shader compile + GPU upload). Only the 13.5 s load exceeds the compositor's ~5 s ping timeout, so during it the frozen event loop trips "not responding." The first-frame 3.4 s is under the timeout. (Also found: the checked-out `build/HairViewer` was 20 days stale and segfaulted on frame 1 in `ResourceManager::update_object_data`; a rebuild runs clean — unrelated to the freeze but worth a rebuild.)
+**Diagnosis (measured with temporary probes):** `init()` breakdown — window+renderer ready at ~36 ms (shaders are *not* compiled in the renderer ctor), then `setup()` blocks the **main thread for ~13.5 s** loading the scene (`scene_loader::load_scene_json` — GLB parse + verbatim 8K texture bytes into RAM), then the **first frame** takes ~3.4 s (lazy pass setup + shader compile + GPU upload). Only the 13.5 s load exceeds the compositor's ~5 s ping timeout, so during it the frozen event loop trips "not responding." The first-frame 3.4 s is under the timeout. (Also found: the checked-out `build/ZoneRenderer` was 20 days stale and segfaulted on frame 1 in `ResourceManager::update_object_data`; a rebuild runs clean — unrelated to the freeze but worth a rebuild.)
 
 **Fix (`src/application.cpp::setup()`):** run `load_scene_json` on a `std::thread`; the main thread pumps `m_window->poll_events()` on a 16 ms tick until the worker signals done (`std::atomic<bool>`), then joins and proceeds. Worker exceptions are captured via `std::exception_ptr` and rethrown on the main thread so load failures surface exactly as before. Safe to thread because the load path is Vulkan/GLFW-free (loaders only fill CPU-side texture caches; GPU images are created lazily at first render — the neural-hair path already loads off-thread, and `load_sss_scatter_lut` only stores `m_pendingScatterLut` at this stage). Deliberately no rendering during the wait (renderer state is being written by the worker → would race); polling alone satisfies the compositor.
 
-**Verified:** clean build, `--frames` run exits 0 with no new validation errors; instrumentation confirmed the window is polled ~860× across the ~13.5 s load (was 0 before). Only HairViewer changed — SLViewer is headless. The ~3.4 s first-frame stall remains (under the timeout); attacking it would need off-thread shader compilation (future work, ties into the renderer-performance notes above).
+**Verified:** clean build, `--frames` run exits 0 with no new validation errors; instrumentation confirmed the window is polled ~860× across the ~13.5 s load (was 0 before). Only ZoneRenderer changed — SLViewer is headless. The ~3.4 s first-frame stall remains (under the timeout); attacking it would need off-thread shader compilation (future work, ties into the renderer-performance notes above).
 
 **Follow-up — random launch segfault (regression from the above, same day):** pumping `poll_events()` during the load exposed a latent ordering bug. The window/mouse/key callbacks are registered in `init()` *before* `setup()`, but they dereference `m_controller` (an uninitialized raw pointer, built only at the end of `setup()`) and `m_interface.overlay` (still `nullptr` until `m_interface.init()` runs after `setup()`). Before async load these callbacks could never fire during startup; now a compositor window-configure event (→ `window_resize_callback` → `overlay->set_extent()`) or any mouse move (→ `mouse_callback`) during the load hit a null/garbage deref — timing-dependent, hence "random." **Fix:** default-initialized the raw pointer members to `nullptr` and added an `m_ready` flag (set true at the end of `init()`); all three callbacks bail out while `!m_ready`. Note: couldn't reproduce headlessly (display `:1`, no mouse/WM events), so the fix is verified by code inspection + 6 clean `--frames` launches; needs a user spot-check (wiggle the mouse over the window during the load).
 
@@ -625,7 +635,7 @@ Character `.glb` files now carry their own materials + textures; the scene JSON 
 
 **Migration:** `nadia/alex/maria/javi` baked in place + scene JSONs slimmed (`material`/`extra_materials`/`primitive_materials` removed from the character mesh). `.gitattributes` now LFS-tracks `resources/**/*.glb`. Docs in CLAUDE.md ("Self-Contained Character GLBs") + SCENE.md §6.7.
 
-**Verified:** baked `maria` A/B'd against the original (identical) before in-place migration; HairViewer builds clean. **Pending:** user spot-check of `alex`/`javi` in-place, and Git-LFS re-add of the four GLBs (`git add --renormalize resources/models/*/*.glb`) before commit.
+**Verified:** baked `maria` A/B'd against the original (identical) before in-place migration; ZoneRenderer builds clean. **Pending:** user spot-check of `alex`/`javi` in-place, and Git-LFS re-add of the four GLBs (`git add --renormalize resources/models/*/*.glb`) before commit.
 
 ### Re-bake with pre-packed ORM / CS maps + bent normals (2026-07-22)
 
@@ -642,7 +652,7 @@ New texture set uploaded for all four avatars: **ORM** (R=AO, G=roughness, B=met
 
 **Re-baked** all four from the unbaked originals (`git cat-file blob 286078a~1:…`) — `maria` 335 MB, `alex` 358 MB, `nadia` 349 MB, `javi` 381 MB (6 materials incl. the hearing-aid slots). Scene JSONs untouched (already slim).
 
-**Verified:** HairViewer + SLViewer build clean; `physically_based.glsl` compiles under `glslc` (80 stages embedded, only the 3 documented dead-code skips). All four scenes run `--frames 10` with exactly the June baseline of validation messages (5 pre-existing descriptor-pool warnings + 1 pre-existing swapchain-semaphore error) — no missing images, no material errors. **Pending:** user visual check of all four (bent normal is a deliberate look change), and Git-LFS re-add before commit.
+**Verified:** ZoneRenderer + SLViewer build clean; `physically_based.glsl` compiles under `glslc` (80 stages embedded, only the 3 documented dead-code skips). All four scenes run `--frames 10` with exactly the June baseline of validation messages (5 pre-existing descriptor-pool warnings + 1 pre-existing swapchain-semaphore error) — no missing images, no material errors. **Pending:** user visual check of all four (bent normal is a deliberate look change), and Git-LFS re-add before commit.
 
 ### Performance regression from *Fixed shadows on hair* — host-visible hair `posSSBO` (2026-06-24)
 
@@ -689,15 +699,15 @@ With a moving animation (e.g. `dance_anim.json`) the strand hair rendered and mo
 
 Keeps the no-race guarantee (GPU reads frame N's region while the CPU writes frame N+1's disjoint region — same discipline as the flicker fix). `RING == 3` reused (correct for DOUBLE buffering; bump to 4 if the renderer goes TRIPLE, same note as the VBO ring).
 
-**Verified:** Debug `--frames` harness adds **0** new validation errors vs. the stashed baseline (both show the same 182 pre-existing image-clear WAW hazards in the voxelization pass clears, unrelated to this change; 0 buffer hazards). **Pending user visual confirmation** that the hair shadow now tracks `dance_anim.json` in HairViewer.
+**Verified:** Debug `--frames` harness adds **0** new validation errors vs. the stashed baseline (both show the same 182 pre-existing image-clear WAW hazards in the voxelization pass clears, unrelated to this change; 0 buffer hazards). **Pending user visual confirmation** that the hair shadow now tracks `dance_anim.json` in ZoneRenderer.
 
 ### SLViewer exports video with no hair — binders not driven headless (2026-06-18)
 
-`SLViewer` produced videos with the character bald, while HairViewer (same scene) showed the hair. The `.hair` meshes *were* in the scene (the loader adds them and records `bind_to` requests in `result.hairBindings`), but `SLApplication::setup()` ignored `hairBindings` — no `HairBinder` was built and `tick()` had no `binder->update()`. So the strand hair stayed at its raw, unbound groom-space coordinates (grossly misaligned / off-camera) and never appeared in the framed video. `hair_binding.cpp` was historically not even linked into SLViewer.
+`SLViewer` produced videos with the character bald, while ZoneRenderer (same scene) showed the hair. The `.hair` meshes *were* in the scene (the loader adds them and records `bind_to` requests in `result.hairBindings`), but `SLApplication::setup()` ignored `hairBindings` — no `HairBinder` was built and `tick()` had no `binder->update()`. So the strand hair stayed at its raw, unbound groom-space coordinates (grossly misaligned / off-camera) and never appeared in the framed video. `hair_binding.cpp` was historically not even linked into SLViewer.
 
-**Fix shipped:** port the hair surface-binding pipeline into SLViewer, reusing the exact same module HairViewer uses.
+**Fix shipped:** port the hair surface-binding pipeline into SLViewer, reusing the exact same module ZoneRenderer uses.
 - `CMakeLists.txt` — add `src/hair_binding.{cpp,h}` to `SLVIEWER_SOURCES`/`SLVIEWER_HEADERS`.
-- `src/slviewer/application_sl.{h,cpp}` — `m_binders` + a `setup_hair_binding()` that mirrors HairViewer (explicit `bind_to` requests, else auto-discover head = first skin/morph mesh and bind every `.hair`; auto-loads the `<hair file>.hbnd` sidecar via `make_binder`). Called from `setup()` after `load_scene_json`; `tick()` runs `binder->update()` for each binder before `render()`.
+- `src/slviewer/application_sl.{h,cpp}` — `m_binders` + a `setup_hair_binding()` that mirrors ZoneRenderer (explicit `bind_to` requests, else auto-discover head = first skin/morph mesh and bind every `.hair`; auto-loads the `<hair file>.hbnd` sidecar via `make_binder`). Called from `setup()` after `load_scene_json`; `tick()` runs `binder->update()` for each binder before `render()`.
 
 **Verified:** user confirmed the headless export now renders the hair on the scalp. CLAUDE.md updated (removed the "SLViewer does not drive the binders / hair_binding not linked into SLViewer" limitations).
 
@@ -716,7 +726,7 @@ With `test_anim.json` playing, thin dark flickering lines appeared on the **anim
 - `ext/Vulkan-Engine/src/graphics/command_buffer.cpp::draw_geometry` — bind `vao.vboFrameOffset` (0 for static geometry).
 - **Note:** `RING = 3` assumes DOUBLE buffering; raise to `framesInFlight + 1` (4) if the renderer is ever switched to `TRIPLE`.
 
-Also added a runtime **freeze-animation toggle (key P)** in `HairViewer` (kept as a feature). **Verified:** user confirmed the lines are gone with animation at full speed.
+Also added a runtime **freeze-animation toggle (key P)** in `ZoneRenderer` (kept as a feature). **Verified:** user confirmed the lines are gone with animation at full speed.
 
 ### d'Eon hybrid normals + SSS cavity rollback (2026-06-03)
 
@@ -953,9 +963,9 @@ Layer A of the Skin realism initiative: extend `PhysicallyBasedMaterial` with th
 - `src/scene_loader.cpp` — parses `bent_normal_texture` (linear UNORM, like the main normal map), `curvature_texture` / `scattering_texture` / `clothes_mask_texture` (linear data maps via `TEXTURE_FORMAT_TYPE_LINEAR`); added all four to the `warn_unknown` allowlist.
 - `resources/scenes/maria.json` — wired all 4 new maps so the descriptor writes exercise the path.
 
-`geometry_pass` and the deferred path were intentionally skipped: HairViewer uses the forward renderer, and growing the deferred layout adds risk for no current benefit. Uniform `has*Texture` flags weren't packed into `MaterialUniforms` yet — they'll be added one slot at a time as each map gets shader logic, since `MaterialUniforms` has limited free room in `dataSlot8` and packing everything up front would be premature.
+`geometry_pass` and the deferred path were intentionally skipped: ZoneRenderer uses the forward renderer, and growing the deferred layout adds risk for no current benefit. Uniform `has*Texture` flags weren't packed into `MaterialUniforms` yet — they'll be added one slot at a time as each map gets shader logic, since `MaterialUniforms` has limited free room in `dataSlot8` and packing everything up front would be premature.
 
-**Verified.** User built and ran HairViewer; render is visually identical to the previous step (correct — samplers declared but unread) and no new debug-layer warnings appeared.
+**Verified.** User built and ran ZoneRenderer; render is visually identical to the previous step (correct — samplers declared but unread) and no new debug-layer warnings appeared.
 
 ---
 
@@ -999,7 +1009,7 @@ That's correct for translation + uniform scale but degenerate under rotation —
 
 ### Hair pink/magenta flash on certain camera angles (2026-05-26)
 
-Hair would briefly flash a magenta-and-white pattern at certain camera angles (HairViewer only — SLViewer was clean). Bisected with progressively-narrowing shader overrides: a bright-red override at the *end* of `hair_strand_epic.glsl::main()` was apparently being ignored, but the same override at the *top* with an early `return` worked. That ruled out everything in the post-process chain and isolated the bug to the hair fragment shader itself — `color` was being poisoned with NaN/Inf *before* the override line.
+Hair would briefly flash a magenta-and-white pattern at certain camera angles (ZoneRenderer only — SLViewer was clean). Bisected with progressively-narrowing shader overrides: a bright-red override at the *end* of `hair_strand_epic.glsl::main()` was apparently being ignored, but the same override at the *top* with an early `return` worked. That ruled out everything in the post-process chain and isolated the bug to the hair fragment shader itself — `color` was being poisoned with NaN/Inf *before* the override line.
 
 **Root cause:** `computeAmbient()` (in `hair_strand_epic.glsl`) declared `vec3 ambient;` and only assigned it in the `else` branch. The `if (scene.useIBL)` branch computed `rotatedNormal` but never set `ambient`. GLSL doesn't zero-initialize locals, so the function returned whatever happened to be in the register — often NaN. Then `color += ambient` poisoned the output. Nadia's scene has `use_ibl: true`, so the bad path ran every frame; whether the register held a NaN at that moment depended on what the BSDF math had just done, which is why it looked angle-correlated.
 
@@ -1024,7 +1034,7 @@ Hair would briefly flash a magenta-and-white pattern at certain camera angles (H
 
 ### Scene definition → JSON (2026-05-20)
 
-Replaced the duplicated hardcoded `setup()` bodies in `src/application.cpp` (HairViewer) and `src/slviewer/application_sl.cpp` (SLViewer) — previously a `#ifdef USE_GLB_MODELS / LOAD_ALEX|JAVI|MARIA|NADIA / USE_NEURAL_MODELS` ladder — with a JSON scene format loaded at runtime. Both viewers ship `resources/scenes/default.json` (current Alex configuration); SLViewer adds `--scene <path>`. The old C++ paths remain compiled behind `#define USE_HARDCODED_SCENE` as a fallback.
+Replaced the duplicated hardcoded `setup()` bodies in `src/application.cpp` (ZoneRenderer) and `src/slviewer/application_sl.cpp` (SLViewer) — previously a `#ifdef USE_GLB_MODELS / LOAD_ALEX|JAVI|MARIA|NADIA / USE_NEURAL_MODELS` ladder — with a JSON scene format loaded at runtime. Both viewers ship `resources/scenes/default.json` (current Alex configuration); SLViewer adds `--scene <path>`. The old C++ paths remain compiled behind `#define USE_HARDCODED_SCENE` as a fallback.
 
 **Shipped:**
 - `src/scene_loader.{h,cpp}` — application-layer parser (linked by both targets). Broad schema covering all material classes (`pbr`/`haircard`/`hairepic`/`hair`/`hairdisney`/`unlit`), `point`/`directional` lights, mesh types `glb`/`obj`/`ply`/`hair`/`neural_hair`, nested `children`, skybox, ambient, fog, SSS LUT. Tolerates unknown keys (warn), hard-fails on missing required ones.
@@ -1034,12 +1044,12 @@ Replaced the duplicated hardcoded `setup()` bodies in `src/application.cpp` (Hai
 - CMake: `scene_loader.cpp` + `hair_loader.cpp` explicitly added to SLViewer source list; `resources/scenes` directory installed.
 
 **Issues found + decisions:**
-- *Animation in two places confused the override semantics.* Resolved by making the per-mesh `animation` field **optional** (option b). SLViewer-targeted scenes can omit it; HairViewer scenes (and `default.json`) keep it because HairViewer has no animation CLI flag.
+- *Animation in two places confused the override semantics.* Resolved by making the per-mesh `animation` field **optional** (option b). SLViewer-targeted scenes can omit it; ZoneRenderer scenes (and `default.json`) keep it because ZoneRenderer has no animation CLI flag.
 - *GLB-embedded textures need a sentinel.* Materials reference GLB-embedded textures via `"$GLB[N]"` (resolves to the Nth element of the GLB's `outTextures` vector). Plain strings are paths relative to the resources root.
 - *Children support added late.* Neural avatars parent hair to head — required nesting. `build_mesh` now recurses through `children`, transforms inherit through the engine's existing `Object3D` hierarchy.
 - *Frame budget for SLViewer.* When the animation comes from the CLI override (not the scene), the loader doesn't surface duration/fps to SLViewer. Resolved by re-reading the animation JSON header (a few hundred bytes) in `SLApplication::setup()`.
 
-**Verified:** Debug `HairViewer --frames 10 --log-level warn` produced an empty `debug_trace.log` (clean). Release `SLViewer test_anim.json` renders 120 frames and encodes a valid MP4. `--scene javi.json|maria.json|nadia.json|neural_tono.json|bust_strands.json` all load and render without errors.
+**Verified:** Debug `ZoneRenderer --frames 10 --log-level warn` produced an empty `debug_trace.log` (clean). Release `SLViewer test_anim.json` renders 120 frames and encodes a valid MP4. `--scene javi.json|maria.json|nadia.json|neural_tono.json|bust_strands.json` all load and render without errors.
 
 ---
 

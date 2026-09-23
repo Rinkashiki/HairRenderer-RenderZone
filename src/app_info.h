@@ -14,7 +14,7 @@ namespace app_info {
 
 constexpr const char* NAME = APP_DISPLAY_NAME;
 
-// "Hair Viewer" -> "HAIR VIEWER", for display styles that want caps.
+// "Zone Renderer" -> "ZONE RENDERER", for display styles that want caps.
 inline std::string name_upper() {
     std::string s = NAME;
     for (char& c : s)

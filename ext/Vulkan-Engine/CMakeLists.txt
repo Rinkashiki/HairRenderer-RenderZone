@@ -73,7 +73,7 @@ if (WIN32)
     # CRT (/MD), but this distributable is /MT (static runtime, no VC++ redist). That
     # mismatch fails to link (unresolved __imp_exp2 etc.). So we link the DLL and ship
     # shaderc_shared.dll alongside the exe (see the install rule in the root
-    # CMakeLists). HairViewer needs Shaderc at runtime; SLViewer imports it only at
+    # CMakeLists). ZoneRenderer needs Shaderc at runtime; SLViewer imports it only at
     # load (baked SPIR-V at runtime), so the DLL must be present for both to launch.
     set(SHADERC_LIB "shaderc_shared")
 elseif(UNIX)

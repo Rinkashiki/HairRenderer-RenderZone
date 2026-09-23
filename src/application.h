@@ -16,7 +16,7 @@ USING_VULKAN_ENGINE_NAMESPACE
 
 using namespace Core;
 
-class HairViewer
+class ZoneRenderer
 {
     // Single source of truth for the loaded scene. Referenced by both
     // init() (to peek renderer.msaa before constructing the renderer) and

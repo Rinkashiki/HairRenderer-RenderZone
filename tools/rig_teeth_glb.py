@@ -9,7 +9,7 @@ Workflow per character:
            --recipe tools/bake_recipes/<char>.json
     3. python tools/bake_glb_material.py resources/scenes/<char>.json \
            --materials tools/bake_recipes/<char>.json --in-glb <rigged.glb> --inplace
-    4. HairViewer: re-seat + Bind + Save every strand-hair groom (the head's
+    4. ZoneRenderer: re-seat + Bind + Save every strand-hair groom (the head's
        topology changed, so the old .hbnd sidecars no longer apply).
 
 What this script does to the export (the engine's GLB loader needs all of it):

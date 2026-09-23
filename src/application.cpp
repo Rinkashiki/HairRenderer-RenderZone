@@ -8,16 +8,16 @@
 #include <filesystem>
 #include <thread>
 
-void HairViewer::init(Systems::RendererSettings settings) {
+void ZoneRenderer::init(Systems::RendererSettings settings) {
     m_window = new WindowGLFW(app_info::NAME, 1024, 1024);
 
     m_window->init();
     m_window->set_window_icon(RESOURCES_PATH "textures/icon.png");
 
-    m_window->set_window_size_callback(std::bind(&HairViewer::window_resize_callback, this, std::placeholders::_1, std::placeholders::_2));
-    m_window->set_mouse_callback(std::bind(&HairViewer::mouse_callback, this, std::placeholders::_1, std::placeholders::_2));
+    m_window->set_window_size_callback(std::bind(&ZoneRenderer::window_resize_callback, this, std::placeholders::_1, std::placeholders::_2));
+    m_window->set_mouse_callback(std::bind(&ZoneRenderer::mouse_callback, this, std::placeholders::_1, std::placeholders::_2));
     m_window->set_key_callback(
-        std::bind(&HairViewer::keyboard_callback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
+        std::bind(&ZoneRenderer::keyboard_callback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 
     settings.clearColor = Vec4(0.0, 0.0, 0.0, 1.0);
 
@@ -43,7 +43,7 @@ void HairViewer::init(Systems::RendererSettings settings) {
     m_ready = true;
 }
 
-void HairViewer::run(Systems::RendererSettings settings) {
+void ZoneRenderer::run(Systems::RendererSettings settings) {
 
     init(settings);
     while (!m_window->get_window_should_close())
@@ -59,7 +59,7 @@ void HairViewer::run(Systems::RendererSettings settings) {
     m_renderer->shutdown(m_scene);
 }
 
-void HairViewer::setup() {
+void ZoneRenderer::setup() {
     // The JSON scene load (parse + GLB geometry + decoding the 8K maps) is ~5 s
     // of pure CPU work. It touches no Vulkan/GLFW (loaders only fill CPU-side
     // caches; GPU images are created lazily at first render — the neural-hair
@@ -177,7 +177,7 @@ static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::
     return binder;
 }
 
-void HairViewer::setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests) {
+void ZoneRenderer::setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests) {
     // Scene declared explicit bindings — use them verbatim.
     if (!requests.empty()) {
         for (const auto& r : requests) {
@@ -205,7 +205,7 @@ void HairViewer::setup_hair_binding(const std::vector<scene_loader::HairBindRequ
     }
 }
 
-void HairViewer::update() {
+void ZoneRenderer::update() {
     if (!m_interface.overlay->wants_to_handle_input())
         m_controller->handle_keyboard(0, 0, m_time.delta);
 
@@ -247,7 +247,7 @@ void HairViewer::update() {
     m_interface.objectWidget->set_object(m_interface.sceneWidget->get_selected_object());
 }
 
-void HairViewer::tick() {
+void ZoneRenderer::tick() {
     float currentTime      = (float)m_window->get_time_elapsed();
     m_time.delta           = currentTime - m_time.last;
     m_time.last            = currentTime;

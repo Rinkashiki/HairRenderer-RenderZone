@@ -24,7 +24,7 @@
    cmake ..
    ```
 
-## CONTROLS (HairViewer)
+## CONTROLS (ZoneRenderer)
 
 ### Camera & app
 | Input | Action |
@@ -63,7 +63,7 @@ Application loads an avatar and a hair mesh and renders it.
 
 ### Application Main Components
 
-* **`HairViewer`**: The core of the application. It orchestrates the entire program lifecycle, from initialization (`init`, `setup`) to the main execution loop (`run`, `tick`, `update`).
+* **`ZoneRenderer`**: The core of the application. It orchestrates the entire program lifecycle, from initialization (`init`, `setup`) to the main execution loop (`run`, `tick`, `update`).
 * **`WindowGLFW` & `ForwardRenderer`**: `WindowGLFW` handles the application window and inputs (keyboard/mouse), while `Systems::ForwardRenderer` is the graphics engine responsible for drawing the scene and computing shadows.
 * **`Scene`, `Camera`, & `Controller`**: 
     * `Scene`: Acts as the master container holding all 3D objects and lights.

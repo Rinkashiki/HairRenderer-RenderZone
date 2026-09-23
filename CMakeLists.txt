@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(HairRenderer VERSION 1.0.0)
+project(ZoneRenderer VERSION 1.0.0)
 
 # Display name of the interactive app — the single place it is spelled. Reaches
 # the code as the APP_DISPLAY_NAME macro (see src/app_info.h) and drives the
 # window title, the loading screen, and anything else that prints the name.
-# Target / binary names (HairViewer, SLViewer) are separate and unchanged.
-set(APP_DISPLAY_NAME "Hair Viewer" CACHE STRING "User-facing name of the interactive viewer")
+# Target / binary names (ZoneRenderer, SLViewer) are separate and unchanged.
+set(APP_DISPLAY_NAME "Zone Renderer" CACHE STRING "User-facing name of the interactive viewer")
 
 # -----------------------------------------------------------------------------
 # 1. Standard C++ Setup
@@ -45,11 +45,11 @@ find_package(Threads REQUIRED)
 # -----------------------------------------------------------------------------
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-# The standalone headless SLViewer needs a few extra host tools that HairViewer
+# The standalone headless SLViewer needs a few extra host tools that ZoneRenderer
 # does not: Python 3 + glslc + spirv-opt (to bake shaders into the binary as
 # embedded SPIR-V) and ffmpeg (to encode the exported video). Building only the
-# interactive HairViewer should not require any of them, so the whole SLViewer
-# section below is gated on this option. Turn it OFF to build HairViewer alone:
+# interactive ZoneRenderer should not require any of them, so the whole SLViewer
+# section below is gated on this option. Turn it OFF to build ZoneRenderer alone:
 #     cmake -DBUILD_SLVIEWER=OFF ..
 option(BUILD_SLVIEWER
     "Build the standalone headless SLViewer (requires Python 3, glslc, spirv-opt, ffmpeg)"
@@ -60,38 +60,38 @@ option(BUILD_SLVIEWER
 add_subdirectory(ext/Vulkan-Engine)
  
 # -----------------------------------------------------------------------------
-# 4. HairViewer Target
+# 4. ZoneRenderer Target
 # -----------------------------------------------------------------------------
 file(GLOB APP_SOURCES "src/*.cpp")
 file(GLOB APP_HEADERS "src/*.h")
 
-add_executable(HairViewer ${APP_SOURCES} ${APP_HEADERS})
+add_executable(ZoneRenderer ${APP_SOURCES} ${APP_HEADERS})
 
-target_link_libraries(HairViewer PRIVATE
+target_link_libraries(ZoneRenderer PRIVATE
     VulkanEngine
     Vulkan::Vulkan
     Threads::Threads
 )
 
 if(UNIX AND NOT APPLE)
-    target_link_libraries(HairViewer PRIVATE dl)
+    target_link_libraries(ZoneRenderer PRIVATE dl)
 endif()
 
-target_compile_definitions(HairViewer PUBLIC
+target_compile_definitions(ZoneRenderer PUBLIC
     RESOURCES_PATH="${CMAKE_CURRENT_SOURCE_DIR}/resources/"
     APP_DISPLAY_NAME="${APP_DISPLAY_NAME}"
 )
 
 if(MSVC)
-    target_compile_options(HairViewer PRIVATE /W4 /MP)
+    target_compile_options(ZoneRenderer PRIVATE /W4 /MP)
 else()
-    target_compile_options(HairViewer PRIVATE -Wall -Wextra -O3)
+    target_compile_options(ZoneRenderer PRIVATE -Wall -Wextra -O3)
 endif()
 
 # =============================================================================
 # SLViewer (standalone deployment binary) + its host-tool dependencies.
 # Everything from here to the end of the file is skipped when BUILD_SLVIEWER is
-# OFF, so HairViewer builds without Python / glslc / spirv-opt / ffmpeg.
+# OFF, so ZoneRenderer builds without Python / glslc / spirv-opt / ffmpeg.
 # =============================================================================
 if(BUILD_SLVIEWER)
 
@@ -158,7 +158,7 @@ endif()
 #   3. run spirv-opt --strip-debug so reconstructed GLSL loses original names,
 #   4. emit a generated embedded_shaders.cpp registering the blobs at static
 #      init via shader_registry.h.
-# The generated source is linked only into SLViewer; HairViewer continues to
+# The generated source is linked only into SLViewer; ZoneRenderer continues to
 # read .glsl files at runtime and compile via Shaderc.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
