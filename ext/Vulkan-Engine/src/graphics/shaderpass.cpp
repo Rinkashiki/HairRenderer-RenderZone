@@ -107,7 +107,7 @@ void GraphicShaderPass::build_shader_stages(shaderc_optimization_level optimizat
     if (filePath == "")
         return;
 
-    // Embedded path: when SLViewer (or any embed-mode build) has registered a
+    // Embedded path: when ZoneExporter (or any embed-mode build) has registered a
     // pre-compiled SPIR-V table, skip read_file + Shaderc entirely. The
     // registry knows which stages each file declares, so we iterate its hits.
     if (has_embedded_shader_registry())

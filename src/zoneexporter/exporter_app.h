@@ -15,7 +15,7 @@
 USING_VULKAN_ENGINE_NAMESPACE
 using namespace Core;
 
-class SLApplication
+class ZoneExporter
 {
     Core::IWindow*         m_window{nullptr};
     Systems::BaseRenderer* m_renderer{nullptr};

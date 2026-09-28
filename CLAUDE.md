@@ -95,7 +95,7 @@ ZoneRenderer has interactive translate/rotate/scale gizmos for the object curren
 selected in the Scene Explorer. Built on **ImGuizmo** (MIT), vendored at
 `ext/Vulkan-Engine/thirdparty/imguizmo/` and compiled **into the imgui target**
 (so it shares `imgui.h`/`imgui_internal.h` and the single `GImGui` context and
-links wherever imgui does). SLViewer is headless — it links the code but never
+links wherever imgui does). ZoneExporter is headless — it links the code but never
 draws a gizmo.
 
 **Integration seam.** The engine's `GUIOverlay::render()` does
@@ -204,7 +204,7 @@ python tools/bake_glb_material.py resources/scenes/nadia.json
 ```
 It reads the material blocks (recipe if `--materials`, else the scene's `material` / `extra_materials` / `primitive_materials`), embeds the referenced PNGs (original bytes, verbatim — identical pixels), passes pre-packed atlases through as-is while still auto-repacking separate O/R/M maps into an ORM, writes the standard slots + `extras.vkfw_material`, and emits the slimmed scene. Re-runnable. Texture paths in a recipe are used **only at bake time**, but keep their on-disk case exact (several maps are `.PNG`) so re-baking works on Linux too.
 
-**Size note.** These characters use 8K skin maps, so a baked GLB is large (~335–380 MB vs ~21 MB). This is inherent to the source textures (full-res verbatim embedding was chosen for pixel-identical results). `*.glb` under `resources/` is **Git-LFS tracked** (`.gitattributes`) — commit the baked GLBs through LFS, not as plain blobs. Because the maps are baked into the GLB, the **SLViewer distributable does not ship the loose `resources/textures/<char>/` folders** (they'd be ~1.2 GB of duplicated bytes) — see the `install(DIRECTORY … resources/textures … PATTERN "<char>" EXCLUDE)` rule in `CMakeLists.txt`.
+**Size note.** These characters use 8K skin maps, so a baked GLB is large (~335–380 MB vs ~21 MB). This is inherent to the source textures (full-res verbatim embedding was chosen for pixel-identical results). `*.glb` under `resources/` is **Git-LFS tracked** (`.gitattributes`) — commit the baked GLBs through LFS, not as plain blobs. Because the maps are baked into the GLB, the **ZoneExporter distributable does not ship the loose `resources/textures/<char>/` folders** (they'd be ~1.2 GB of duplicated bytes) — see the `install(DIRECTORY … resources/textures … PATTERN "<char>" EXCLUDE)` rule in `CMakeLists.txt`.
 
 **Key files:** `tools/bake_glb_material.py` (baker) + `tools/bake_recipes/*.json` (material source of truth), `ext/Vulkan-Engine/src/tools/loaders.cpp` (`load_GLB` + `GLBMaterialAux` + `load_PNG_from_memory`; `SetImagesAsIs` keeps the 8K maps raw and they're decoded on demand), `ext/Vulkan-Engine/include/engine/tools/loaders.h` (`GLBImage` / `GLBMaterialAux`), `src/scene_loader.cpp` (`GLBTexCtx`, `resolve_texture` `$GLB[...]` + channel resolution, `assemble_baked_materials`), and for packed atlases `ext/Vulkan-Engine/{include/engine/core/materials/physically_based.h,src/core/materials/physically_based.cpp}` (`set_*_channel` → `dataSlot10.y`) + `ext/Vulkan-Engine/resources/shaders/forward/physically_based.glsl` (`packedChannels`).
 
@@ -450,14 +450,14 @@ Strand hair (`.hair` — scalp hair, eyebrows, eyelashes) can be bound to a char
 - `"bind_to": "<head mesh name>"` — bind onto that mesh's surface (replaces `attach_to` for bound hair).
 - `"binding": "<path.hbnd>"` — optional sidecar path (relative to resources); defaults to `<hair file>.hbnd`.
 
-When no mesh declares `bind_to`, both viewers auto-discover the head (first morph/skinned mesh) and bind every `.hair` mesh, loading each `<hair file>.hbnd` if present. The scene loader only records the request (`LoadResult::hairBindings`); each application builds the `HairBinder`. Both **ZoneRenderer** (`src/application.cpp`) and **SLViewer** (`src/slviewer/application_sl.cpp`) run the same `setup_hair_binding()` + per-frame `binder->update()` logic, so `hair_binding.cpp` is linked into both targets (added to `SLVIEWER_SOURCES` in `CMakeLists.txt`). Without this the strand hair renders at its raw unbound groom position (off-frame).
+When no mesh declares `bind_to`, both viewers auto-discover the head (first morph/skinned mesh) and bind every `.hair` mesh, loading each `<hair file>.hbnd` if present. The scene loader only records the request (`LoadResult::hairBindings`); each application builds the `HairBinder`. Both **ZoneRenderer** (`src/application.cpp`) and **ZoneExporter** (`src/zoneexporter/exporter_app.cpp`) run the same `setup_hair_binding()` + per-frame `binder->update()` logic, so `hair_binding.cpp` is linked into both targets (added to `ZONEEXPORTER_SOURCES` in `CMakeLists.txt`). Without this the strand hair renders at its raw unbound groom position (off-frame).
 
 **Engine notes / limitations.**
 - `.hair` geometry is marked animatable (CPU-writable VBO) in `load_hair`, which excludes it from the RT BLAS (the forward hair path doesn't use it).
 - **Animatable geometry keeps two ring buffers, not one.** Besides the deformed-vertex VBO ring, `Geometry::cycle_animatable_upload` also rings the **position SSBO** (`vao.posSSBO`, one `Vec4`/vertex), because the hair voxelization (`HAIR_VOXELIZATION_PASS`, `OPTICAL_DENSITY` mode), SSAO and SSR read strand positions from that bindless buffer — not the VBO. The bindless descriptor is re-pointed at the live region each frame (`forward_pass`/`hair_voxelization_pass` `update_uniforms` pass `readOffset = posFrameOffset`). Without this the hair's volumetric self-shadow/scattering freezes at the groom pose while the visible strands move (the strand model matrix is ~identity — animation is baked into the vertices). `RING == 3` for both rings (DOUBLE buffering; bump to 4 for TRIPLE).
 - Per-frame reconstruction is CPU-side (mirrors `apply_deformation`); fine for moderate strand counts (GPU compute path is possible future work). A static (non-animated) head reconstructs once.
-- Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). SLViewer headless export now drives the binders too (same `setup_hair_binding()` + per-frame `binder->update()` as ZoneRenderer), so exported video matches the interactive view.
-- **SLViewer's "bald first frame" (fixed 2026-07-27).** The first captured frame used to have no surface-bound strand hair (bald: no scalp hair, brows or lashes) while frames 1+ were correct. Root cause: geometry is uploaded to the GPU *lazily* on the first `render()` (`ResourceManager::upload_geometry_data` seeds animatable-VBO ring region 0 with the raw groom vertices, then flips `loadedOnGPU=true`). On a cold frame 0 the binder's `update()` ran *before* that upload, so `Geometry::upload_vertices` no-oped (`!loadedOnGPU`) and the hair drew its seeded groom region — off-frame = bald. Fix: `SLApplication::init()` now does one **throwaway warm-up `render(m_scene)`** after `setup()` and *before* the capture callback is registered (so nothing is written to disk — `render()` guards a null pre-submit callback, and it neither advances the animation nor the frame counter). That forces the lazy upload, so the first *captured* frame's `binder->update()` actually writes the bound strands. Verified by A/B: with the warm-up off, `mean|frame0−frame1|` ≈ 1.5 (≈7× the ~0.2 run-to-run noise floor); with it on, ≈ 0.2 (noise-level). `frame_00000.png` is now safe to read.
+- Declip is a tangent-plane clamp — long strands far from their root may still clip (full surface-collision declip is future work). ZoneExporter headless export now drives the binders too (same `setup_hair_binding()` + per-frame `binder->update()` as ZoneRenderer), so exported video matches the interactive view.
+- **ZoneExporter's "bald first frame" (fixed 2026-07-27).** The first captured frame used to have no surface-bound strand hair (bald: no scalp hair, brows or lashes) while frames 1+ were correct. Root cause: geometry is uploaded to the GPU *lazily* on the first `render()` (`ResourceManager::upload_geometry_data` seeds animatable-VBO ring region 0 with the raw groom vertices, then flips `loadedOnGPU=true`). On a cold frame 0 the binder's `update()` ran *before* that upload, so `Geometry::upload_vertices` no-oped (`!loadedOnGPU`) and the hair drew its seeded groom region — off-frame = bald. Fix: `ZoneExporter::init()` now does one **throwaway warm-up `render(m_scene)`** after `setup()` and *before* the capture callback is registered (so nothing is written to disk — `render()` guards a null pre-submit callback, and it neither advances the animation nor the frame counter). That forces the lazy upload, so the first *captured* frame's `binder->update()` actually writes the bound strands. Verified by A/B: with the warm-up off, `mean|frame0−frame1|` ≈ 1.5 (≈7× the ~0.2 run-to-run noise floor); with it on, ≈ 0.2 (noise-level). `frame_00000.png` is now safe to read.
 - **Bound-hair "hard lighting seam" under root-motion animation (fixed 2026-07-27).** With an animation that carries the character across world space (e.g. `dance_anim.json` on `nadia`), the groom developed a **hard planar line splitting it into two differently-lit halves** (clearest on a back-of-head view). Root cause: `HairBinder::update()` rebuilds and uploads the deformed strand vertices every frame, but was **not** refreshing the geometry's CPU-side bounds. The hair voxel volume's world AABB is built in `resource_manager.cpp` from `mesh->get_bounding_volume()->min/maxCoords`, which derive (`BoundingSphere::setup`) from those geometry bounds. So the voxel cube stayed **frozen at the bind (rest) pose** while the animation moved the hair through world space **via vertex deformation** (the strand model matrix stays ~identity — the motion is skinning baked into vertices, *not* a matrix transform, so the `model * localAABB` path in resource_manager can't rescue it). As the head translated, the fixed cube's boundary plane swept across the displaced hair; the `getOpticalDensity`/SH lookup (`uvw = (worldPos - minCoord)/(maxCoord - minCoord)` then `clamp`) goes discontinuous at the face — inside varies in 3D, outside is pinned to the face projection — hence the seam. Fix: `update()` now calls `hairGeom->update_bounds(m_workVerts)` + `m_hair->setup_volume()` after the per-frame reconstruction, so the bounds (and thus the voxel world cube + frustum sphere) track the animated hair. Only runs on the animated-head path (the static-head early-return already set bounds once at bind/load). Verified by rendering the full `nadia` + `dance_anim` clip headless (2323 frames) and inspecting front/profile/back/far-translated frames — the seam is gone at every angle.
 
 **Key files:** `src/hair_binding.{h,cpp}` (`HairBinder`: bind / update / sidecar IO), `src/gui.{h,cpp}` (`HairBindWidget`), `src/application.cpp` (`setup_hair_binding()` + per-frame `binder->update()`), `src/scene_loader.{h,cpp}` (`bind_to`/`binding` → `LoadResult::hairBindings`), and engine hooks `Geometry::{get_deformed_vertices,get_strand_offsets,set_animatable,upload_vertices,update_bounds}` + strand-offset capture in `Tools::Loaders::load_hair`.
@@ -468,7 +468,7 @@ The animations loaded are in json format. The specifics of this format and its s
 
 ### Scene format
 
-Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. Known-good character scenes: `alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`. The default scene (used by SLViewer when `--scene` is omitted, and by ZoneRenderer) is `resources/scenes/maria.json`.
+Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. Known-good character scenes: `alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`. The default scene (used by ZoneExporter when `--scene` is omitted, and by ZoneRenderer) is `resources/scenes/maria.json`.
 
 > **Note:** the old `resources/scenes/default.json` (Alex + `haircard`/OBJ hair) was **removed** — it segfaulted on the haircard hair path. `maria.json` is the default now.
 
@@ -480,7 +480,7 @@ reaches the code as a compile definition and is exposed by `src/app_info.h`
 (`app_info::NAME`, `app_info::name_upper()`), which is what the window title
 and the loading screen read. Never write the name as a string literal in `src/`;
 changing the CMake variable (and reconfiguring) renames every mention. Target /
-binary names (`ZoneRenderer`, `SLViewer`) are deliberately separate.
+binary names (`ZoneRenderer`, `ZoneExporter`) are deliberately separate.
 It is deliberately a **plain** variable, not a `CACHE` one: a cached value is
 frozen into every already-configured build dir (presets under `build/<preset>/`
 included), so a rename would silently not apply there — that bit the
@@ -516,7 +516,7 @@ renderer initialised lazily inside frame 0, after the load).
   `renderer.sss_scatter_lut` / `renderer.dof` come back in
   `LoadResult::{sssScatterLut,dof}` and are applied on the main thread after the
   join — they touch pass state, and the renderer is initialising/rendering while
-  the worker runs. SLViewer still passes its renderer (synchronous load).
+  the worker runs. ZoneExporter still passes its renderer (synchronous load).
 - **Splash scene lifetime:** never `delete`d — `~Scene` and `~Object3D` both
   free the children (double free; nothing in the app destroys a Scene). Its GPU
   side *is* released (`ResourceManager::clean_scene` after a `device->wait()`),
@@ -529,7 +529,7 @@ renderer initialised lazily inside frame 0, after the load).
 Scenes are JSON-driven (`resources/scenes/*.json` — see @SCENE.md).
 
 - **ZoneRenderer** loads a scene unconditionally (`SCENE_PATH` in `src/application.h`, currently `resources/scenes/maria.json`). To use a different scene, either edit that file or change that constant.
-- **SLViewer** accepts an optional `--scene <path>` flag; when omitted it falls back to `resources/scenes/maria.json`.
+- **ZoneExporter** accepts an optional `--scene <path>` flag; when omitted it falls back to `resources/scenes/maria.json`.
 
 #### Engine example applications
 
@@ -612,7 +612,7 @@ This renders 10 frames, captures validation layer messages to `build/debug_trace
 - Logger: `ext/Vulkan-Engine/thirdparty/logger/include/logger.h`
 - CLI parsing + frame limit: `src/main.cpp`, `src/application.h/cpp`
 
-## Building the SLViewer Distributable
+## Building the ZoneExporter Distributable
 
 The distributable is produced by building in Release mode and running `cmake --install`. The result is a self-contained folder that can be copied to any machine without a Vulkan SDK, IDE, or source tree.
 
@@ -622,17 +622,17 @@ The distributable is produced by building in Release mode and running `cmake --i
 # 1. Configure and build (Release defines NDEBUG — disables validation layers)
 cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
-cmake --build . --target SLViewer -j$(nproc)
+cmake --build . --target ZoneExporter -j$(nproc)
 
 # 2. Install into a distribution folder
-cmake --install . --prefix ~/SLViewer-linux
+cmake --install . --prefix ~/ZoneExporter-linux
 ```
 
 The installed layout:
 
 ```
-SLViewer-linux/
-├── SLViewer              # ELF binary (shaders baked in as SPIR-V)
+ZoneExporter-linux/
+├── ZoneExporter          # ELF binary (shaders baked in as SPIR-V)
 ├── ffmpeg                # bundled static ffmpeg GPL build (BtbN linux64)
 ├── THIRD_PARTY_NOTICES.txt
 └── resources/
@@ -646,7 +646,7 @@ SLViewer-linux/
 ```
 
 No `resources/shaders/` is shipped — shaders are pre-compiled to SPIR-V at
-build time and linked into the binary. See **Embedded SPIR-V for SLViewer**
+build time and linked into the binary. See **Embedded SPIR-V for ZoneExporter**
 below.
 
 `libvulkan.so.1` is **not bundled**. On Linux the Vulkan loader ships with GPU drivers (`mesa-vulkan-drivers`, `nvidia-driver`, etc.) and is always present on any machine capable of running Vulkan. Bundling an SDK copy of the loader breaks on other machines because the SDK loader looks for ICDs in SDK-specific paths that don't exist there.
@@ -659,35 +659,35 @@ below.
 rem 1. Configure and build (MSVC; /MT static runtime is set automatically)
 cd build
 cmake -G "Visual Studio 17 2022" ..
-cmake --build . --config Release --target SLViewer
+cmake --build . --config Release --target ZoneExporter
 
 rem 2. Install into a distribution folder
-cmake --install . --config Release --prefix C:\SLViewer-windows
+cmake --install . --config Release --prefix C:\ZoneExporter-windows
 ```
 
 The installed layout:
 
 ```
-SLViewer-windows\
-├── SLViewer.exe          # /MT static MSVC runtime — no VC++ redist. Shaders baked in as SPIR-V.
+ZoneExporter-windows\
+├── ZoneExporter.exe      # /MT static MSVC runtime — no VC++ redist. Shaders baked in as SPIR-V.
 ├── ffmpeg.exe            # bundled static ffmpeg GPL build (BtbN win64)
 ├── vulkan-1.dll          # Vulkan loader (from %VULKAN_SDK%\Bin\, or System32 fallback)
-├── shaderc_shared.dll    # Shaderc — a load-time import even though SLViewer never calls it
+├── shaderc_shared.dll    # Shaderc — a load-time import even though ZoneExporter never calls it
 ├── THIRD_PARTY_NOTICES.txt
 └── resources\            # same tree as Linux — no shaders\
 ```
 
 `vulkan-1.dll` and `shaderc_shared.dll` are both located automatically at configure time and bundled next to the exe. If either is missing, CMake emits a warning and the DLL must be copied manually. The MSVC runtime is compiled in statically (`/MT`), so no VC++ Redistributable is required on the target machine.
 
-**Why `shaderc_shared.dll` is bundled even though SLViewer uses baked SPIR-V.** The engine is a static lib that links the Shaderc **import** lib (`shaderc_shared`) on Windows, because the SDK's static `shaderc_combined.lib` is built `/MD` and won't link into this `/MT` build (unresolved `__imp_exp2` etc.). So *every* exe linking the engine — SLViewer included — carries a **load-time** dependency on `shaderc_shared.dll` and won't launch without it, even though SLViewer never actually calls Shaderc (ZoneRenderer does, at runtime). Target machines have no Vulkan SDK, so the DLL is shipped. Linux is unaffected: it links the static `shaderc_combined.a`, so there's no runtime DLL. To drop the dependency entirely, a `/MT`-built static Shaderc would be needed (the SDK doesn't provide one).
+**Why `shaderc_shared.dll` is bundled even though ZoneExporter uses baked SPIR-V.** The engine is a static lib that links the Shaderc **import** lib (`shaderc_shared`) on Windows, because the SDK's static `shaderc_combined.lib` is built `/MD` and won't link into this `/MT` build (unresolved `__imp_exp2` etc.). So *every* exe linking the engine — ZoneExporter included — carries a **load-time** dependency on `shaderc_shared.dll` and won't launch without it, even though ZoneExporter never actually calls Shaderc (ZoneRenderer does, at runtime). Target machines have no Vulkan SDK, so the DLL is shipped. Linux is unaffected: it links the static `shaderc_combined.a`, so there's no runtime DLL. To drop the dependency entirely, a `/MT`-built static Shaderc would be needed (the SDK doesn't provide one).
 
 **`vulkan-1.dll` source.** Preferred from `%VULKAN_SDK%\Bin\`, but recent SDKs (1.4.x) no longer ship the loader there — it's installed to `System32` by the runtime installer / GPU driver, so the CMake rule falls back to `%WINDIR%\System32\vulkan-1.dll`. Bundling the Windows loader is safe because it discovers ICDs via the registry, not SDK-relative paths (this is why Linux deliberately does *not* bundle `libvulkan.so.1`). Even unbundled, most target machines resolve `vulkan-1.dll` from `System32` via the default DLL search path — which is why a missing loader is rarely the first error seen, but a missing `shaderc_shared.dll` (present nowhere but the SDK) always is.
 
 **Note**: The ffmpeg `.zip` for Windows is downloaded at configure time (same as Linux). If the download fails, system `ffmpeg` on `PATH` is used as a fallback at runtime.
 
-### Embedded SPIR-V for SLViewer
+### Embedded SPIR-V for ZoneExporter
 
-SLViewer ships with shaders **baked into the binary** as SPIR-V, so no GLSL
+ZoneExporter ships with shaders **baked into the binary** as SPIR-V, so no GLSL
 source leaves the build tree in the distributable. ZoneRenderer is unchanged —
 it still reads `.glsl` from disk and compiles via Shaderc at runtime, which
 keeps shader iteration fast for dev work.
@@ -702,12 +702,12 @@ keeps shader iteration fast for dev work.
 3. The script emits `build/generated/embedded_shaders.cpp` — a registry of
    `(path, stage, uint32_t[])` entries plus a static `AutoRegister`
    constructor that calls `VKFW::set_embedded_shader_registry()`.
-4. That `.cpp` is linked **only** into the SLViewer target.
+4. That `.cpp` is linked **only** into the ZoneExporter target.
 
 **Runtime dispatch** (`shaderpass.cpp`):
 - `GraphicShaderPass::build_shader_stages` / `ComputeShaderPass::build_shader_stages`
   call `VKFW::has_embedded_shader_registry()` first.
-- If a registry is installed (SLViewer), look up the SPIR-V by `(filePath, stage)`
+- If a registry is installed (ZoneExporter), look up the SPIR-V by `(filePath, stage)`
   and feed it straight to `vkCreateShaderModule` — `read_file` and Shaderc are
   skipped. A missing entry **hard-fails** with `"[Shader] No embedded SPIR-V for: ..."`.
 - If no registry is installed (ZoneRenderer), the existing GLSL-on-disk +
@@ -723,15 +723,15 @@ keeps shader iteration fast for dev work.
 `ext/Vulkan-Engine/resources/shaders/`. The custom command in `CMakeLists.txt`
 re-runs the precompile script whenever any `.glsl` changes, so the embedded
 blobs stay in sync. ZoneRenderer picks up the change at next launch (no rebuild
-needed); SLViewer picks it up at next build.
+needed); ZoneExporter picks it up at next build.
 
 **Skipped shaders**: shaders with missing includes (deferred-renderer dead
-code) or broken signatures are warned and skipped during codegen. If SLViewer
+code) or broken signatures are warned and skipped during codegen. If ZoneExporter
 ever requests one, the hard-fail at startup names the file clearly.
 
-## SLViewer — Headless Video Export
+## ZoneExporter — Headless Video Export
 
-`SLViewer` renders a scene from a JSON animation file and encodes the result as an MP4 using ffmpeg. When `--scene` is omitted it uses `resources/scenes/maria.json`.
+`ZoneExporter` renders a scene from a JSON animation file and encodes the result as an MP4 using ffmpeg. When `--scene` is omitted it uses `resources/scenes/maria.json`.
 
 ### Prerequisites
 
@@ -742,7 +742,7 @@ ever requests one, the hard-fail at startup names the file clearly.
 
 ```bash
 # From build/
-./SLViewer <animation.json> [options]
+./ZoneExporter <animation.json> [options]
 ```
 
 | Argument | Default | Description |
@@ -759,14 +759,14 @@ ever requests one, the hard-fail at startup names the file clearly.
 ### Example
 
 ```bash
-./SLViewer ../resources/animations/test_anim.json \
+./ZoneExporter ../resources/animations/test_anim.json \
            --scene ../resources/scenes/maria.json \
            --output test_output.mp4 \
            --width 1280 --height 720 \
            --log-level warn
 ```
 
-This renders 120 frames (4 s × 30 fps) headlessly, writes PNGs to a temp dir (`std::filesystem::temp_directory_path()/slviewer_<pid>/` — e.g. `/tmp/slviewer_<pid>/` on Linux, `%TEMP%\slviewer_<pid>\` on Windows), encodes them with ffmpeg (`libx264`, `yuv420p`, `crf 18`), and deletes the temp dir on success.
+This renders 120 frames (4 s × 30 fps) headlessly, writes PNGs to a temp dir (`std::filesystem::temp_directory_path()/zoneexporter_<pid>/` — e.g. `/tmp/zoneexporter_<pid>/` on Linux, `%TEMP%\zoneexporter_<pid>\` on Windows), encodes them with ffmpeg (`libx264`, `yuv420p`, `crf 18`), and deletes the temp dir on success.
 
 ### Notes
 
@@ -827,5 +827,5 @@ python3 tools/amass_to_json.py amass_DanceDB/ resources/animations/danceDB/
 - Files are dense per-frame mocap: an 80 s clip at 30 fps with hands ≈ several
   MB. Shrink with `--channels body`, a lower `--fps`, or `--no-root-motion`.
 - Output is sanity-checkable: every rotation key is `[t, [x,y,z,w]]` with a
-  unit-norm quaternion; load any result with `SLViewer` or the interactive
+  unit-norm quaternion; load any result with `ZoneExporter` or the interactive
   `ZoneRenderer` to verify visually.

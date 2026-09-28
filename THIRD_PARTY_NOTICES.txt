@@ -33,7 +33,7 @@ Source:        https://github.com/nothings/stb
 Author:        Sean Barrett
 License:       Public Domain / MIT (dual-licensed, user's choice)
 
-Used for writing PNG frames during headless rendering (SLViewer).
+Used for writing PNG frames during headless rendering (ZoneExporter).
 
 ------------------------------------------------------------------------------
 tinygltf (v2.9.3)

@@ -2,7 +2,7 @@
 
 The renderer loads scenes from a JSON file at runtime. `ZoneRenderer` loads
 `resources/scenes/maria.json` (see `SCENE_PATH` in `src/application.h`);
-`SLViewer` accepts an optional `--scene <path>` flag and falls back to the same
+`ZoneExporter` accepts an optional `--scene <path>` flag and falls back to the same
 `maria.json` when it is omitted. The parser lives in the application layer
 (`src/scene_loader.{h,cpp}`).
 
@@ -16,7 +16,7 @@ The renderer loads scenes from a JSON file at runtime. `ZoneRenderer` loads
 | `resources/scenes/maria.json` | Default scene (Maria GLB + strand hair/brows/lashes + point light + skybox). |
 | `resources/scenes/*.json` | Other scenes (`alex`, `javi`, `nadia`, `neural_tono`, `bust_strands`). |
 | `src/application.cpp` | ZoneRenderer wiring (loads `SCENE_PATH`, currently `maria.json`). |
-| `src/slviewer/application_sl.cpp` | SLViewer wiring (`--scene` flag overrides default). |
+| `src/zoneexporter/exporter_app.cpp` | ZoneExporter wiring (`--scene` flag overrides default). |
 
 Loading entry point:
 
@@ -25,7 +25,7 @@ scene_loader::LoadResult result = scene_loader::load_scene_json(
     scenePath,
     resourcesPath,           // trailing slash; root for relative mesh/texture refs
     engineResourcesPath,     // trailing slash; root for engine built-ins (sphere.obj)
-    animationOverride,       // empty for ZoneRenderer; SLViewer's positional arg otherwise
+    animationOverride,       // empty for ZoneRenderer; ZoneExporter's positional arg otherwise
     renderer);               // optional; receives `renderer.sss_scatter_lut`
 ```
 
@@ -395,9 +395,9 @@ Setting a skybox implicitly enables IBL.
 
 | Field | Notes |
 |-------|-------|
-| `clear_color` | Returned in `LoadResult.clearColor`; the application is responsible for applying it during renderer construction (ZoneRenderer sets it in `init()` before `setup()`; SLViewer does the same). |
+| `clear_color` | Returned in `LoadResult.clearColor`; the application is responsible for applying it during renderer construction (ZoneRenderer sets it in `init()` before `setup()`; ZoneExporter does the same). |
 | `sss_scatter_lut` | Path applied to `ForwardRenderer::load_sss_scatter_lut` if `renderer` is non-null. Deferred internally if the renderer hasn't initialized yet. |
-| `msaa` | Hardware MSAA sample count baked into the renderpasses. Valid values: `1` (off), `4`, `8`. (Higher counts exist in the engine enum but the forward HDR target is `R32G32B32A32_SFLOAT`, which caps at 8× on most GPUs — values >8 are rejected with a warning.) Read via `scene_loader::peek_msaa()` *before* the renderer is constructed (it can't be changed live since MSAA is baked into renderpass attachment descriptions and pipelines). ZoneRenderer honors it automatically; SLViewer keeps `--msaa` from the CLI authoritative. The GUI shows the active value read-only in the Forward Renderer panel. |
+| `msaa` | Hardware MSAA sample count baked into the renderpasses. Valid values: `1` (off), `4`, `8`. (Higher counts exist in the engine enum but the forward HDR target is `R32G32B32A32_SFLOAT`, which caps at 8× on most GPUs — values >8 are rejected with a warning.) Read via `scene_loader::peek_msaa()` *before* the renderer is constructed (it can't be changed live since MSAA is baked into renderpass attachment descriptions and pipelines). ZoneRenderer honors it automatically; ZoneExporter keeps `--msaa` from the CLI authoritative. The GUI shows the active value read-only in the Forward Renderer panel. |
 
 ---
 
@@ -406,10 +406,10 @@ Setting a skybox implicitly enables IBL.
 Per-mesh `"animation"` is **optional**. Behavior:
 
 - **ZoneRenderer**: loads the scene's animation reference as-is. If no mesh declares one, no animation plays (rest pose).
-- **SLViewer with positional `<animation.json>` arg**: that arg **overrides** the first mesh's `animation` field. If no mesh declares an animation, the first skinned mesh receives the override. If no mesh is animated or skinned, a warning is logged and the scene renders without animation.
+- **ZoneExporter with positional `<animation.json>` arg**: that arg **overrides** the first mesh's `animation` field. If no mesh declares an animation, the first skinned mesh receives the override. If no mesh is animated or skinned, a warning is logged and the scene renders without animation.
 
 Result lookup (`LoadResult.primaryAnimated`) returns the mesh that received the
-animation, so SLViewer can derive the frame budget from the animation header.
+animation, so ZoneExporter can derive the frame budget from the animation header.
 
 ---
 

@@ -432,6 +432,18 @@ As soon as the camera was dragged with the mouse it jumped vertically.
 
 ---
 
+### SLViewer → ZoneExporter rename (2026-09-28)
+
+Headless exporter renamed to match ZoneRenderer (user choice among ZoneExporter / ZoneRenderCLI / ZoneBatch / ZoneStudio; full rename). Target/binary `SLViewer` → `ZoneExporter`, `src/slviewer/` → `src/zoneexporter/` (`git mv`), `application_sl.{h,cpp}` → `exporter_app.{h,cpp}`, class `SLApplication` → `ZoneExporter`, CMake `BUILD_SLVIEWER` / `SLVIEWER_*` / `SLVIEWER_BUILD` → `BUILD_ZONEEXPORTER` / `ZONEEXPORTER_*` / `ZONEEXPORTER_BUILD`, log file `zoneexporter.log`, temp dir `zoneexporter_<pid>`, install layout + docs (CLAUDE.md, SCENE.md, THIRD_PARTY_NOTICES, comments). Historical PLAN.md entries below still say SLViewer.
+
+**Notes:** existing build dirs keep a stale `BUILD_SLVIEWER` cache entry (harmless) and an old `SLViewer` binary until cleaned. The new option defaults to ON.
+
+**Verified:** reconfigure + Debug build of both targets OK; user built and validated it.
+
+**Pre-existing issue found (not caused by the rename):** in the Debug preset tree (`build/GCC-x86_64-debug/`) the exporter (1) can't find `resources/` — `discover_resources_path()` only checks `<exe>/resources` and `<exe>/../resources`, and the preset dir is one level deeper; (2) with a temporary `resources` symlink it **segfaults** during setup on `test_morph.json` (MSAA 1 and 8), after validation errors `VUID-VkWriteDescriptorSet-descriptorType-02997/00325` (null imageView / sampler in a descriptor write). The old `SLViewer` binary from 2026-09-23 crashes identically. Not yet investigated; the last known-good run is the Release build in `build/`.
+
+---
+
 ### Project rename → ZoneRenderer (2026-09-23)
 
 Unified the project name: `APP_DISPLAY_NAME` = `"Zone Renderer"` (window title / loading screen), CMake `project(ZoneRenderer)`, executable target + C++ app class `HairViewer` → `ZoneRenderer`, all docs/comments. `SLViewer` unchanged. GitHub repo and local folder deliberately kept as `HairRenderer-RenderZone` for now (user decision, 2026-09-23).

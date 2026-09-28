@@ -1029,7 +1029,7 @@ LoadResult load_scene_json(const std::string&     scenePath,
 
     // ── meshes ──────────────────────────────────────────────────────────────
     // Build all meshes first. Remember which one (if any) declared an animation,
-    // and which is the first skinned mesh — both are candidates for the SLViewer
+    // and which is the first skinned mesh — both are candidates for the ZoneExporter
     // override.
     Core::Mesh* firstWithAnimField = nullptr;
     std::string firstAnimFieldPath;
@@ -1176,7 +1176,7 @@ LoadResult load_scene_json(const std::string&     scenePath,
                          {"enabled", "focus_distance", "focus_range", "near_blur_scale", "far_blur_scale", "max_blur"},
                          "renderer.dof");
         }
-        // Synchronous callers (SLViewer) get the hooks applied right here; a
+        // Synchronous callers (ZoneExporter) get the hooks applied right here; a
         // caller loading off-thread leaves `renderer` null and applies them from
         // LoadResult on the main thread (configure_dof / load_sss_scatter_lut
         // defer themselves if the passes don't exist yet).

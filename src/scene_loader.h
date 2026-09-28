@@ -15,7 +15,7 @@ namespace scene_loader {
 
 // A hair mesh that declared `bind_to` (and optionally `binding`). The scene
 // loader only resolves the head pointer + sidecar path; the application builds
-// the actual HairBinder (so hair_binding stays out of SLViewer's link).
+// the actual HairBinder (so hair_binding stays out of ZoneExporter's link).
 struct HairBindRequest {
     Core::Mesh* hair        = nullptr;
     Core::Mesh* head        = nullptr;
@@ -44,7 +44,7 @@ struct LoadResult {
     // thread (ZoneRenderer) can apply them on the main thread once the load has
     // joined — both touch pass state, so they must not run while the renderer
     // is being initialised or rendering. Also applied directly when a
-    // `renderer` is passed to load_scene_json (SLViewer's synchronous path).
+    // `renderer` is passed to load_scene_json (ZoneExporter's synchronous path).
     std::string sssScatterLut; // absolute path, empty if not declared
     DoFSettings dof;
 };

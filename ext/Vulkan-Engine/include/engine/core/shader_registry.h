@@ -18,7 +18,7 @@ struct EmbeddedShaderEntry {
     std::size_t           codeWordCount;
 };
 
-// SLViewer's generated embedded_shaders.cpp installs the registry at static
+// ZoneExporter's generated embedded_shaders.cpp installs the registry at static
 // init. ZoneRenderer never registers one and continues to use Shaderc at runtime.
 void set_embedded_shader_registry(const EmbeddedShaderEntry* entries,
                                   std::size_t                count);

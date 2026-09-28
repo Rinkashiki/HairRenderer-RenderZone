@@ -1,4 +1,4 @@
-#include "application_sl.h"
+#include "exporter_app.h"
 #include "resource_paths.h"
 #include "../scene_loader.h"
 
@@ -20,7 +20,7 @@
 #define GETPID() getpid()
 #endif
 
-void SLApplication::run(const std::string& animPath,
+void ZoneExporter::run(const std::string& animPath,
                         const std::string& scenePath,
                         const std::string& outputPath,
                         const std::string& resourcesPath,
@@ -38,11 +38,11 @@ void SLApplication::run(const std::string& animPath,
     m_keepFrames    = keepFrames;
     m_msaa          = msaa;
 
-    Logger::init(logLevel, "slviewer.log");
+    Logger::init(logLevel, "zoneexporter.log");
 
-    // Temp dir: <os_tmpdir>/slviewer_<pid>/
+    // Temp dir: <os_tmpdir>/zoneexporter_<pid>/
     m_tempDir = std::filesystem::temp_directory_path() /
-                ("slviewer_" + std::to_string(GETPID()));
+                ("zoneexporter_" + std::to_string(GETPID()));
     std::filesystem::create_directories(m_tempDir);
 
     init();
@@ -106,8 +106,8 @@ void SLApplication::run(const std::string& animPath,
     Logger::shutdown();
 }
 
-void SLApplication::init() {
-    auto* win = new Core::WindowGLFW("SLViewer", m_width, m_height, false);
+void ZoneExporter::init() {
+    auto* win = new Core::WindowGLFW("ZoneExporter", m_width, m_height, false);
     win->set_visible_hint(false);
     m_window = win;
     m_window->init();
@@ -143,7 +143,7 @@ void SLApplication::init() {
     m_renderer->set_pre_submit_callback(m_capture.get_callback());
 }
 
-void SLApplication::setup() {
+void ZoneExporter::setup() {
     const std::string scenePath = m_scenePath.empty()
         ? (m_resourcesPath + "scenes/maria.json")
         : m_scenePath;
@@ -204,7 +204,7 @@ static hair_binding::HairBinder* make_binder(Mesh* hair, Mesh* head, const std::
     return binder;
 }
 
-void SLApplication::setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests) {
+void ZoneExporter::setup_hair_binding(const std::vector<scene_loader::HairBindRequest>& requests) {
     // Scene declared explicit bindings — use them verbatim.
     if (!requests.empty()) {
         for (const auto& r : requests) {
@@ -232,7 +232,7 @@ void SLApplication::setup_hair_binding(const std::vector<scene_loader::HairBindR
     }
 }
 
-void SLApplication::tick() {
+void ZoneExporter::tick() {
     for (Mesh* mesh : m_scene->get_meshes())
         mesh->advance_animation(m_animDt);
 

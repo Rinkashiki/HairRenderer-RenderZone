@@ -5,7 +5,7 @@ project(ZoneRenderer VERSION 1.0.0)
 # Display name of the interactive app — the single place it is spelled. Reaches
 # the code as the APP_DISPLAY_NAME macro (see src/app_info.h) and drives the
 # window title, the loading screen, and anything else that prints the name.
-# Target / binary names (ZoneRenderer, SLViewer) are separate and unchanged.
+# Target / binary names (ZoneRenderer, ZoneExporter) are separate and unchanged.
 # Deliberately a plain variable, not a CACHE one: a cached value sticks in every
 # already-configured build dir, so a rename here would silently not apply there.
 set(APP_DISPLAY_NAME "Zone Renderer")
@@ -47,14 +47,14 @@ find_package(Threads REQUIRED)
 # -----------------------------------------------------------------------------
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-# The standalone headless SLViewer needs a few extra host tools that ZoneRenderer
+# The standalone headless ZoneExporter needs a few extra host tools that ZoneRenderer
 # does not: Python 3 + glslc + spirv-opt (to bake shaders into the binary as
 # embedded SPIR-V) and ffmpeg (to encode the exported video). Building only the
-# interactive ZoneRenderer should not require any of them, so the whole SLViewer
+# interactive ZoneRenderer should not require any of them, so the whole ZoneExporter
 # section below is gated on this option. Turn it OFF to build ZoneRenderer alone:
-#     cmake -DBUILD_SLVIEWER=OFF ..
-option(BUILD_SLVIEWER
-    "Build the standalone headless SLViewer (requires Python 3, glslc, spirv-opt, ffmpeg)"
+#     cmake -DBUILD_ZONEEXPORTER=OFF ..
+option(BUILD_ZONEEXPORTER
+    "Build the standalone headless ZoneExporter (requires Python 3, glslc, spirv-opt, ffmpeg)"
     ON)
 
 # The Vulkan-Engine subdirectory likely handles its own Vulkan linking, 
@@ -91,66 +91,66 @@ else()
 endif()
 
 # =============================================================================
-# SLViewer (standalone deployment binary) + its host-tool dependencies.
-# Everything from here to the end of the file is skipped when BUILD_SLVIEWER is
+# ZoneExporter (standalone deployment binary) + its host-tool dependencies.
+# Everything from here to the end of the file is skipped when BUILD_ZONEEXPORTER is
 # OFF, so ZoneRenderer builds without Python / glslc / spirv-opt / ffmpeg.
 # =============================================================================
-if(BUILD_SLVIEWER)
+if(BUILD_ZONEEXPORTER)
 
 # -----------------------------------------------------------------------------
-# 5. SLViewer Target (standalone deployment binary)
+# 5. ZoneExporter Target (standalone deployment binary)
 # -----------------------------------------------------------------------------
-file(GLOB_RECURSE SLVIEWER_SOURCES "src/slviewer/*.cpp")
-file(GLOB_RECURSE SLVIEWER_HEADERS "src/slviewer/*.h")
+file(GLOB_RECURSE ZONEEXPORTER_SOURCES "src/zoneexporter/*.cpp")
+file(GLOB_RECURSE ZONEEXPORTER_HEADERS "src/zoneexporter/*.h")
 
 # Pull in the shared scene loader, hair loader, and hair surface binder from the
 # application layer (binder needed so headless export places .hair on the scalp).
-list(APPEND SLVIEWER_SOURCES
+list(APPEND ZONEEXPORTER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_loader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_loader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_binding.cpp"
 )
-list(APPEND SLVIEWER_HEADERS
+list(APPEND ZONEEXPORTER_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/scene_loader.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_loader.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/hair_binding.h"
 )
 
-add_executable(SLViewer ${SLVIEWER_SOURCES} ${SLVIEWER_HEADERS})
+add_executable(ZoneExporter ${ZONEEXPORTER_SOURCES} ${ZONEEXPORTER_HEADERS})
 
-target_link_libraries(SLViewer PRIVATE
+target_link_libraries(ZoneExporter PRIVATE
     VulkanEngine
     Vulkan::Vulkan
     Threads::Threads
 )
 
 if(UNIX AND NOT APPLE)
-    target_link_libraries(SLViewer PRIVATE dl)
+    target_link_libraries(ZoneExporter PRIVATE dl)
 endif()
 
 # RESOURCES_PATH is resolved at runtime from the exe directory (resource_paths.cpp).
 # Define an empty string so any accidental macro use fails loudly at compile time.
-target_compile_definitions(SLViewer PUBLIC
+target_compile_definitions(ZoneExporter PUBLIC
     RESOURCES_PATH=""
-    SLVIEWER_BUILD=1
+    ZONEEXPORTER_BUILD=1
 )
 
 if(MSVC)
-    target_compile_options(SLViewer PRIVATE /W4 /MP)
+    target_compile_options(ZoneExporter PRIVATE /W4 /MP)
 else()
-    target_compile_options(SLViewer PRIVATE -Wall -Wextra -O3)
+    target_compile_options(ZoneExporter PRIVATE -Wall -Wextra -O3)
 endif()
 
 # Installed binary looks for .so files in lib/ next to itself — no LD_LIBRARY_PATH wrapper needed.
 if(UNIX AND NOT APPLE)
-    set_target_properties(SLViewer PROPERTIES
+    set_target_properties(ZoneExporter PROPERTIES
         INSTALL_RPATH "$ORIGIN/lib"
         BUILD_WITH_INSTALL_RPATH FALSE
     )
 endif()
 
 # -----------------------------------------------------------------------------
-# 5b. SLViewer — Embedded SPIR-V (pre-compiled shaders baked into the binary)
+# 5b. ZoneExporter — Embedded SPIR-V (pre-compiled shaders baked into the binary)
 # -----------------------------------------------------------------------------
 # The distributable must not ship GLSL source under resources/shaders/, so
 # tools/precompile_shaders.py runs at build time to:
@@ -160,7 +160,7 @@ endif()
 #   3. run spirv-opt --strip-debug so reconstructed GLSL loses original names,
 #   4. emit a generated embedded_shaders.cpp registering the blobs at static
 #      init via shader_registry.h.
-# The generated source is linked only into SLViewer; ZoneRenderer continues to
+# The generated source is linked only into ZoneExporter; ZoneRenderer continues to
 # read .glsl files at runtime and compile via Shaderc.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -178,36 +178,36 @@ find_program(SPIRV_OPT_EXECUTABLE
 
 if(NOT GLSLC_EXECUTABLE OR NOT SPIRV_OPT_EXECUTABLE)
     message(FATAL_ERROR
-        "SLViewer requires glslc and spirv-opt for shader embedding "
+        "ZoneExporter requires glslc and spirv-opt for shader embedding "
         "(install the Vulkan SDK and ensure VULKAN_SDK is set).")
 endif()
 
-set(SLVIEWER_EMBEDDED_SHADERS_CPP "${CMAKE_BINARY_DIR}/generated/embedded_shaders.cpp")
-set(SLVIEWER_SHADER_ROOT          "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/shaders")
-set(SLVIEWER_PRECOMPILE_SCRIPT    "${CMAKE_CURRENT_SOURCE_DIR}/tools/precompile_shaders.py")
+set(ZONEEXPORTER_EMBEDDED_SHADERS_CPP "${CMAKE_BINARY_DIR}/generated/embedded_shaders.cpp")
+set(ZONEEXPORTER_SHADER_ROOT          "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/shaders")
+set(ZONEEXPORTER_PRECOMPILE_SCRIPT    "${CMAKE_CURRENT_SOURCE_DIR}/tools/precompile_shaders.py")
 
 # Re-run codegen whenever any .glsl under the engine shader tree changes.
-file(GLOB_RECURSE SLVIEWER_SHADER_INPUTS "${SLVIEWER_SHADER_ROOT}/*.glsl")
+file(GLOB_RECURSE ZONEEXPORTER_SHADER_INPUTS "${ZONEEXPORTER_SHADER_ROOT}/*.glsl")
 
 add_custom_command(
-    OUTPUT  "${SLVIEWER_EMBEDDED_SHADERS_CPP}"
+    OUTPUT  "${ZONEEXPORTER_EMBEDDED_SHADERS_CPP}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/generated"
-    COMMAND "${Python3_EXECUTABLE}" "${SLVIEWER_PRECOMPILE_SCRIPT}"
-            --shaders-root "${SLVIEWER_SHADER_ROOT}"
-            --output       "${SLVIEWER_EMBEDDED_SHADERS_CPP}"
+    COMMAND "${Python3_EXECUTABLE}" "${ZONEEXPORTER_PRECOMPILE_SCRIPT}"
+            --shaders-root "${ZONEEXPORTER_SHADER_ROOT}"
+            --output       "${ZONEEXPORTER_EMBEDDED_SHADERS_CPP}"
             --glslc        "${GLSLC_EXECUTABLE}"
             --spirv-opt    "${SPIRV_OPT_EXECUTABLE}"
-    DEPENDS ${SLVIEWER_SHADER_INPUTS} "${SLVIEWER_PRECOMPILE_SCRIPT}"
-    COMMENT "[SLViewer] Pre-compiling ${CMAKE_MATCH_COUNT}shaders to embedded SPIR-V"
+    DEPENDS ${ZONEEXPORTER_SHADER_INPUTS} "${ZONEEXPORTER_PRECOMPILE_SCRIPT}"
+    COMMENT "[ZoneExporter] Pre-compiling ${CMAKE_MATCH_COUNT}shaders to embedded SPIR-V"
     VERBATIM
 )
 
-target_sources(SLViewer PRIVATE "${SLVIEWER_EMBEDDED_SHADERS_CPP}")
-set_source_files_properties("${SLVIEWER_EMBEDDED_SHADERS_CPP}"
+target_sources(ZoneExporter PRIVATE "${ZONEEXPORTER_EMBEDDED_SHADERS_CPP}")
+set_source_files_properties("${ZONEEXPORTER_EMBEDDED_SHADERS_CPP}"
     PROPERTIES GENERATED TRUE)
 
 # -----------------------------------------------------------------------------
-# 6. SLViewer — Bundle static ffmpeg
+# 6. ZoneExporter — Bundle static ffmpeg
 # -----------------------------------------------------------------------------
 set(_ffmpeg_bin "")
 set(_ffmpeg_dl_dir "${CMAKE_BINARY_DIR}/ffmpeg-download")
@@ -216,7 +216,7 @@ if(UNIX AND NOT APPLE)
     set(_ffmpeg_bin "${_ffmpeg_dl_dir}/ffmpeg")
 
     if(NOT EXISTS "${_ffmpeg_bin}")
-        message(STATUS "[SLViewer] Downloading static ffmpeg GPL build (linux64) from BtbN...")
+        message(STATUS "[ZoneExporter] Downloading static ffmpeg GPL build (linux64) from BtbN...")
         file(MAKE_DIRECTORY "${_ffmpeg_dl_dir}")
         file(DOWNLOAD
             "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
@@ -228,7 +228,7 @@ if(UNIX AND NOT APPLE)
         list(GET _dl_status 0 _dl_code)
         if(NOT _dl_code EQUAL 0)
             list(GET _dl_status 1 _dl_msg)
-            message(WARNING "[SLViewer] ffmpeg download failed (${_dl_msg}). System ffmpeg will be used at runtime.")
+            message(WARNING "[ZoneExporter] ffmpeg download failed (${_dl_msg}). System ffmpeg will be used at runtime.")
             set(_ffmpeg_bin "")
         else()
             execute_process(
@@ -240,22 +240,22 @@ if(UNIX AND NOT APPLE)
                 RESULT_VARIABLE _tar_result
             )
             if(NOT _tar_result EQUAL 0 OR NOT EXISTS "${_ffmpeg_bin}")
-                message(WARNING "[SLViewer] ffmpeg extraction failed. System ffmpeg will be used at runtime.")
+                message(WARNING "[ZoneExporter] ffmpeg extraction failed. System ffmpeg will be used at runtime.")
                 set(_ffmpeg_bin "")
             else()
                 execute_process(COMMAND chmod +x "${_ffmpeg_bin}")
-                message(STATUS "[SLViewer] ffmpeg binary ready: ${_ffmpeg_bin}")
+                message(STATUS "[ZoneExporter] ffmpeg binary ready: ${_ffmpeg_bin}")
             endif()
         endif()
     else()
-        message(STATUS "[SLViewer] Using cached ffmpeg: ${_ffmpeg_bin}")
+        message(STATUS "[ZoneExporter] Using cached ffmpeg: ${_ffmpeg_bin}")
     endif()
 
 elseif(WIN32)
     set(_ffmpeg_bin "${_ffmpeg_dl_dir}/ffmpeg.exe")
 
     if(NOT EXISTS "${_ffmpeg_bin}")
-        message(STATUS "[SLViewer] Downloading static ffmpeg GPL build (win64) from BtbN...")
+        message(STATUS "[ZoneExporter] Downloading static ffmpeg GPL build (win64) from BtbN...")
         file(MAKE_DIRECTORY "${_ffmpeg_dl_dir}")
         file(DOWNLOAD
             "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
@@ -267,7 +267,7 @@ elseif(WIN32)
         list(GET _dl_status 0 _dl_code)
         if(NOT _dl_code EQUAL 0)
             list(GET _dl_status 1 _dl_msg)
-            message(WARNING "[SLViewer] ffmpeg download failed (${_dl_msg}). System ffmpeg will be used at runtime.")
+            message(WARNING "[ZoneExporter] ffmpeg download failed (${_dl_msg}). System ffmpeg will be used at runtime.")
             set(_ffmpeg_bin "")
         else()
             # CMake's built-in tar handles .zip on all platforms
@@ -281,21 +281,21 @@ elseif(WIN32)
             if(_ffmpeg_candidates)
                 list(GET _ffmpeg_candidates 0 _ffmpeg_src)
                 file(COPY "${_ffmpeg_src}" DESTINATION "${_ffmpeg_dl_dir}")
-                message(STATUS "[SLViewer] ffmpeg.exe ready: ${_ffmpeg_bin}")
+                message(STATUS "[ZoneExporter] ffmpeg.exe ready: ${_ffmpeg_bin}")
             else()
-                message(WARNING "[SLViewer] ffmpeg.exe not found after extraction. System ffmpeg will be used at runtime.")
+                message(WARNING "[ZoneExporter] ffmpeg.exe not found after extraction. System ffmpeg will be used at runtime.")
                 set(_ffmpeg_bin "")
             endif()
         endif()
     else()
-        message(STATUS "[SLViewer] Using cached ffmpeg.exe: ${_ffmpeg_bin}")
+        message(STATUS "[ZoneExporter] Using cached ffmpeg.exe: ${_ffmpeg_bin}")
     endif()
 endif()
 
 # -----------------------------------------------------------------------------
 # 7. Install rules
 # -----------------------------------------------------------------------------
-install(TARGETS SLViewer RUNTIME DESTINATION .)
+install(TARGETS ZoneExporter RUNTIME DESTINATION .)
 if(NOT "${_ffmpeg_bin}" STREQUAL "" AND EXISTS "${_ffmpeg_bin}")
     install(PROGRAMS "${_ffmpeg_bin}" DESTINATION .)
 endif()
@@ -336,13 +336,13 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/textures"
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/animations"
         DESTINATION resources)
 
-# Scene definitions (default scene + any alternatives shipped for SLViewer's --scene flag)
+# Scene definitions (default scene + any alternatives shipped for ZoneExporter's --scene flag)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources/scenes"
         DESTINATION resources
         FILES_MATCHING PATTERN "*.json")
 
 # Engine resources — meshes and textures (LUTs etc.). Shaders are NOT installed:
-# SLViewer ships them as embedded SPIR-V (see "5b. Embedded SPIR-V" above), so
+# ZoneExporter ships them as embedded SPIR-V (see "5b. Embedded SPIR-V" above), so
 # resources/shaders/ on disk would be dead weight and would leak GLSL source.
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ext/Vulkan-Engine/resources/meshes"
         DESTINATION resources)
@@ -382,22 +382,22 @@ if(WIN32)
 
     if(NOT "${_vulkan_dll}" STREQUAL "")
         install(FILES "${_vulkan_dll}" DESTINATION .)
-        message(STATUS "[SLViewer] vulkan-1.dll found: ${_vulkan_dll}")
+        message(STATUS "[ZoneExporter] vulkan-1.dll found: ${_vulkan_dll}")
     else()
-        message(WARNING "[SLViewer] vulkan-1.dll not found — deployment on a machine without the Vulkan runtime will fail. Set VULKAN_SDK or install the LunarG Vulkan SDK.")
+        message(WARNING "[ZoneExporter] vulkan-1.dll not found — deployment on a machine without the Vulkan runtime will fail. Set VULKAN_SDK or install the LunarG Vulkan SDK.")
     endif()
 
     # shaderc_shared.dll: the engine links the Shaderc *import* lib on Windows (the
     # static shaderc_combined.lib is /MD-only and won't link into this /MT build), so
-    # every exe — SLViewer included — carries a load-time dependency on this DLL and
-    # won't launch without it, even though SLViewer never calls Shaderc at runtime
+    # every exe — ZoneExporter included — carries a load-time dependency on this DLL and
+    # won't launch without it, even though ZoneExporter never calls Shaderc at runtime
     # (it ships baked SPIR-V). Target machines have no Vulkan SDK, so bundle it.
     set(_shaderc_dll "${_vulkan_bin}/shaderc_shared.dll")
     if(NOT "${_vulkan_bin}" STREQUAL "" AND EXISTS "${_shaderc_dll}")
         install(FILES "${_shaderc_dll}" DESTINATION .)
-        message(STATUS "[SLViewer] shaderc_shared.dll found: ${_shaderc_dll}")
+        message(STATUS "[ZoneExporter] shaderc_shared.dll found: ${_shaderc_dll}")
     else()
-        message(WARNING "[SLViewer] shaderc_shared.dll not found — the installed SLViewer.exe will fail to launch on a machine without the Vulkan SDK. Set VULKAN_SDK or install the LunarG Vulkan SDK.")
+        message(WARNING "[ZoneExporter] shaderc_shared.dll not found — the installed ZoneExporter.exe will fail to launch on a machine without the Vulkan SDK. Set VULKAN_SDK or install the LunarG Vulkan SDK.")
     endif()
 endif()
 
@@ -411,4 +411,4 @@ endif()
 # don't exist, causing vkCreateDevice to fail even when the GPU driver is fine.
 # Any machine capable of running Vulkan already has the system loader installed.
 
-endif() # BUILD_SLVIEWER
+endif() # BUILD_ZONEEXPORTER

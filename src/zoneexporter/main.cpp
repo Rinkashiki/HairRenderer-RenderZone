@@ -1,13 +1,13 @@
 #include <iostream>
 #include <string>
 
-#include "application_sl.h"
+#include "exporter_app.h"
 #include "resource_paths.h"
 
 int main(int argc, char* argv[]) {
     if (argc < 2)
     {
-        std::cerr << "Usage: SLViewer <animation.json> [--scene scene.json] [--output out.mp4] [--width W] [--height H] [--msaa 1|4|8] [--keep-frames] [--log-level error|warn|verbose]\n";
+        std::cerr << "Usage: ZoneExporter <animation.json> [--scene scene.json] [--output out.mp4] [--width W] [--height H] [--msaa 1|4|8] [--keep-frames] [--log-level error|warn|verbose]\n";
         return EXIT_FAILURE;
     }
 
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
     }
 
     try {
-        SLApplication app;
+        ZoneExporter app;
         app.run(animPath, scenePath, outputPath, resourcesPath, width, height, keepFrames, logLevel, msaa);
     } catch (const std::exception& e) {
         std::cerr << "Fatal: " << e.what() << "\n";
