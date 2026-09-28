@@ -80,6 +80,21 @@ void Controller::handle_mouse(float xpos, float ypos, bool constrainPitch) {
             m_mouseLastX = xpos;
             m_mouseLastY = ypos;
             m_firstMouse = false;
+
+            // The orbit below rebuilds the position from the stored yaw/pitch, which only
+            // agrees with the current view if the camera is looking at the orbit center.
+            // A camera placed by position alone (scene JSON, reset) isn't, so the first drag
+            // used to snap it. Re-seat the center on the view ray (closest point to the old
+            // center) so the drag continues from exactly the current view.
+            if (m_type == ControllerMovementType::ORBITAL)
+            {
+                const Vec3 pos     = m_objPtr->get_position();
+                const Vec3 forward = m_objPtr->get_transform().forward;
+                float      dist    = glm::dot(m_orbitalCenter - pos, forward);
+                if (dist < 1e-3f) // center behind / on the camera: keep the orbit radius instead
+                    dist = glm::max(glm::distance(pos, m_orbitalCenter), 1.0f);
+                m_orbitalCenter = pos + forward * dist;
+            }
         }
 
         m_mouseDeltaX = xpos - m_mouseLastX;

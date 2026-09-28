@@ -420,6 +420,18 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Orbit camera vertical jump on first drag (2026-09-28)
+
+As soon as the camera was dragged with the mouse it jumped vertically.
+
+**Issue found:** the ORBITAL controller rebuilds the camera position from its stored yaw/pitch around `m_orbitalCenter` (origin): `y = center.y + r·sin(pitch)`. Scene JSON only sets the camera *position* (`maria`: `(0, 2.5, -10)`) and the rotation stays at the default yaw −90° / pitch 0°, so the first drag put the camera at `y = 0` (a 2.5-unit drop). The `R` reset had the same mismatch (restores the transform but sends the center back to the origin).
+
+**Solution implemented:** `Controller::handle_mouse` (`ext/Vulkan-Engine/src/tools/controller.cpp`) re-seats the orbit center on the drag's first event (ORBITAL only): the closest point on the current view ray to the old center (fallback: old orbit radius if that point is behind the camera). The stored yaw/pitch/radius then reproduce the current view exactly, so the drag is continuous. For `maria` the orbit now pivots at `(0, 2.5, 0)` — the framed head height — instead of the feet. The engine examples get the same fix.
+
+**Verified:** Debug `ZoneRenderer --frames 10 --log-level warn` clean (only the usual loader warnings); interactive drag validated by the user.
+
+---
+
 ### Project rename → ZoneRenderer (2026-09-23)
 
 Unified the project name: `APP_DISPLAY_NAME` = `"Zone Renderer"` (window title / loading screen), CMake `project(ZoneRenderer)`, executable target + C++ app class `HairViewer` → `ZoneRenderer`, all docs/comments. `SLViewer` unchanged. GitHub repo and local folder deliberately kept as `HairRenderer-RenderZone` for now (user decision, 2026-09-23).
