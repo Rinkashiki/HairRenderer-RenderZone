@@ -40,8 +40,23 @@ The renderer is **forward** (not deferred). The `ForwardRenderer` (`systems/rend
 | 4 | `SSAO_PASS` | Post-process | Ambient occlusion + thickness |
 | 5 | `SSS_PASS` | Post-process | Subsurface scattering |
 | 6 | `BLOOM_PASS` | Post-process | Physically-based bloom (Jimenez 2014) |
-| 7 | `TONEMAPPIN_PASS` | Post-process | HDR tonemapping |
-| 8 | `FXAA_PASS` | Post-process | Optional software AA |
+| 7 | `DOF_PASS` | Post-process | Depth of field (always runs; UBO flag = passthrough) |
+| 8 | `TONEMAPPIN_PASS` | Post-process | HDR tonemapping (always offscreen) |
+| 9 | `OUTLINE_MASK_PASS` | Rasterization (1×) | Selected object → RG8 mask (covered / visible) |
+| 10 | `OUTLINE_PASS` | Post-process | Tonemapped image + selection outline; **presents** unless FXAA is on |
+| 11 | `FXAA_PASS` | Post-process | Optional software AA (`softwareAA`; currently unreachable from either CLI) |
+
+**Selection outline (`outline_pass.{h,cpp}`, `shaders/misc/outline_*.glsl`).** `OutlineMaskPass`
+draws every mesh with `Object3D::is_selected()` (or the marker mesh of a selected light) into a
+single-sample RG8 mask with its own depth buffer: R = covered, G = visible (fragment depth ≤ the
+forward pass's resolved `LinearDepth`, compared linearised with a small relative tolerance — that
+attachment holds `gl_FragCoord.z` and is cleared to 1.0). Strand geometry goes through a geometry
+shader that widens each segment to a ~5 px quad so a groom masks as one shape. `OutlineCompositePass`
+(a `PostProcessPass`) copies the tonemapped image with `texelFetch` and adds an anti-aliased ring
+(push constants: colour, width, occluded opacity) — solid where visible, faint where occluded. With
+nothing selected it is a plain copy, so ZoneExporter output is unaffected. Runtime knobs:
+`ForwardRenderer::{set,get}_outline_{enabled,color,width,hidden_alpha}` (the viewport toolbar's `...`
+popup).
 
 Hair rendering uses the forward path because hair fibers benefit from hardware MSAA — TAA is insufficient for fine strands.
 
@@ -78,6 +93,8 @@ Resources flow between passes through the dependency table + `link_previous_imag
 - **No reflection** — descriptor layouts must be manually defined in C++ pass code
 - **Unified files** — vertex + fragment in one `.glsl` file, separated by `#shader fragment`
 - **Simple includes** — `#include utils.glsl` (non-recursive, declared in entry-point shader)
+- **Nothing before the first `#shader` line** — `ShaderSource::read_file` sends lines to stage `-1`
+  until it sees a directive, which crashes (`ss[-1]`). Put file-header comments after `#version`.
 - **Include scripts** — reusable modules in `resources/shaders/scripts/` (BRDFs, lighting, camera, etc.)
 - **On-the-fly compilation** via Shaderc — no offline `.spv` generation needed
 
@@ -86,64 +103,93 @@ Resources flow between passes through the dependency table + `link_previous_imag
 - **Resource Manager** (`core/resource_manager.h/cpp`): CPU-to-GPU data upload. Holds shared resources like `VIGNETTE` (fullscreen quad mesh used by all post-process passes).
 - **Materials**: `HairEpicMaterial` for hair, `PhysicallyBasedMaterial` for head/eyes. Material classes define their own descriptor layouts and uniform buffers.
   - **`EyelashMaterial`** (subclass of `HairEpicMaterial`, type `HAIR_STR_EYELASH_TYPE`, scene JSON type `"eyelash"`): same params/uniforms/geometry as epic hair but routed to `shaders/forward/eyelash_strand.glsl`, which calls `evalEyelashBSDF` (in `epic_hair_BSDF.glsl`) instead of `evalEpicHairBSDF`. That variant wires up `R_power`/`TT_power`/`TRT_power`/`use_backlit` — which the epic path ignores — so eyelashes can be made less reflective (low `specular`/`R_power`) and more transmissive (higher `TT_power` + `use_backlit`) without affecting scalp hair. Any subsystem that special-cases epic hair (forward draw loop, VSM skip, hair voxelization, resource-manager voxel union, GUI widget) must test `IMaterial::is_epic_hair_family()`, not the exact type, or eyelashes drop out of it. It also carries a **lighting-model selector** — see "Eyelash Shading Models" below.
+- **`AttachmentInfo` clear-value gotcha**: its constructor sets `clearValue.depthStencil.depth = 1`
+  on the `VkClearValue` *union*, so every **colour** attachment built with it clears to **R = 1**
+  (G/B/A from the argument). Harmless for passes that overwrite every pixel; a mask/accumulation
+  target must reset `clearValue.color` after construction (see `OutlineMaskPass`).
 - **RHI** (`Graphics/` folder): Low-level Vulkan abstraction (device, swapchain, command buffers, images, descriptors). Should generally remain untouched.
 - Uses classic `VkRenderPass` objects, **not** `VK_KHR_dynamic_rendering`.
 
-### Transform Gizmos (ImGuizmo)
+### Viewport tools: selection, gizmo, outline (ImGuizmo)
 
-ZoneRenderer has interactive translate/rotate/scale gizmos for the object currently
-selected in the Scene Explorer. Built on **ImGuizmo** (MIT), vendored at
-`ext/Vulkan-Engine/thirdparty/imguizmo/` and compiled **into the imgui target**
-(so it shares `imgui.h`/`imgui_internal.h` and the single `GImGui` context and
-links wherever imgui does). ZoneExporter is headless — it links the code but never
-draws a gizmo.
+Everything that lives *in* the 3D view is one app-layer widget, `ViewportWidget`
+(`src/gui.{h,cpp}`), drawn every frame by the overlay — **not** inside a panel, so it
+works whatever panels are open or collapsed:
+- a floating **toolbar** (top centre, clamped between the EXPLORER and OBJECT PROPERTIES
+  panels) shown while something is selected: Move/Rotate/Scale, World/Local, pivot
+  Origin/Center, Snap + step, Focus, Undo/Redo, and a `...` popup (outline colour/width/
+  occluded opacity, strand pick radius). Second line: selection name/kind + caveats;
+- the **ImGuizmo** manipulator on the selection;
+- **click-to-select** (CPU raycast, `src/picking.{h,cpp}`) and click-on-background to deselect.
 
-**Integration seam.** The engine's `GUIOverlay::render()` does
-`NewFrame → panels → Render` in one call, and ImGuizmo must draw *between*
-`NewFrame` and `Render`. So the wiring is:
-1. One line in the engine (`src/tools/gui.cpp`): `ImGuizmo::BeginFrame()` right
-   after `ImGui::NewFrame()`.
-2. A `GizmoWidget` (app layer, `src/gui.{h,cpp}`) added to the OBJECT PROPERTIES
-   panel. Because it renders as a normal child widget it runs inside the
-   NewFrame/Render window; it draws the manipulator to
-   `ImGui::GetBackgroundDrawList()` (over the 3D view, under the panels) and
-   reads the selection from the `SceneExplorerWidget`.
+**Selection has one source of truth:** `SceneExplorerWidget::set_selected_object(obj, reveal)`
+(engine, `widgets.h`). It keeps `Object3D::is_selected()` in sync (the outline pass reads that),
+highlights the Explorer row and scrolls it into view when the change came from the viewport.
+`nullptr` deselects. Don't set `m_selectedObject` / `set_selected` directly.
+
+**Hotkeys** (gated on `!io.WantCaptureKeyboard`, never mid-drag): `1/2/3` move/rotate/scale,
+`X` world/local, `F` focus (frame the selection's world AABB, keep the view direction, and
+re-seat the orbit centre via `Controller::set_orbital_center`), `Ctrl+Z` / `Ctrl+Y`
+(`Ctrl+Shift+Z`) undo/redo, **hold `Ctrl` while dragging to invert Snap**. `Esc` deselects if
+something is selected, otherwise quits (`application.h::keyboard_callback`). The camera keeps
+**W/A/S/D + Q/E + R**; camera mouse-look is suppressed while `ImGuizmo::IsUsing() || IsOver()`.
+
+**Picking** (`picking::pick`) casts the ray from the engine projection directly (Vulkan y-down
+NDC, depth 0..1 — no flip needed) against every *effectively* active mesh:
+- triangles: Möller–Trumbore in object space (so `t` stays in world units), against the
+  **deformed** CPU vertices when present (`GeometricData::deformedVertexData`), else the rest
+  vertices with an AABB pre-test (rest bounds are wrong for deformed geometry);
+- strands (`IMaterial::is_strand_type`, index pairs = LINE_LIST): ray-vs-segment in world space
+  with a constant **pixel** tolerance (default 4 px); surface-bound hair uses
+  `HairBinder::current_vertices()` (the reconstructed strands; the geometry's CPU copy is the groom);
+- a light's marker mesh returns the light. Nearest hit wins.
+A click is press+release with ≤ 4 px of drag (`io.MouseDragMaxDistanceSqr`) that started outside
+ImGui windows and the gizmo — left-drag still orbits. ~13–17 ms per click on maria (1.3 M hair
+segments, brute force); fine for clicks, too slow for per-frame hover.
+
+**Per-type gizmo rules** (`ViewportWidget::gizmo_target` / `op_allowed`): meshes get every op;
+point/spot lights translate only; a directional light translates (dummy/shadow position) and
+**rotate aims it** — the gizmo is a frame whose +Z is `get_direction()`, kept across a drag
+(`m_lightFrame`) so the rings don't re-roll, and an arrow shows the light's travel direction; the
+camera gets no gizmo; a selected light marker mesh manipulates its light. Bound hair shows
+"bound to <head> — re-Bind after moving" (moving it offsets it from the scalp).
+
+**Undo/redo** (`TransformHistory`, 128 entries) records `TransformState` (parent, TRS, directional
+light direction). The widget watches the selected object: while the user interacts (any ImGui item
+active or the gizmo in use) a change marks the edit; when the interaction ends the before/after pair
+is pushed. So gizmo drags, Properties fields and the binding sliders all coalesce into one entry per
+interaction, and non-user changes (light orbit `L`, a re-bind's reparent) only move the baseline.
+Undo/redo re-selects the affected object.
+
+**Integration seam.** `GUIOverlay::render()` does `NewFrame → BeginFrame → viewport widgets →
+panels → Render`; viewport widgets are registered with `GUIOverlay::add_viewport_widget()`
+(engine, `gui.h`) and own their ImGui windows. That, `ImGuizmo::BeginFrame()` and the
+`SceneExplorerWidget` selection API are the only engine couplings.
 
 **Gotchas handled (don't regress these):**
-- **Vulkan Y-flip.** `Camera::get_projection()` carries `m_proj[1][1] *= -1`;
-  ImGuizmo expects a standard GL projection, so the widget undoes the flip on a
-  *copy* (`proj[1][1] *= -1`) before `Manipulate`. Without it the gizmo draws
-  mirrored and vertical drags invert.
-- **World ↔ local.** `Manipulate` works in world space; the widget feeds it
-  `obj->get_model_matrix()` (parent × local) and converts the result back with
-  `inverse(parent->get_model_matrix())` before decomposing. `Object3D` stores
-  rotation as **Euler degrees**, so writeback goes through
-  `DecomposeMatrixToComponents` → `set_position/rotation/scale`. Both the engine
-  and ImGuizmo compose rotation in XYZ order, so the round-trip is consistent.
-- **Camera vs gizmo input.** The camera controller owns **W/A/S/D + Q/E + R**,
-  so gizmo op hotkeys are `1/2/3` (move/rotate/scale) and `X` (world/local) to
-  avoid the collision. Camera mouse-look is suppressed while
-  `ImGuizmo::IsUsing() || IsOver()` (see `application.h::mouse_callback`).
+- **Euler order — never use `ImGuizmo::DecomposeMatrixToComponents` for write-back.** It assumes
+  `Rz·Ry·Rx`, while `Object3D::get_model_matrix()` composes `T·Rx·Ry·Rz·S`. Writing its angles back
+  rewrote every multi-axis rotation on every changed frame (max matrix error 0.97 measured) — this
+  was the "gizmo does weird movements" bug (2026-09-28); the characters' 180° Y rotation made it
+  near-constant. `transform_utils::decompose` (`src/transform_utils.h`) decomposes in engine order
+  and picks, among equivalent Euler triples, the one closest to the current angles (no
+  0/180/0 ↔ 180/0/180 flips; continuous across a drag; ±90° gimbal keeps the previous Z).
+- **Vulkan Y-flip.** `Camera::get_projection()` carries `m_proj[1][1] *= -1`; ImGuizmo expects a GL
+  projection, so the widget undoes the flip on a *copy* before `Manipulate`.
+- **World ↔ local.** `Manipulate` works in world space; the widget applies the gizmo's world-space
+  **delta** (`gizmoAfter · inverse(gizmoBefore)`) to the object's real world matrix, then converts
+  with `inverse(parent->get_model_matrix())` before decomposing.
+- **Pivot "Center" is the default** — assets here often sit far from their origin (a groom is ~33
+  units off, maria's origin is at her feet), so an origin pivot is usually off-screen. It is
+  **non-destructive** (only where the gizmo draws/pivots; union of `Geometry::get_properties()`
+  bounds, helper `mesh_geometry_center_local`); ignored for non-mesh targets.
 
-**"Pivot at geometry center" toggle.** Assets here often sit far from their
-object origin (a groom is ~33 units off), so the gizmo can be re-seated at the
-**geometry-bounds center** (union of every sub-geometry's min/max, read from
-`Geometry::get_properties()` — no engine change, nothing mutated). It's
-**non-destructive**: the object's stored transform/origin is untouched — unlike
-Blender's "Set Origin" this only moves where the gizmo draws and pivots. The
-manipulation is done by applying the gizmo's world-space **delta**
-(`gizmoAfter * inverse(gizmoBefore)`) to the object's real world matrix, so
-rotate/scale pivot about the gizmo rather than the origin; with the pivot at the
-origin `gizmo == objWorld` and it collapses to a plain absolute manipulation
-(identical to the pre-toggle path). Ignored for non-mesh selections
-(lights/camera fall back to the origin). Helper: `mesh_geometry_center_local` in
-`src/gui.cpp`.
-
-**Key files:** `ext/Vulkan-Engine/thirdparty/imguizmo/` (vendored source) +
-`thirdparty/imgui/CMakeLists.txt` (compiles it in), `ext/Vulkan-Engine/src/tools/gui.cpp`
-(`BeginFrame`), `src/gui.{h,cpp}` (`GizmoWidget`), `src/application.h` (input gate).
-It's deliberately swappable for a custom gizmo system later — the only engine
-coupling is the one `BeginFrame` line.
+**Key files:** `src/gui.{h,cpp}` (`ViewportWidget`, `TransformState`, `TransformHistory`),
+`src/picking.{h,cpp}`, `src/transform_utils.h`, `src/application.h` (Esc + input gate),
+`ext/Vulkan-Engine/include/engine/tools/{gui.h,widgets.h,controller.h}` (viewport-widget hook,
+selection API, orbit centre), `ext/Vulkan-Engine/{include/engine/core/passes/outline_pass.h,src/core/passes/outline_pass.cpp}`,
+`ext/Vulkan-Engine/resources/shaders/misc/outline_{mask,mask_strand,composite}.glsl`, and the
+vendored `ext/Vulkan-Engine/thirdparty/imguizmo/` (compiled into the imgui target).
 
 ### Asset Loading
 

@@ -61,6 +61,10 @@ class IMaterial
     static inline bool is_epic_hair_family(Type t) {
         return t == HAIR_STR_EPIC_TYPE || t == HAIR_STR_EYELASH_TYPE;
     }
+    // Every strand-hair type: geometry is a LINE_LIST (index pairs), not triangles.
+    static inline bool is_strand_type(Type t) {
+        return t == HAIR_STR_TYPE || t == HAIR_STR_DISNEY_TYPE || is_epic_hair_family(t);
+    }
 
     static IMaterial* DEBUG_MATERIAL;
 

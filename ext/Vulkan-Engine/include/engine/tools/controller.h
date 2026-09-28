@@ -120,6 +120,12 @@ class Controller
     inline void set_object(Core::Object3D* obj) {
         m_objPtr = obj;
     }
+    inline Vec3 get_orbital_center() const {
+        return m_orbitalCenter;
+    }
+    inline void set_orbital_center(Vec3 c) {
+        m_orbitalCenter = c;
+    }
     inline Core::IWindow* get_window() const {
         return m_windowPtr;
     }

@@ -6,18 +6,60 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
-### Viewport object selection + selection outline (future work, deferred 2026-07-27)
+### Viewport selection, outline + gizmo overhaul (2026-09-28) — A–F done + validated by the user; G open
 
-Follow-ups to the transform gizmo (see Done 2026-07-27). Both reach into the
-renderer, so they were deliberately deferred to not stall the gizmo work:
-- **Click-to-select in the viewport.** Today selection is Explorer-only. Needs
-  either GPU object-ID picking (an extra pass writing a per-object ID target,
-  read back on click) or CPU ray-vs-mesh tests against the scene meshes.
-- **Selection outline.** A stencil-based or jump-flood outline pass in the
-  forward renderer to highlight the selected object.
+Supersedes the 2026-07-27 deferred "viewport selection + outline" note. User decisions (2026-09-28):
+CPU raycast picking, outline = solid where visible + faint where occluded, gizmo controls in a
+floating viewport toolbar, and all proposed extras. Full description in CLAUDE.md
+("Viewport tools: selection, gizmo, outline").
 
-Neither is large individually, but both touch passes / the render loop, unlike
-the gizmo which was ~UI-only.
+- [x] **A. Gizmo Euler-order fix** — the "weird movements" bug. `ImGuizmo::DecomposeMatrixToComponents`
+  assumes `Rz·Ry·Rx`; `Object3D` composes `Rx·Ry·Rz`, so every changed frame rewrote multi-axis
+  rotations (0.97 max matrix error). New `transform_utils::decompose` (engine order + nearest
+  equivalent Euler triple + gimbal handling): 200k random round-trips max err 3.6e-6, identity on
+  its own angles, smooth through a 360° drag.
+- [x] **B. Single selection state** — `SceneExplorerWidget::set_selected_object` (keeps
+  `is_selected()` in sync), selected row highlighted + scrolled into view on viewport picks.
+- [x] **C. Viewport toolbar** — `ViewportWidget` drawn via the new `GUIOverlay::add_viewport_widget`
+  hook, independent of the panels; pivot now defaults to **Center**.
+- [x] **D. Click-to-select** — `src/picking.{h,cpp}`; background click deselects; drags still orbit.
+- [x] **E. Selection outline** — `OutlineMaskPass` + `OutlineCompositePass` (passes 9/10, FXAA → 11,
+  tonemapping always offscreen).
+- [x] **F. Extras** — `F` focus, `Esc` deselect-then-quit, Ctrl = invert snap, per-type gizmo rules
+  (+ directional-light aim arrow), undo/redo with a toolbar + `Ctrl+Z/Y`.
+- [ ] **G. (Later, iterative) GUI stylesheet redesign** — move away from the stock ImGui look (the
+  overlay re-applies `StyleColorsDark()` every frame in `GUIOverlay::render`); needs its own
+  brainstorm with the user.
+
+**Issues found + solutions:**
+- *No outline at all at first.* `AttachmentInfo`'s constructor writes `clearValue.depthStencil.depth = 1`
+  into the `VkClearValue` union → every colour attachment clears to R = 1 → mask read "covered"
+  everywhere. The mask now resets `clearValue.color`. (Engine-wide gotcha, documented in CLAUDE.md.)
+- *Startup segfault in `ShaderSource::read_file`.* Comments before the first `#shader` go to stage
+  index −1. Moved the header comments below `#version` (documented).
+- *`active` is a reserved GLSL word* (push-constant field) → renamed `enabled`.
+- *`Widget` had a non-virtual destructor* while widgets are deleted through `Widget*` (derived members
+  leaked) → made virtual.
+- *Toolbar overlapped the Explorer on narrow windows* → clamped between the panels.
+- *Gizmo usually off-screen* (maria's origin is at her feet) → pivot default Center.
+
+**Verified (2026-09-28):** Debug `ZoneRenderer --frames 10 --log-level warn` clean (default, and with
+FXAA forced on / `-aa none` via a temporary build). Interactive run in a nested Xephyr display driven
+by XTest (so the real desktop was untouched): pick face vs hair vs background (nearest-hit correct,
+13–17 ms per click), outline around a triangle mesh (faint where hidden under hair) and around the
+groom envelope, F focus, rotate ring drag on the 180°-Y character (rigid in-plane rotation),
+Ctrl+Z/Ctrl+Y (frames match before/after), background-click deselect, orbit drag doesn't select,
+point-light / camera toolbar rules, Esc deselect then quit; no validation errors in the live session.
+Release `ZoneExporter` renders all frames through the new chain (encode failed only because the
+system `ffmpeg` can't load `libblas.so.3` on this machine — environment, not this change).
+**Not verified:** outline *colour* (the Xephyr capture path garbles colour), eyelash/eyebrow picking
+at normal framing, bit-exactness of exports vs. the previous build (the composite passthrough is a
+`texelFetch` copy, so it should be identical).
+
+**Notes / follow-ups:**
+- `F` moves the camera but not the DoF focus distance, so with DoF on the framed object can be
+  blurred (seen on maria). Could optionally refocus DoF on focus.
+- Picking is brute force; per-frame hover highlighting would need a BVH or a GPU ID pass.
 
 ### Eyelash shading study — round 1 awaiting user judgement (2026-07-22)
 

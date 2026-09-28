@@ -38,13 +38,16 @@ class Widget
     virtual void render() {};
 
     friend class Panel;
+    friend class GUIOverlay;
 
   public:
     Widget(ImVec2 pos, ImVec2 extent)
         : m_position(pos)
         , m_extent(extent) {
     }
-    ~Widget() {
+    // Virtual: widgets are owned and deleted through Widget* (panel children,
+    // GUIOverlay's viewport widgets), so derived members must be destroyed too.
+    virtual ~Widget() {
         for (Widget* child : m_children)
         {
             delete child;
@@ -308,6 +311,7 @@ class SceneExplorerWidget : public Widget
   protected:
     Core::Scene*    m_scene;
     Core::Object3D* m_selectedObject{nullptr};
+    bool            m_scrollToSelection{false}; // selection changed outside the tree (viewport pick)
     virtual void    render();
 
     void displayObject(Core::Object3D* const obj, int& counter);
@@ -327,6 +331,20 @@ class SceneExplorerWidget : public Widget
 
     inline Core::Object3D* get_selected_object() const {
         return m_selectedObject;
+    }
+    // Single entry point for changing the selection (tree clicks, viewport
+    // picking, deselect). Keeps Object3D::is_selected() — which the renderer
+    // reads for the selection outline — in sync. nullptr clears the selection.
+    // `reveal` scrolls the tree to the new row on its next draw.
+    void set_selected_object(Core::Object3D* obj, bool reveal = true) {
+        if (obj == m_selectedObject)
+            return;
+        if (m_selectedObject)
+            m_selectedObject->set_selected(false);
+        m_selectedObject = obj;
+        if (obj)
+            obj->set_selected(true);
+        m_scrollToSelection = reveal && obj;
     }
 };
 

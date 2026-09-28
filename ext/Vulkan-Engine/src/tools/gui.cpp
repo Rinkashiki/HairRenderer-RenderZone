@@ -27,9 +27,11 @@ void GUIOverlay::render()
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        // Must be called every frame right after ImGui::NewFrame() so any
-        // GizmoWidget rendered during the panel pass can draw its manipulator.
+        // Must be called every frame right after ImGui::NewFrame() so the
+        // viewport widgets (transform gizmo) can draw their manipulator.
         ImGuizmo::BeginFrame();
+        for (auto w : m_viewportWidgets)
+            w->render();
         for (auto p : m_panels)
         {
             p->render(m_extent);

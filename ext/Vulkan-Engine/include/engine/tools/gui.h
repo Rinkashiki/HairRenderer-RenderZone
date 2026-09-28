@@ -25,6 +25,9 @@ class GUIOverlay
     ImVec2 m_extent;
 
     std::vector<Panel *> m_panels;
+    // Panel-less widgets drawn every frame before the panels (viewport tools:
+    // gizmo, picking, floating toolbars). They own their ImGui windows, if any.
+    std::vector<Widget *> m_viewportWidgets;
 
     GuiColorProfileType m_colorProfile;
 
@@ -41,12 +44,20 @@ class GUIOverlay
         {
             delete p;
         }
+        for (auto w : m_viewportWidgets)
+        {
+            delete w;
+        }
     }
     void render();
     inline void add_panel(Panel *p)
     {
         p->m_parentOverlay = this;
         m_panels.push_back(p);
+    }
+    inline void add_viewport_widget(Widget *w)
+    {
+        m_viewportWidgets.push_back(w);
     }
     inline bool wants_to_handle_input() const
     {

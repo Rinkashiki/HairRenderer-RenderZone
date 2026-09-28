@@ -53,6 +53,10 @@ class HairBinder {
     Core::Mesh* hair_mesh() const { return m_hair; }
     Core::Mesh* head_mesh() const { return m_head; }
     float       normal_offset() const { return m_normalOffset; }
+    // Strand vertices as last reconstructed (hair-local space; empty until the
+    // first bind/load). The GPU copy lives in the ring VBO, so CPU consumers such
+    // as viewport picking read this instead of the geometry's rest vertices.
+    const std::vector<Graphics::Vertex>& current_vertices() const { return m_workVerts; }
 
     // Sidecar this binder reads/writes: the scene's declared `binding` path, or
     // <hair file>.hbnd by default. The GUI's Save/Load go through this so a

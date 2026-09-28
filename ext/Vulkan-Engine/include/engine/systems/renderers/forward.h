@@ -6,6 +6,7 @@
 #include <engine/core/passes/forward_pass.h>
 #include <engine/core/passes/hair_scattering_pass.h>
 #include <engine/core/passes/hair_voxelization_pass.h>
+#include <engine/core/passes/outline_pass.h>
 #include <engine/core/passes/postprocess_pass.h>
 #include <engine/core/passes/ssao_pass.h>
 #include <engine/core/passes/sss_pass.h>
@@ -34,7 +35,9 @@ class ForwardRenderer : public BaseRenderer
         BLOOM_PASS             = 6,
         DOF_PASS               = 7,
         TONEMAPPIN_PASS        = 8,
-        FXAA_PASS              = 9,
+        OUTLINE_MASK_PASS      = 9,  // selected object -> mask (needs FORWARD depth)
+        OUTLINE_PASS           = 10, // tonemapped image + selection outline
+        FXAA_PASS              = 11,
     };
 
     ShadowResolution m_shadowQuality      = ShadowResolution::MEDIUM;
@@ -139,6 +142,39 @@ class ForwardRenderer : public BaseRenderer
     }
     inline void set_sss_extinction_coeff(float e) {
         if (m_passes[SSS_PASS]) static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->set_extinction_coeff(e);
+    }
+
+    // Selection outline (drawn around every Object3D with is_selected() — see OutlineMaskPass)
+    inline Core::OutlineCompositePass* outline_pass() const {
+        return m_passes.size() > OUTLINE_PASS ? static_cast<Core::OutlineCompositePass*>(m_passes[OUTLINE_PASS]) : nullptr;
+    }
+    inline bool get_outline_enabled() const {
+        auto* p = outline_pass();
+        return p ? p->is_outline_enabled() : false;
+    }
+    inline void set_outline_enabled(bool e) {
+        if (auto* p = outline_pass()) p->set_outline_enabled(e);
+    }
+    inline Vec4 get_outline_color() const {
+        auto* p = outline_pass();
+        return p ? p->get_outline_color() : Vec4(0.0f);
+    }
+    inline void set_outline_color(Vec4 c) {
+        if (auto* p = outline_pass()) p->set_outline_color(c);
+    }
+    inline float get_outline_width() const {
+        auto* p = outline_pass();
+        return p ? p->get_outline_width() : 0.0f;
+    }
+    inline void set_outline_width(float w) {
+        if (auto* p = outline_pass()) p->set_outline_width(w);
+    }
+    inline float get_outline_hidden_alpha() const {
+        auto* p = outline_pass();
+        return p ? p->get_hidden_alpha() : 0.0f;
+    }
+    inline void set_outline_hidden_alpha(float a) {
+        if (auto* p = outline_pass()) p->set_hidden_alpha(a);
     }
 
     // Depth of Field parameters

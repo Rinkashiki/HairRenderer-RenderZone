@@ -1,5 +1,7 @@
 #include "gui.h"
 #include "app_info.h"
+#include "picking.h"
+#include "transform_utils.h"
 #include <cmath>
 #include <cstdio>
 #include <glm/gtc/type_ptr.hpp>
@@ -81,54 +83,329 @@ void HairBindWidget::render() {
     ImGui::TextDisabled("%s", side.c_str());
 }
 
-void GizmoWidget::render() {
-    ImGui::TextUnformatted("TRANSFORM GIZMO");
-    ImGui::Separator();
+// ─── Transform state / history ───────────────────────────────────────────────
 
-    // Operation selector (hotkeys 1/2/3 — W/E/R belong to the camera).
-    ImGuiIO& io = ImGui::GetIO();
-    if (!io.WantCaptureKeyboard) {
-        if (ImGui::IsKeyPressed(ImGuiKey_1)) m_op = ImGuizmo::TRANSLATE;
-        if (ImGui::IsKeyPressed(ImGuiKey_2)) m_op = ImGuizmo::ROTATE;
-        if (ImGui::IsKeyPressed(ImGuiKey_3)) m_op = ImGuizmo::SCALE;
-        if (ImGui::IsKeyPressed(ImGuiKey_X)) m_mode = (m_mode == ImGuizmo::WORLD) ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+TransformState TransformState::capture(Core::Object3D* obj) {
+    TransformState st;
+    st.parent   = obj->get_parent();
+    st.position = obj->get_position();
+    st.rotation = obj->get_rotation();
+    st.scale    = obj->get_scale();
+    if (obj->get_type() == ObjectType::LIGHT &&
+        static_cast<Core::Light*>(obj)->get_light_type() == LightType::DIRECTIONAL) {
+        st.hasDirection = true;
+        st.direction    = static_cast<Core::DirectionalLight*>(obj)->get_direction();
     }
+    return st;
+}
 
-    if (ImGui::RadioButton("Move (1)", m_op == ImGuizmo::TRANSLATE)) m_op = ImGuizmo::TRANSLATE;
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Rotate (2)", m_op == ImGuizmo::ROTATE)) m_op = ImGuizmo::ROTATE;
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Scale (3)", m_op == ImGuizmo::SCALE)) m_op = ImGuizmo::SCALE;
+void TransformState::apply(Core::Object3D* obj) const {
+    obj->set_position(position);
+    obj->set_rotation(rotation);
+    obj->set_scale(scale);
+    if (hasDirection && obj->get_type() == ObjectType::LIGHT &&
+        static_cast<Core::Light*>(obj)->get_light_type() == LightType::DIRECTIONAL)
+        static_cast<Core::DirectionalLight*>(obj)->set_direction(direction);
+}
 
-    // Space toggle. Scale is always local in ImGuizmo, so the control is moot there.
-    ImGui::BeginDisabled(m_op == ImGuizmo::SCALE);
-    if (ImGui::RadioButton("World", m_mode == ImGuizmo::WORLD)) m_mode = ImGuizmo::WORLD;
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Local (X)", m_mode == ImGuizmo::LOCAL)) m_mode = ImGuizmo::LOCAL;
+bool TransformState::same_as(const TransformState& o) const {
+    auto eq = [](const Vec3& a, const Vec3& b) { return glm::all(glm::lessThanEqual(glm::abs(a - b), Vec3(1e-5f))); };
+    return parent == o.parent && eq(position, o.position) && eq(rotation, o.rotation) && eq(scale, o.scale) &&
+           hasDirection == o.hasDirection && (!hasDirection || eq(direction, o.direction));
+}
+
+TransformHistory::Entry TransformHistory::undo() {
+    if (m_undo.empty())
+        return {};
+    Entry e = m_undo.back();
+    m_undo.pop_back();
+    m_redo.push_back(e);
+    return e;
+}
+
+TransformHistory::Entry TransformHistory::redo() {
+    if (m_redo.empty())
+        return {};
+    Entry e = m_redo.back();
+    m_redo.pop_back();
+    m_undo.push_back(e);
+    return e;
+}
+
+// ─── Viewport widget ─────────────────────────────────────────────────────────
+
+namespace {
+
+bool is_light(Core::Object3D* o, LightType t) {
+    return o && o->get_type() == ObjectType::LIGHT && static_cast<Core::Light*>(o)->get_light_type() == t;
+}
+
+// Button that reads as "pressed" while `on`. Hover tooltip also shows when disabled.
+bool toggle_button(const char* label, bool on, bool enabled = true, const char* tooltip = nullptr) {
+    ImGui::BeginDisabled(!enabled);
+    if (on)
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+    const bool pressed = ImGui::Button(label);
+    if (on)
+        ImGui::PopStyleColor();
     ImGui::EndDisabled();
+    if (tooltip && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", tooltip);
+    return pressed;
+}
 
-    // Pivot placement: object origin vs. geometry-bounds center (non-destructive).
-    ImGui::Checkbox("Pivot at geometry center", &m_pivotToGeometry);
+// World point -> ImGui display coordinates, using the engine's Vulkan-style
+// projection (y-down NDC). False if behind the camera.
+bool project_to_screen(Core::Camera* cam, const Vec3& p, ImVec2& out) {
+    const ImVec2 size = ImGui::GetIO().DisplaySize;
+    Vec4         c    = cam->get_projection() * cam->get_view() * Vec4(p, 1.0f);
+    if (c.w <= 1e-5f)
+        return false;
+    out = ImVec2((c.x / c.w * 0.5f + 0.5f) * size.x, (c.y / c.w * 0.5f + 0.5f) * size.y);
+    return true;
+}
 
+// Orthonormal frame whose +Z is `dir` (roll is arbitrary but stable).
+Mat3 frame_from_direction(const Vec3& dir) {
+    const Vec3 z  = glm::normalize(dir);
+    const Vec3 up = std::abs(z.y) > 0.99f ? Vec3(1, 0, 0) : Vec3(0, 1, 0);
+    const Vec3 x  = glm::normalize(glm::cross(up, z));
+    const Vec3 y  = glm::cross(z, x);
+    return Mat3(x, y, z);
+}
+
+// World-space AABB of a mesh (union of its geometries' local bounds).
+bool mesh_world_bounds(Core::Object3D* obj, Vec3& outMin, Vec3& outMax) {
+    if (!obj || obj->get_type() != ObjectType::MESH)
+        return false;
+    auto* mesh = static_cast<Core::Mesh*>(obj);
+    Vec3  mn(INFINITY), mx(-INFINITY);
+    bool  any = false;
+    for (Core::Geometry* g : mesh->get_geometries()) {
+        if (!g)
+            continue;
+        mn  = glm::min(mn, g->get_properties().minCoords);
+        mx  = glm::max(mx, g->get_properties().maxCoords);
+        any = true;
+    }
+    if (!any)
+        return false;
+    const Mat4 m = obj->get_model_matrix();
+    outMin       = Vec3(INFINITY);
+    outMax       = Vec3(-INFINITY);
+    for (int i = 0; i < 8; ++i) {
+        Vec3 c((i & 1) ? mx.x : mn.x, (i & 2) ? mx.y : mn.y, (i & 4) ? mx.z : mn.z);
+        Vec3 w = Vec3(m * Vec4(c, 1.0f));
+        outMin = glm::min(outMin, w);
+        outMax = glm::max(outMax, w);
+    }
+    return true;
+}
+
+} // namespace
+
+Core::Object3D* ViewportWidget::gizmo_target(Core::Object3D* sel) const {
+    if (!sel)
+        return nullptr;
+    if (sel->get_type() == ObjectType::CAMERA)
+        return nullptr;
+    // A light's marker mesh stands in for the light.
+    Core::Object3D* parent = sel->get_parent();
+    if (sel->get_type() == ObjectType::MESH && parent && parent->get_type() == ObjectType::LIGHT)
+        return parent;
+    return sel;
+}
+
+bool ViewportWidget::op_allowed(Core::Object3D* target, ImGuizmo::OPERATION op) const {
+    if (!target)
+        return false;
+    if (target->get_type() == ObjectType::LIGHT) {
+        if (op == ImGuizmo::TRANSLATE)
+            return true;
+        return op == ImGuizmo::ROTATE && is_light(target, LightType::DIRECTIONAL);
+    }
+    return true;
+}
+
+void ViewportWidget::render() {
+    ImGuiIO& io = ImGui::GetIO();
+    if (!m_scene || !m_selection)
+        return;
+
+    Core::Object3D* sel    = m_selection->get_selected_object();
+    Core::Object3D* target = gizmo_target(sel);
+
+    // Hotkeys — never while typing into a field, and never mid-drag.
+    if (!io.WantCaptureKeyboard && !ImGuizmo::IsUsing()) {
+        if (io.KeyCtrl) {
+            const bool redo = ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false));
+            if (redo)
+                apply_history(m_history.redo(), false);
+            else if (ImGui::IsKeyPressed(ImGuiKey_Z, false))
+                apply_history(m_history.undo(), true);
+        } else {
+            if (ImGui::IsKeyPressed(ImGuiKey_1, false)) m_op = ImGuizmo::TRANSLATE;
+            if (ImGui::IsKeyPressed(ImGuiKey_2, false)) m_op = ImGuizmo::ROTATE;
+            if (ImGui::IsKeyPressed(ImGuiKey_3, false)) m_op = ImGuizmo::SCALE;
+            if (ImGui::IsKeyPressed(ImGuiKey_X, false)) m_mode = (m_mode == ImGuizmo::WORLD) ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+            if (ImGui::IsKeyPressed(ImGuiKey_F, false)) focus(target);
+        }
+        // Undo may have changed the selection.
+        sel    = m_selection->get_selected_object();
+        target = gizmo_target(sel);
+    }
+
+    if (sel)
+        draw_toolbar(sel, target);
+    if (target) {
+        manipulate(target);
+        draw_light_direction(target);
+    }
+    watch_for_edits(target);
+    handle_click();
+}
+
+void ViewportWidget::draw_toolbar(Core::Object3D* sel, Core::Object3D* target) {
+    ImGuiIO& io = ImGui::GetIO();
+    // Centred in the strip between the EXPLORER (left 20%) and OBJECT PROPERTIES
+    // (right 25%) panels, just below their title bars; never over the explorer.
+    // Uses last frame's width (auto-resized window).
+    const float left = io.DisplaySize.x * 0.2f + 8.0f;
+    float       x    = io.DisplaySize.x * 0.475f - m_toolbarWidth * 0.5f;
+    x                = std::max(left, std::min(x, io.DisplaySize.x - m_toolbarWidth - 8.0f));
+    ImGui::SetNextWindowPos(ImVec2(x, 30.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.88f);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+    if (!ImGui::Begin("##viewport_toolbar", nullptr, flags)) {
+        ImGui::End();
+        return;
+    }
+
+    // Operation.
+    const bool canMove   = op_allowed(target, ImGuizmo::TRANSLATE);
+    const bool canRotate = op_allowed(target, ImGuizmo::ROTATE);
+    const bool canScale  = op_allowed(target, ImGuizmo::SCALE);
+    if (!op_allowed(target, m_op) && canMove)
+        m_op = ImGuizmo::TRANSLATE;
+    if (toggle_button("Move", m_op == ImGuizmo::TRANSLATE, canMove, "Move (1)")) m_op = ImGuizmo::TRANSLATE;
+    ImGui::SameLine(0, 2);
+    if (toggle_button("Rotate", m_op == ImGuizmo::ROTATE, canRotate,
+                      is_light(target, LightType::DIRECTIONAL) ? "Rotate (2) - aims the light" : "Rotate (2)"))
+        m_op = ImGuizmo::ROTATE;
+    ImGui::SameLine(0, 2);
+    if (toggle_button("Scale", m_op == ImGuizmo::SCALE, canScale, "Scale (3)")) m_op = ImGuizmo::SCALE;
+
+    // Space (ImGuizmo always scales in local space).
+    ImGui::SameLine(0, 12);
+    const bool spaceMatters = target && m_op != ImGuizmo::SCALE;
+    if (toggle_button("World", m_mode == ImGuizmo::WORLD, spaceMatters, "Gizmo axes: world (X toggles)")) m_mode = ImGuizmo::WORLD;
+    ImGui::SameLine(0, 2);
+    if (toggle_button("Local", m_mode == ImGuizmo::LOCAL, spaceMatters, "Gizmo axes: object (X toggles)")) m_mode = ImGuizmo::LOCAL;
+
+    // Pivot (meshes only).
+    ImGui::SameLine(0, 12);
+    const bool isMesh = target && target->get_type() == ObjectType::MESH;
+    if (toggle_button("Origin", !m_pivotToGeometry, isMesh, "Pivot at the object origin")) m_pivotToGeometry = false;
+    ImGui::SameLine(0, 2);
+    if (toggle_button("Center", m_pivotToGeometry, isMesh,
+                      "Pivot at the geometry-bounds center (non-destructive: the origin is not moved)"))
+        m_pivotToGeometry = true;
+
+    // Snap.
+    ImGui::SameLine(0, 12);
     ImGui::Checkbox("Snap", &m_useSnap);
-    if (m_useSnap) {
-        if (m_op == ImGuizmo::TRANSLATE) ImGui::DragFloat("Step", &m_snapTranslate, 0.01f, 0.0f, 0.0f, "%.3f");
-        else if (m_op == ImGuizmo::ROTATE) ImGui::DragFloat("Step (deg)", &m_snapRotate, 0.1f, 0.0f, 0.0f, "%.2f");
-        else ImGui::DragFloat("Step", &m_snapScale, 0.01f, 0.0f, 0.0f, "%.3f");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Snap while dragging. Hold Ctrl to invert.");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(60.0f);
+    if (m_op == ImGuizmo::TRANSLATE) ImGui::DragFloat("##snapT", &m_snapTranslate, 0.01f, 0.001f, 100.0f, "%.3f");
+    else if (m_op == ImGuizmo::ROTATE) ImGui::DragFloat("##snapR", &m_snapRotate, 0.1f, 0.1f, 180.0f, "%.1f deg");
+    else ImGui::DragFloat("##snapS", &m_snapScale, 0.01f, 0.001f, 10.0f, "%.3f");
+
+    // Focus / history / settings.
+    ImGui::SameLine(0, 12);
+    ImGui::BeginDisabled(!target);
+    if (ImGui::Button("Focus"))
+        focus(target);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Frame the selection and orbit around it (F)");
+    ImGui::SameLine(0, 2);
+    ImGui::BeginDisabled(!m_history.can_undo());
+    if (ImGui::Button("Undo"))
+        apply_history(m_history.undo(), true);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Undo transform (Ctrl+Z)");
+    ImGui::SameLine(0, 2);
+    ImGui::BeginDisabled(!m_history.can_redo());
+    if (ImGui::Button("Redo"))
+        apply_history(m_history.redo(), false);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Redo transform (Ctrl+Y / Ctrl+Shift+Z)");
+    ImGui::SameLine(0, 2);
+    if (ImGui::Button("..."))
+        ImGui::OpenPopup("##viewport_settings");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Viewport settings");
+    if (ImGui::BeginPopup("##viewport_settings")) {
+        ImGui::SeparatorText("Selection outline");
+        if (m_renderer) {
+            bool on = m_renderer->get_outline_enabled();
+            if (ImGui::Checkbox("Show outline", &on)) m_renderer->set_outline_enabled(on);
+            Vec4 c = m_renderer->get_outline_color();
+            if (ImGui::ColorEdit3("Color", glm::value_ptr(c), ImGuiColorEditFlags_Float)) m_renderer->set_outline_color(c);
+            float w = m_renderer->get_outline_width();
+            if (ImGui::SliderFloat("Width (px)", &w, 0.5f, 8.0f, "%.1f")) m_renderer->set_outline_width(w);
+            float h = m_renderer->get_outline_hidden_alpha();
+            if (ImGui::SliderFloat("Occluded opacity", &h, 0.0f, 1.0f, "%.2f")) m_renderer->set_outline_hidden_alpha(h);
+        }
+        ImGui::SeparatorText("Picking");
+        ImGui::SliderFloat("Strand hit radius (px)", &m_pickTolerancePx, 1.0f, 12.0f, "%.1f");
+        ImGui::EndPopup();
     }
 
-    Core::Object3D* obj = m_selection ? m_selection->get_selected_object() : nullptr;
-    if (!obj || !m_scene) {
-        ImGui::TextDisabled("Select an object in the Explorer.");
-        return;
-    }
-    ImGui::Text("Target: %s", obj->get_name().c_str());
+    m_toolbarWidth = ImGui::GetWindowWidth();
 
+    // Second line: what is selected, plus any caveat for this kind of object.
+    const char* kind = sel->get_type() == ObjectType::LIGHT    ? "light"
+                       : sel->get_type() == ObjectType::CAMERA ? "camera"
+                                                               : "mesh";
+    ImGui::TextDisabled("%s", kind);
+    ImGui::SameLine();
+    ImGui::TextUnformatted(sel->get_name().c_str());
+    if (target && target != sel) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("(moves %s)", target->get_name().c_str());
+    }
+    if (!target) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("- no gizmo; use the viewport camera controls");
+    } else if (m_binders) {
+        for (auto* b : *m_binders)
+            if (b && b->hair_mesh() == target && b->is_bound()) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "bound to %s - re-Bind after moving",
+                                   b->head_mesh() ? b->head_mesh()->get_name().c_str() : "head");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("This hair is attached to the scalp surface. Moving it offsets it from the skin;\n"
+                                      "re-seat it with Bind in the HAIR BINDING panel.");
+                break;
+            }
+    }
+    ImGui::End();
+}
+
+void ViewportWidget::manipulate(Core::Object3D* target) {
     Core::Camera* cam = m_scene->get_active_camera();
-    if (!cam)
+    if (!cam || !op_allowed(target, m_op))
         return;
+    ImGuiIO& io = ImGui::GetIO();
 
-    // Draw over the 3D view but under the ImGui panels.
+    // Draw over the 3D view but under the ImGui windows.
     ImGuizmo::SetOrthographic(false);
     ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
     ImGuizmo::SetRect(0.0f, 0.0f, io.DisplaySize.x, io.DisplaySize.y);
@@ -140,57 +417,195 @@ void GizmoWidget::render() {
     Mat4 proj = cam->get_projection();
     proj[1][1] *= -1.0f;
 
-    // ImGuizmo works in world space. The object's real world matrix stays the
-    // reference we transform; the gizmo we hand ImGuizmo shares that basis but
-    // may be re-seated at the geometry center so it draws on the mesh and
-    // rotates/scales about it. When the pivot is the origin, gizmo == objWorld
-    // and this collapses to a plain absolute manipulation.
-    Mat4 objWorld = obj->get_model_matrix();
+    const bool dirLight = is_light(target, LightType::DIRECTIONAL);
+    const Mat4 objWorld = target->get_model_matrix();
 
+    // The matrix ImGuizmo manipulates. For meshes it shares the object's basis
+    // (optionally re-seated at the geometry center); for a directional light it
+    // is a frame whose +Z is the light direction, so rotating it aims the light.
     Mat4 gizmo = objWorld;
-    Vec3 localCenter;
-    if (m_pivotToGeometry && mesh_geometry_center_local(obj, localCenter)) {
-        Vec3 worldCenter = Vec3(objWorld * Vec4(localCenter, 1.0f));
-        gizmo[3]         = Vec4(worldCenter, 1.0f);
+    if (dirLight) {
+        if (!ImGuizmo::IsUsing() || !m_lightFrameLive)
+            m_lightFrame = frame_from_direction(static_cast<Core::DirectionalLight*>(target)->get_direction());
+        gizmo    = Mat4(m_lightFrame);
+        gizmo[3] = objWorld[3];
+    } else if (target->get_type() == ObjectType::LIGHT) {
+        gizmo    = Mat4(1.0f); // point/spot: position only
+        gizmo[3] = objWorld[3];
+    } else if (m_pivotToGeometry) {
+        Vec3 localCenter;
+        if (mesh_geometry_center_local(target, localCenter))
+            gizmo[3] = objWorld * Vec4(localCenter, 1.0f);
     }
-    Mat4 gizmoManipulated = gizmo;
+    Mat4 gizmoAfter = gizmo;
 
-    float snap[3] = {0.0f, 0.0f, 0.0f};
-    if (m_useSnap) {
-        float s = (m_op == ImGuizmo::TRANSLATE) ? m_snapTranslate
-                  : (m_op == ImGuizmo::ROTATE)  ? m_snapRotate
-                                                : m_snapScale;
+    // Hold Ctrl to invert the Snap toggle for this drag.
+    const bool snapping = m_useSnap != io.KeyCtrl;
+    float      snap[3]  = {0.0f, 0.0f, 0.0f};
+    if (snapping) {
+        const float s = (m_op == ImGuizmo::TRANSLATE) ? m_snapTranslate : (m_op == ImGuizmo::ROTATE) ? m_snapRotate : m_snapScale;
         snap[0] = snap[1] = snap[2] = s;
     }
 
-    const bool changed = ImGuizmo::Manipulate(glm::value_ptr(view),
-                                              glm::value_ptr(proj),
-                                              m_op,
-                                              m_mode,
-                                              glm::value_ptr(gizmoManipulated),
-                                              nullptr,
-                                              m_useSnap ? snap : nullptr);
+    const bool changed = ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), m_op, m_mode,
+                                              glm::value_ptr(gizmoAfter), nullptr, snapping ? snap : nullptr);
+    m_lightFrameLive = ImGuizmo::IsUsing();
+    if (!changed)
+        return;
 
-    if (changed) {
-        // The world-space delta the gizmo underwent (about its pivot), applied
-        // to the object's actual world matrix — so rotation/scale pivot about
-        // the gizmo, not the object origin.
-        Mat4 delta    = gizmoManipulated * glm::inverse(gizmo);
-        Mat4 newWorld = delta * objWorld;
+    Core::Object3D* parent   = target->get_parent();
+    const Mat4      toParent = parent ? glm::inverse(parent->get_model_matrix()) : Mat4(1.0f);
 
-        Mat4 local = newWorld;
-        if (Core::Object3D* parent = obj->get_parent())
-            local = glm::inverse(parent->get_model_matrix()) * newWorld;
+    if (target->get_type() == ObjectType::LIGHT) {
+        target->set_position(Vec3(toParent * gizmoAfter[3]));
+        if (dirLight && m_op == ImGuizmo::ROTATE) {
+            m_lightFrame = Mat3(gizmoAfter);
+            static_cast<Core::DirectionalLight*>(target)->set_direction(glm::normalize(Vec3(gizmoAfter[2])));
+        }
+        return;
+    }
 
-        float t[3], r[3], s[3];
-        ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(local), t, r, s);
-        obj->set_position({t[0], t[1], t[2]});
-        obj->set_rotation({r[0], r[1], r[2]}, false); // ImGuizmo returns degrees
-        obj->set_scale({s[0], s[1], s[2]});
+    // The world-space delta the gizmo underwent (about its pivot), applied to
+    // the object's real world matrix — so rotation/scale pivot about the gizmo,
+    // not the object origin. With the pivot at the origin gizmo == objWorld and
+    // this is a plain absolute manipulation.
+    const Mat4 delta    = gizmoAfter * glm::inverse(gizmo);
+    const Mat4 newLocal = toParent * (delta * objWorld);
+
+    // Decompose in the ENGINE's Euler order (see transform_utils.h) — ImGuizmo's
+    // own DecomposeMatrixToComponents assumes the opposite order and would
+    // rewrite every multi-axis rotation.
+    const transform_utils::TRS trs = transform_utils::decompose(newLocal, target->get_rotation());
+    target->set_position(trs.position);
+    target->set_rotation(trs.rotation);
+    target->set_scale(trs.scale);
+}
+
+void ViewportWidget::draw_light_direction(Core::Object3D* target) {
+    if (!is_light(target, LightType::DIRECTIONAL))
+        return;
+    Core::Camera* cam = m_scene->get_active_camera();
+    if (!cam)
+        return;
+    // The stored direction points *toward* the light; draw the way light travels.
+    const Vec3  pos  = Vec3(target->get_model_matrix()[3]);
+    const Vec3  dir  = glm::normalize(static_cast<Core::DirectionalLight*>(target)->get_direction());
+    const float len  = glm::distance(cam->get_position(), pos) * 0.25f;
+    ImVec2      a, b;
+    if (!project_to_screen(cam, pos, a) || !project_to_screen(cam, pos - dir * len, b))
+        return;
+    ImDrawList* dl  = ImGui::GetBackgroundDrawList();
+    const ImU32 col = IM_COL32(255, 200, 60, 230);
+    dl->AddLine(a, b, col, 2.0f);
+    const ImVec2 d{b.x - a.x, b.y - a.y};
+    const float  l = std::sqrt(d.x * d.x + d.y * d.y);
+    if (l > 1.0f) {
+        const ImVec2 u{d.x / l, d.y / l}, n{-u.y, u.x};
+        dl->AddTriangleFilled(b, {b.x - u.x * 12 + n.x * 6, b.y - u.y * 12 + n.y * 6},
+                              {b.x - u.x * 12 - n.x * 6, b.y - u.y * 12 - n.y * 6}, col);
     }
 }
 
-void UserInterface::init(Core::IWindow* window, Core::Scene* scene, Systems::BaseRenderer* renderer, bool* animateLight) {
+void ViewportWidget::watch_for_edits(Core::Object3D* target) {
+    if (target != m_watched) {
+        m_watched = target;
+        m_touched = false;
+        if (target)
+            m_stable = TransformState::capture(target);
+    }
+    if (!target)
+        return;
+
+    const bool interacting = ImGui::IsAnyItemActive() || ImGuizmo::IsUsing();
+    const TransformState now = TransformState::capture(target);
+    if (interacting) {
+        if (!now.same_as(m_stable))
+            m_touched = true;
+        return;
+    }
+    if (!now.same_as(m_stable)) {
+        // Only user-driven changes become history; animation (light orbit, a
+        // rebind that reparents) just moves the baseline.
+        if (m_touched && now.parent == m_stable.parent)
+            m_history.push({target, m_stable, now});
+        m_stable = now;
+    }
+    m_touched = false;
+}
+
+void ViewportWidget::apply_history(const TransformHistory::Entry& e, bool undo) {
+    if (!e.object)
+        return;
+    const TransformState& st = undo ? e.before : e.after;
+    st.apply(e.object);
+    // Show what changed; the watcher's baseline follows so this isn't re-recorded.
+    m_selection->set_selected_object(e.object);
+    m_watched = e.object;
+    m_stable  = TransformState::capture(e.object);
+    m_touched = false;
+}
+
+void ViewportWidget::focus(Core::Object3D* target) {
+    Core::Camera* cam = m_scene->get_active_camera();
+    if (!target || !cam)
+        return;
+
+    Vec3  center;
+    float radius;
+    Vec3  mn, mx;
+    if (mesh_world_bounds(target, mn, mx)) {
+        center = (mn + mx) * 0.5f;
+        radius = std::max(glm::length(mx - mn) * 0.5f, 1e-3f);
+    } else {
+        center = Vec3(target->get_model_matrix()[3]);
+        radius = 0.5f;
+    }
+
+    // Fit the bounding sphere in the narrower of the two fields of view.
+    const ImVec2 size    = ImGui::GetIO().DisplaySize;
+    const float  aspect  = size.y > 0.0f ? size.x / size.y : 1.0f;
+    const float  halfV   = glm::radians(cam->get_field_of_view()) * 0.5f;
+    const float  halfH   = std::atan(std::tan(halfV) * aspect);
+    const float  halfFov = std::min(halfV, halfH);
+    const float  dist    = std::max(radius / std::sin(halfFov) * 1.1f, cam->get_near() * 4.0f);
+
+    // Keep the viewing direction; slide the camera so the selection is centred.
+    const Vec3 forward = glm::normalize(cam->get_transform().forward);
+    cam->set_position(center - forward * dist);
+    if (m_controller)
+        m_controller->set_orbital_center(center);
+}
+
+void ViewportWidget::handle_click() {
+    ImGuiIO&   io        = ImGui::GetIO();
+    const bool overGizmo = ImGuizmo::IsOver() || ImGuizmo::IsUsing();
+
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        m_pressInViewport = !io.WantCaptureMouse && !overGizmo;
+
+    if (!ImGui::IsMouseReleased(ImGuiMouseButton_Left) || !m_pressInViewport)
+        return;
+    m_pressInViewport = false;
+
+    // Left-drag orbits the camera: only a (near-)stationary click selects.
+    if (io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] > 4.0f * 4.0f)
+        return;
+
+    const picking::Hit hit = picking::pick(m_scene,
+                                           m_scene->get_active_camera(),
+                                           Vec2(io.MousePos.x, io.MousePos.y),
+                                           Vec2(io.DisplaySize.x, io.DisplaySize.y),
+                                           m_binders ? *m_binders : std::vector<hair_binding::HairBinder*>{},
+                                           m_pickTolerancePx);
+    m_selection->set_selected_object(hit.object); // nullptr (background) deselects
+}
+
+void UserInterface::init(Core::IWindow*                          window,
+                         Core::Scene*                            scene,
+                         Systems::BaseRenderer*                  renderer,
+                         Tools::Controller*                      controller,
+                         std::vector<hair_binding::HairBinder*>* binders,
+                         bool*                                   animateLight) {
 
     overlay = new Tools::GUIOverlay(
         (float)window->get_extent().width, (float)window->get_extent().height, GuiColorProfileType::DARK);
@@ -210,14 +625,16 @@ void UserInterface::init(Core::IWindow* window, Core::Scene* scene, Systems::Bas
 
     Tools::Panel* propertiesPanel =
         new Tools::Panel("OBJECT PROPERTIES", 0.75f, 0, 0.25f, 0.8f, PanelWidgetFlags::NoMove, true);
-    gizmoWidget = new GizmoWidget(scene, sceneWidget);
-    propertiesPanel->add_child(gizmoWidget);
-    propertiesPanel->add_child(new Tools::Separator());
     objectWidget = new Tools::ObjectExplorerWidget();
     propertiesPanel->add_child(objectWidget);
 
     overlay->add_panel(propertiesPanel);
     properties = propertiesPanel;
+
+    // Viewport tools (toolbar, gizmo, picking) — drawn every frame, independent
+    // of which panels are open.
+    viewport = new ViewportWidget(scene, sceneWidget, controller, binders, static_cast<Systems::ForwardRenderer*>(renderer));
+    overlay->add_viewport_widget(viewport);
 }
 // ─── Loading screen ──────────────────────────────────────────────────────────
 

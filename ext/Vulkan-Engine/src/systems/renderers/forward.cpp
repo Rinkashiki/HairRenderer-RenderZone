@@ -60,7 +60,7 @@ void ForwardRenderer::create_passes() {
 
     const bool msaa = m_settings.samplesMSAA > MSAASamples::x1;
 
-    m_passes.resize(10, nullptr);
+    m_passes.resize(12, nullptr);
     // Shadow Pass
     m_passes[SHADOW_PASS] = new Core::VarianceShadowPass(m_device, {SHADOW_RES, SHADOW_RES}, ENGINE_MAX_LIGHTS, m_settings.depthFormat);
 
@@ -112,15 +112,31 @@ void ForwardRenderer::create_passes() {
     const ColorFormatType presentFormat =
         static_cast<ColorFormatType>(m_device->get_swapchain().get_image_format());
 
-    // Tonemapping
+    // Tonemapping — always offscreen now; the outline composite (or FXAA) presents.
     m_passes[TONEMAPPIN_PASS] = new Core::PostProcessPass(m_device,
                                                           m_window->get_extent(),
                                                           presentFormat,
                                                           Core::ResourceManager::VIGNETTE,
                                                           get_engine_resources_path() + "shaders/misc/tonemapping.glsl",
                                                           "TONEMAPPING",
-                                                          m_settings.softwareAA ? false : true);
+                                                          false);
     m_passes[TONEMAPPIN_PASS]->set_image_dependace_table({{iVec2(DOF_PASS, 0), {0}}});
+
+    // Selection outline: mask of the selected object (tested against the forward
+    // LinearDepth for visible vs occluded), then composited over the tonemapped
+    // image. Passthrough copy when nothing is selected, so exports are unchanged.
+    auto* outlineMask            = new Core::OutlineMaskPass(m_device, m_window->get_extent(), m_settings.depthFormat);
+    m_passes[OUTLINE_MASK_PASS]  = outlineMask;
+    m_passes[OUTLINE_MASK_PASS]->set_image_dependace_table({{iVec2(FORWARD_PASS, 0), {msaa ? 13u : 6u}}});
+
+    // images: [0] = TONEMAPPIN att 0, [1] = OUTLINE_MASK att 0 (ascending pass index)
+    m_passes[OUTLINE_PASS] = new Core::OutlineCompositePass(m_device,
+                                                            m_window->get_extent(),
+                                                            presentFormat,
+                                                            Core::ResourceManager::VIGNETTE,
+                                                            outlineMask,
+                                                            m_settings.softwareAA ? false : true);
+    m_passes[OUTLINE_PASS]->set_image_dependace_table({{iVec2(TONEMAPPIN_PASS, 0), {0}}, {iVec2(OUTLINE_MASK_PASS, 0), {0}}});
 
     // FXAA Pass
     m_passes[FXAA_PASS] = new Core::PostProcessPass(m_device,
@@ -130,7 +146,7 @@ void ForwardRenderer::create_passes() {
                                                     get_engine_resources_path() + "shaders/aa/fxaa.glsl",
                                                     "FXAA",
                                                     m_settings.softwareAA);
-    m_passes[FXAA_PASS]->set_image_dependace_table({{iVec2(TONEMAPPIN_PASS, 0), {0}}});
+    m_passes[FXAA_PASS]->set_image_dependace_table({{iVec2(OUTLINE_PASS, 0), {0}}});
     if (!m_settings.softwareAA)
         m_passes[FXAA_PASS]->set_active(false);
 }

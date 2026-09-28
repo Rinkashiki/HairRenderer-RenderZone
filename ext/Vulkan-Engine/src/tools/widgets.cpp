@@ -258,18 +258,20 @@ void SceneExplorerWidget::displayObject(Object3D* const obj, int& counter) {
     ImGui::TableNextColumn();
     std::string name = obj->get_name();
 
-    if (ImGui::TreeNodeEx(
-            name.c_str(), ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanFullWidth))
+    ImGuiTreeNodeFlags nodeFlags =
+        ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanFullWidth;
+    if (obj == m_selectedObject)
+        nodeFlags |= ImGuiTreeNodeFlags_Selected;
+    if (ImGui::TreeNodeEx(name.c_str(), nodeFlags))
     {
-        // node->selected = ImGui::IsItemClicked();
         if (ImGui::IsItemClicked())
-        {
-            if (m_selectedObject)
-                m_selectedObject->set_selected(false);
-            m_selectedObject = obj;
-            obj->set_selected(true);
-        }
+            set_selected_object(obj, false); // already on screen — no need to scroll
     };
+    if (obj == m_selectedObject && m_scrollToSelection)
+    {
+        ImGui::SetScrollHereY(0.5f);
+        m_scrollToSelection = false;
+    }
 
     ImGui::TableNextColumn();
     if (ImGui::Button(obj->is_active() ? "true" : "false"))

@@ -30,7 +30,7 @@ void ZoneRenderer::init(Systems::RendererSettings settings) {
 
     setup();
 
-    m_interface.init(m_window, m_scene, m_renderer, &animateLight);
+    m_interface.init(m_window, m_scene, m_renderer, m_controller, &m_binders, &animateLight);
     // m_renderer->set_gui_overlay(m_interface.overlay);
 
     // Bind-mode panel (below the explorer). Drives the hair surface binders.

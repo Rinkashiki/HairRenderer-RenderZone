@@ -82,9 +82,14 @@ class ZoneRenderer
         void* windowHandle{nullptr};
         m_window->get_handle(windowHandle);
         GLFWwindow* glfwWindow = static_cast<GLFWwindow*>(windowHandle);
-        if (glfwGetKey(glfwWindow, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        // Esc clears the selection first; with nothing selected it quits. Ignored
+        // while an ImGui text field has focus (Esc cancels the edit there).
+        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS && !ImGui::GetIO().WantCaptureKeyboard)
         {
-            m_window->set_window_should_close(true);
+            if (m_interface.sceneWidget && m_interface.sceneWidget->get_selected_object())
+                m_interface.sceneWidget->set_selected_object(nullptr);
+            else
+                m_window->set_window_should_close(true);
         }
 
         if (glfwGetKey(glfwWindow, GLFW_KEY_F11) == GLFW_PRESS)
