@@ -11,17 +11,23 @@ void GUIOverlay::render()
     if (ImGui::GetCurrentContext())
     {
 
-        switch (m_colorProfile)
+        if (m_styleCallback)
         {
-        case BRIGHT:
-            ImGui::StyleColorsLight();
-            break;
-        case DARK:
-            ImGui::StyleColorsDark();
-            break;
-        case CLASSIC:
-            ImGui::StyleColorsClassic();
-            break;
+            m_styleCallback();
+        } else
+        {
+            switch (m_colorProfile)
+            {
+            case BRIGHT:
+                ImGui::StyleColorsLight();
+                break;
+            case DARK:
+                ImGui::StyleColorsDark();
+                break;
+            case CLASSIC:
+                ImGui::StyleColorsClassic();
+                break;
+            }
         }
 
         ImGui_ImplVulkan_NewFrame();

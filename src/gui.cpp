@@ -1,5 +1,6 @@
 #include "gui.h"
 #include "app_info.h"
+#include "gui_theme.h"
 #include "picking.h"
 #include "transform_utils.h"
 #include <cmath>
@@ -388,7 +389,7 @@ void ViewportWidget::draw_toolbar(Core::Object3D* sel, Core::Object3D* target) {
         for (auto* b : *m_binders)
             if (b && b->hair_mesh() == target && b->is_bound()) {
                 ImGui::SameLine();
-                ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "bound to %s - re-Bind after moving",
+                ImGui::TextColored(gui_theme::warning_color(), "bound to %s - re-Bind after moving",
                                    b->head_mesh() ? b->head_mesh()->get_name().c_str() : "head");
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("This hair is attached to the scalp surface. Moving it offsets it from the skin;\n"
@@ -600,6 +601,19 @@ void ViewportWidget::handle_click() {
     m_selection->set_selected_object(hit.object); // nullptr (background) deselects
 }
 
+void ThemeWidget::render() {
+    ImGui::SeparatorText("Interface");
+    const gui_theme::Theme cur = gui_theme::current();
+    if (ImGui::BeginCombo("Theme", gui_theme::name(cur))) {
+        for (int i = 0; i < (int)gui_theme::Theme::Count; ++i) {
+            const auto t = (gui_theme::Theme)i;
+            if (ImGui::Selectable(gui_theme::name(t), t == cur))
+                gui_theme::set_current(t);
+        }
+        ImGui::EndCombo();
+    }
+}
+
 void UserInterface::init(Core::IWindow*                          window,
                          Core::Scene*                            scene,
                          Systems::BaseRenderer*                  renderer,
@@ -619,6 +633,7 @@ void UserInterface::init(Core::IWindow*                          window,
     explorerPanel->add_child(new Tools::TextLine(" Application average"));
     explorerPanel->add_child(new Tools::Profiler());
     explorerPanel->add_child(new Tools::Space());
+    explorerPanel->add_child(new ThemeWidget());
 
     overlay->add_panel(explorerPanel);
     explorer = explorerPanel;
@@ -630,6 +645,10 @@ void UserInterface::init(Core::IWindow*                          window,
 
     overlay->add_panel(propertiesPanel);
     properties = propertiesPanel;
+
+    gui_theme::register_panel(explorerPanel);
+    gui_theme::register_panel(propertiesPanel);
+    overlay->set_style_callback([] { gui_theme::apply(); });
 
     // Viewport tools (toolbar, gizmo, picking) — drawn every frame, independent
     // of which panels are open.

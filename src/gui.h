@@ -202,6 +202,17 @@ class ViewportWidget : public Tools::Widget {
     }
 };
 
+// "Interface theme" picker (bottom of the EXPLORER panel) — see gui_theme.h.
+class ThemeWidget : public Tools::Widget {
+  protected:
+    void render() override;
+
+  public:
+    ThemeWidget()
+        : Tools::Widget({0.0f, 0.0f}, {0.0f, 0.0f}) {
+    }
+};
+
 struct UserInterface {
 
     Tools::GUIOverlay*           overlay{nullptr};

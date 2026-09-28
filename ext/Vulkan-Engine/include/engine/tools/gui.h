@@ -12,6 +12,8 @@
 #include <engine/graphics/device.h>
 #include <engine/tools/widgets.h>
 
+#include <functional>
+
 // WIP..
 // MUCH TO DO HERE, JUST READY FOR A SIMPLE DEMO
 VULKAN_ENGINE_NAMESPACE_BEGIN
@@ -28,6 +30,10 @@ class GUIOverlay
     // Panel-less widgets drawn every frame before the panels (viewport tools:
     // gizmo, picking, floating toolbars). They own their ImGui windows, if any.
     std::vector<Widget *> m_viewportWidgets;
+    // Optional app-provided style, applied every frame instead of the stock
+    // colour profile (the profile is re-applied per frame, so a one-off
+    // ImGui::GetStyle() edit would be overwritten).
+    std::function<void()> m_styleCallback;
 
     GuiColorProfileType m_colorProfile;
 
@@ -54,6 +60,10 @@ class GUIOverlay
     {
         p->m_parentOverlay = this;
         m_panels.push_back(p);
+    }
+    inline void set_style_callback(std::function<void()> cb)
+    {
+        m_styleCallback = std::move(cb);
     }
     inline void add_viewport_widget(Widget *w)
     {

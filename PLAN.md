@@ -6,7 +6,7 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
-### Viewport selection, outline + gizmo overhaul (2026-09-28) — A–F done + validated by the user; G open
+### Viewport selection, outline + gizmo overhaul + GUI theme (2026-09-28) — done, validated by the user
 
 Supersedes the 2026-07-27 deferred "viewport selection + outline" note. User decisions (2026-09-28):
 CPU raycast picking, outline = solid where visible + faint where occluded, gizmo controls in a
@@ -27,9 +27,15 @@ floating viewport toolbar, and all proposed extras. Full description in CLAUDE.m
   tonemapping always offscreen).
 - [x] **F. Extras** — `F` focus, `Esc` deselect-then-quit, Ctrl = invert snap, per-type gizmo rules
   (+ directional-light aim arrow), undo/redo with a toolbar + `Ctrl+Z/Y`.
-- [ ] **G. (Later, iterative) GUI stylesheet redesign** — move away from the stock ImGui look (the
-  overlay re-applies `StyleColorsDark()` every frame in `GUIOverlay::render`); needs its own
-  brainstorm with the user.
+- [x] **G. GUI stylesheet redesign (2026-09-28).** Options offered: loading-screen match, studio
+  graphite, warm filament, glass minimal. User chose **Slate** (loading-screen match) as the
+  default and kept the live picker with **Warm filament** and **ImGui default** as alternatives
+  (EXPLORER → Interface → Theme). `src/gui_theme.{h,cpp}` + engine hook
+  `GUIOverlay::set_style_callback` (replaces the per-frame `StyleColorsDark()`); colours are
+  sRGB-authored and linearised (sRGB swapchain); themes also restyle the panels (which push their
+  own rounding/padding/border every frame) and switch the body font to Roboto Medium 15 px.
+  Not doable with ImGui: letter-spaced ("S C E N E") headers — section headers use the themed
+  separator style instead. Validated by the user on their display.
 
 **Issues found + solutions:**
 - *No outline at all at first.* `AttachmentInfo`'s constructor writes `clearValue.depthStencil.depth = 1`

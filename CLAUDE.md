@@ -532,6 +532,19 @@ frozen into every already-configured build dir (presets under `build/<preset>/`
 included), so a rename would silently not apply there — that bit the
 ZoneRenderer rename.
 
+### GUI themes (`src/gui_theme.{h,cpp}`)
+
+The ImGui look is an app-layer theme applied **every frame** through
+`GUIOverlay::set_style_callback` (without a callback the overlay re-applies its stock colour
+profile each frame, so one-off `ImGui::GetStyle()` edits never stick). Themes: **Slate** (default;
+the loading screen's palette), **Warm filament**, **ImGui default** — picked live in EXPLORER →
+Interface → Theme. Each theme is a small `Palette` of roles from which every `ImGuiCol` is derived.
+Colours are authored as sRGB hex and **linearised** (sRGB swapchain, same as the loading screen).
+`Panel`s push their own rounding/padding/border per frame, so panels are registered with
+`gui_theme::register_panel` and restyled too. Custom themes switch `io.FontDefault` to Roboto
+Medium 15 px (registered with the loading-screen fonts in `setup()`); ImGui default keeps
+ProggyClean.
+
 ### ZoneRenderer startup + loading screen
 
 `ZoneRenderer::setup()` (`src/application.cpp`) boots in three overlapped steps:

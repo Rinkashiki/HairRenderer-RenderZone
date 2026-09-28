@@ -1,5 +1,6 @@
 #include "application.h"
 #include "app_info.h"
+#include "gui_theme.h"
 #include "scene_loader.h"
 #include <engine/engine_config.h>
 #include <atomic>
@@ -37,6 +38,7 @@ void ZoneRenderer::init(Systems::RendererSettings settings) {
     auto* bindPanel = new Tools::Panel("HAIR BINDING", 0.0f, 0.7f, 0.2f, 0.3f, PanelWidgetFlags::NoMove, true);
     bindPanel->add_child(new HairBindWidget(&m_binders));
     m_interface.overlay->add_panel(bindPanel);
+    gui_theme::register_panel(bindPanel);
 
     // Everything the input callbacks touch (controller + GUI overlay) now
     // exists — safe to let window/mouse/key events through.
@@ -104,6 +106,8 @@ void ZoneRenderer::setup() {
         io.Fonts->AddFontDefault();
         titleFont = io.Fonts->AddFontFromFileTTF(RESOURCES_PATH "fonts/Roboto-Medium.ttf", 46.0f);
         bodyFont  = io.Fonts->AddFontFromFileTTF(RESOURCES_PATH "fonts/Roboto-Medium.ttf", 17.0f);
+        // Body font of the regular GUI under the custom themes (gui_theme.h).
+        gui_theme::set_ui_font(io.Fonts->AddFontFromFileTTF(RESOURCES_PATH "fonts/Roboto-Medium.ttf", 15.0f));
     }
     const std::string sceneName = std::filesystem::path(SCENE_PATH).stem().string();
 
