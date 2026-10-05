@@ -440,42 +440,6 @@ class PhysicallyBasedMaterial : public IMaterial
         m_isDirty              = true;
     }
 
-    inline float get_wrinkle_gain() const {
-        return m_wrinkleGain;
-    }
-
-    inline void set_wrinkle_gain(float g) {
-        m_wrinkleGain = g;
-        m_isDirty     = true;
-    }
-
-    inline float get_wrinkle_sharpen() const {
-        return m_wrinkleSharpen;
-    }
-
-    inline void set_wrinkle_sharpen(float s) {
-        m_wrinkleSharpen = s;
-        m_isDirty        = true;
-    }
-
-    inline float get_wrinkle_blur_radius() const {
-        return m_wrinkleBlurRadius;
-    }
-
-    inline void set_wrinkle_blur_radius(float r) {
-        m_wrinkleBlurRadius = r;
-        m_isDirty           = true;
-    }
-
-    inline float get_wrinkle_sharpen_radius() const {
-        return m_wrinkleSharpenRadius;
-    }
-
-    inline void set_wrinkle_sharpen_radius(float r) {
-        m_wrinkleSharpenRadius = r;
-        m_isDirty              = true;
-    }
-
     inline float get_wrinkle_strain_strength() const {
         return m_wrinkleStrainStrength;
     }

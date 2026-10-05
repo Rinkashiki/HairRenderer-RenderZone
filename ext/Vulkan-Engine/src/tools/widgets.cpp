@@ -660,22 +660,7 @@ void ObjectExplorerWidget::render() {
                     mat->set_sheen_intensity(sheenIntensity);
                 }
 
-                ImGui::SeparatorText("Wrinkles / Strain");
-                float g = mat->get_wrinkle_gain();
-                if (ImGui::DragFloat("Strain gain", &g, 0.05f, 0.0f, 30.0f))
-                    mat->set_wrinkle_gain(g);
-
-                float a = mat->get_wrinkle_sharpen();
-                if (ImGui::DragFloat("Sharpen amount", &a, 0.05f, 0.0f, 8.0f))
-                    mat->set_wrinkle_sharpen(a);
-
-                float br = mat->get_wrinkle_blur_radius();
-                if (ImGui::DragFloat("Blur radius", &br, 0.0005f, 0.0f, 0.15f, "%.4f"))
-                    mat->set_wrinkle_blur_radius(br);
-
-                float sr = mat->get_wrinkle_sharpen_radius();
-                if (ImGui::DragFloat("Sharpen radius", &sr, 0.0005f, 0.0f, 0.15f, "%.4f"))
-                    mat->set_wrinkle_sharpen_radius(sr);
+                ImGui::SeparatorText("Wrinkle/Strain");
 
                 float s = mat->get_wrinkle_strain_strength();
                 if (ImGui::DragFloat("Wrinkle/Strain strength", &s, 0.05f, 0.0f, 3.0f, "%.4f"))
