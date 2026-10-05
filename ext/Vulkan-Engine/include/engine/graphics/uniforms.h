@@ -73,7 +73,8 @@ struct MaterialUniforms {
     Vec4 dataSlot9;  // Layer B microdetail params (detail normal, detail cavity)
     Vec4 dataSlot10; // Layer B microdetail params (cavity weights, dual-lobe specular)
     Vec4 dataSlot11; // Sheen (Jimenez peach-fuzz): rgb = sheenColor, a = sheenIntensity
-    Vec4 dataSlot12; // wrinkles/strain parameters
+    Vec4 dataSlot12; // wrinkle/strain parameters
+    Vec4 dataSlot13; // wrinkle/strain strength, unused, unused, unused
 };
 
 } // namespace Graphics

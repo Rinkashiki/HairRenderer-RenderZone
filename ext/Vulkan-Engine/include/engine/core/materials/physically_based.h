@@ -77,10 +77,11 @@ class PhysicallyBasedMaterial : public IMaterial
     float m_dualLobeRoughnessSoft  = 0.55f;
 
     // Wrinkle / strain parameters
-    float m_wrinkleGain          = 10.0f;  // GAIN
-    float m_wrinkleSharpen       = 1.0f;   // amount
-    float m_wrinkleBlurRadius    = 0.008f; // kBlur
-    float m_wrinkleSharpenRadius = 0.010f; // kSharpen
+    float m_wrinkleGain          = 20.0f;  // GAIN
+    float m_wrinkleSharpen       = 2.5f;   // amount
+    float m_wrinkleBlurRadius    = 0.012f; // kBlur
+    float m_wrinkleSharpenRadius = 0.016f; // kSharpen
+    float m_wrinkleStrainStrength = 1.0f;   // wrinkle strain strength 
 
     // Peach-fuzz sheen (Jimenez-style Disney sheen). Additive grazing lobe gated
     // by the clothes mask and modulated by a fuzz mask derived from curvature
@@ -475,6 +476,14 @@ class PhysicallyBasedMaterial : public IMaterial
         m_isDirty              = true;
     }
 
+    inline float get_wrinkle_strain_strength() const {
+        return m_wrinkleStrainStrength;
+    }
+
+    inline void set_wrinkle_strain_strength(float s) {
+        m_wrinkleStrainStrength = s;
+        m_isDirty               = true;
+    }
 
     inline ITexture* get_detail_cavity_texture() {
         return m_textures[DETAIL_CAVITY];

@@ -71,6 +71,8 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     float amount;
     float kBlur;
     float kSharp;
+    // slot13: wrinkle/strain strength
+    vec4 wrinkleStrainStrength;
 } material;
 
 void main() {
@@ -202,6 +204,8 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     float amount;
     float kBlur;
     float kSharp;
+    // slot13: wrinkle/strain strength 
+    vec4 wrinkleStrainStrength;
 } material;
 layout(set = 2, binding = 0) uniform sampler2D albedoTex;
 layout(set = 2, binding = 1) uniform sampler2D normalTex;
@@ -249,6 +253,9 @@ const float ambient = 0.05;
 // Blur weights
 const float w[5] = float[](0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
 
+// Area change factor of the deformation tensor.
+float J = 1.0;
+
 // Penner-style pre-integrated skin diffuse (analytical Brisebois-Hoffman variant).
 // curvature in [0,1]: 0 = flat surface (Lambert), 1 = highly curved (max wraparound).
 // Returns per-channel wrapped NdotL response; red wraps farthest (longest mean free
@@ -263,12 +270,18 @@ vec3 preIntegratedSkinDiffuse(float NdotL, float curvature) {
     return wrapped / (vec3(1.0) + 0.5 * w);
 }
 
-vec3 modifyNormalTex(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stretchDir,float wrinkleFactor, float smoothFactor, float compressionScale, float stretchScale, float strength) 
+// -----------------------------------------------------------------------------
+// SPECULAR normal builder (LOD 0). ENHANCES microdetail:
+//   base + directional stretch-blur + directional compression-sharpen (wrinkles)
+//   + anisotropic scaling with the caller's compressionScale (>1 amplifies under
+//   compression). This is the sharp, "shiny pores" path — used only for specular.
+// -----------------------------------------------------------------------------
+vec3 modifyNormalTex(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stretchDir,float wrinkleFactor, float smoothFactor, float compressionScale, float stretchScale, float strength, float intensity) 
 {
     vec3 base = texture(tex, dUV).rgb * 2.0 - 1.0;
 
     // Directional BLUR (Stretching)
-    float span = smoothFactor * material.kBlur; 
+    float span = smoothFactor * (material.kBlur * intensity); 
     vec3 dN_blur = vec3(0.0);
     for (int i = 0; i < 5; ++i)
     {
@@ -277,14 +290,14 @@ vec3 modifyNormalTex(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stret
     }
 
     // Directional SHARPEN (Compression / Wrinkles)
-    float cspan = wrinkleFactor * material.kSharp; 
+    float cspan = wrinkleFactor * (material.kSharp * intensity); 
     vec3 blurC = vec3(0.0);
     for (int i = 0; i < 5; ++i)
     {
         vec2 offset = compressionDir * (float(i - 2) * cspan);
         blurC += (texture(tex, dUV + offset).rgb * 2.0 - 1.0) * w[i];
     }
-    vec3 sharp = base + material.amount * (base - blurC); 
+    vec3 sharp = base + (material.amount * intensity) * (base - blurC); 
 
     // Smooth blending based on strain factors
     vec3 result = base;
@@ -300,12 +313,23 @@ vec3 modifyNormalTex(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stret
     return result;
 }
 
-vec3 modifyNormalTexLod(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stretchDir, float wrinkleFactor, float smoothFactor, float compressionScale, float stretchScale, float strength, float lod) 
+// -----------------------------------------------------------------------------
+// DIFFUSE / SSS normal builder (per-channel LOD).  
+// This path is PURELY ATTENUATING: the diffuse micro-normal may only SOFTEN
+// detail, never enhance it (that softness IS the subsurface look). So:
+//   * NO directional sharpen (the cspan/blurC/sharp block is removed).
+//   * compressionScale is FORCED to 1.0 before the anisotropic scaling, so
+//     pores/grooves are never amplified under compression in the diffuse.
+// It keeps only the directional stretch-blur + stretch-attenuation.
+// (The wrinkleFactor / compressionScale params are kept in the signature so the
+//  call sites don't change, but are intentionally ignored here.)
+// -----------------------------------------------------------------------------
+vec3 modifyNormalTexLod(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 stretchDir, float wrinkleFactor, float smoothFactor, float compressionScale, float stretchScale, float strength, float lod, float intensity) 
 {
     vec3 base = textureLod(tex, dUV, lod).rgb * 2.0 - 1.0;
 
     // Directional BLUR (Stretching)
-    float span = smoothFactor * material.kBlur; 
+    float span = smoothFactor * (material.kBlur * intensity); 
     vec3 dN_blur = vec3(0.0);
     for (int i = 0; i < 5; ++i)
     {
@@ -313,20 +337,12 @@ vec3 modifyNormalTexLod(in sampler2D tex, vec2 dUV, vec2 compressionDir, vec2 st
         dN_blur += (textureLod(tex, dUV + offset, lod).rgb * 2.0 - 1.0) * w[i];
     }
 
-    // Directional SHARPEN (Compression / Wrinkles)
-    float cspan = wrinkleFactor * material.kSharp; 
-    vec3 blurC = vec3(0.0);
-    for (int i = 0; i < 5; ++i)
-    {
-        vec2 offset = compressionDir * (float(i - 2) * cspan);
-        blurC += (textureLod(tex, dUV + offset, lod).rgb * 2.0 - 1.0) * w[i];
-    }
-    vec3 sharp = base + material.amount * (base - blurC); 
-
     // Smooth blending based on strain factors
     vec3 result = base;
     result = mix(result, dN_blur, smoothFactor);
-    result = mix(result, sharp, wrinkleFactor);
+
+    // Diffuse must not amplify pores/grooves under compression -> force 1.0.
+    compressionScale = 1.0f;
 
     // Anisotropic scaling based on the deformation tensor
     vec2 g = result.xy * strength;
@@ -361,6 +377,11 @@ void setupBRDFProperties(){
     float Cyy = v_strain.y;
     float Cxy = v_strain.z;
 
+    // Area change factor 
+    J = sqrt(max(0.0, Cxx * Cyy - Cxy * Cxy));
+
+    float intensity = material.wrinkleStrainStrength.x;
+
     float tr = 0.5 * (Cxx + Cyy);
     float d  = sqrt(max(0.0, 0.25 * (Cxx - Cyy) * (Cxx - Cyy) + Cxy * Cxy));
 
@@ -372,8 +393,8 @@ void setupBRDFProperties(){
     vec2 compressionDir = vec2(-sin(theta), cos(theta));
     vec2 stretchDir     = vec2(cos(theta), sin(theta));
 
-    float wrinkleFactor = clamp(compression * material.GAIN, 0.0, 1.0);
-    float smoothFactor  = clamp(stretch * material.GAIN, 0.0, 1.0);
+    float wrinkleFactor = clamp(compression * intensity, 0.0, 1.0);
+    float smoothFactor  = clamp(stretch * intensity, 0.0, 1.0);
 
     float compressionScale = 1.0 + wrinkleFactor;
     float stretchScale     = 1.0 - 0.5 * smoothFactor;
@@ -383,50 +404,61 @@ void setupBRDFProperties(){
     // mesh lacks tangent data produces NaN (normalize of zero), which then
     // poisons all downstream shading.
     if (material.hasNormalTexture || material.hasDetailNormalTexture) {
-        vec3 baseTangentN = modifyNormalTex(normalTex, v_uv, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, 1.0);
-        smoothNormalWS = normalize(v_TBN * baseTangentN);
+
+        // SPECULAR base: sharp + enhanced (keeps sharpen + compressionScale).
+        vec3 baseSpecTangentN = modifyNormalTex(normalTex, v_uv, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, 1.0, intensity);
+
+        // SSS-LUT blur grading, HOISTED above the detail branch so the base
+        // pores AND the detail grooves share the same per-channel blur.
+        // Sample the scatter-distance LUT at mid-thickness, linearize from
+        // sRGB, map relative scatter distances to log-blur:  bias_c = scale * log2(d_c / d_min).
+        vec3  lutD     = pow(texture(scatterDistLUT, vec2(0.5, 0.5)).rgb, vec3(2.2));
+        float lutMin   = max(min(min(lutD.r, lutD.g), lutD.b), 1e-4);
+        vec3  blurRGB  = clamp(1.5 * log2(max(lutD, vec3(1e-4)) / lutMin), vec3(0.0), vec3(4.0));
+
+        // DIFFUSE base: soft per-channel pores (attenuating builder, strength 1.0).
+        vec3 baseDiff_R = modifyNormalTexLod(normalTex, v_uv, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, 1.0, blurRGB.r, intensity );
+        vec3 baseDiff_G = modifyNormalTexLod(normalTex, v_uv, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, 1.0, blurRGB.g, intensity );
+        vec3 baseDiff_B = modifyNormalTexLod(normalTex, v_uv, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, 1.0, blurRGB.b, intensity );
+
+        // Macro normal for SSS wrap + sheen + back-light = the SOFTEST (red) base.
+        smoothNormalWS = normalize(v_TBN * baseDiff_R);
 
         // Whiteout blend: xy of base + xy of detail scaled by strength, z multiplied.
         // Robust at glancing angles, cheap, no NaN edges. We run it three more times
-        // at per-channel mip-LOD bias to produce the d'Eon hybrid diffuse normals.
-        vec3 detailTangentN = baseTangentN;
+        vec3 detailTangentN = baseSpecTangentN;
         if (material.hasDetailNormalTexture) {
             vec2 dUV = v_uv * material.detailTiling;
-            // Sharp detail for specular (LOD 0).
-            vec3 dN_spec = modifyNormalTex( detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength);
+
+            // SPECULAR: sharp detail (LOD 0) stacked on the SHARP base.
+            vec3 dN_spec = modifyNormalTex( detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, intensity);
             dN_spec.xy *= effDetailStrength;
             dN_spec.z   = max(dN_spec.z, 0.01);
-            detailTangentN = normalize(vec3(baseTangentN.xy + dN_spec.xy,
-                                            baseTangentN.z   * dN_spec.z));
+            detailTangentN = normalize(vec3(baseSpecTangentN.xy + dN_spec.xy,
+                                            baseSpecTangentN.z   * dN_spec.z));
 
-            // Per-channel pre-blurred detail (R widest, B sharpest). Mip-LOD biases
-            // are derived from the SSS scatter-distance LUT so the wavelength-graded
-            // blur matches the same spectral profile used by the screen-space SSS
-            // pass. Sample the LUT at mid-thickness (representative of skin overall),
-            // linearize from sRGB, and map relative scatter distances to log-blur:
-            //   bias_c = scale * log2(d_c / d_min)
-            vec3 lutD = pow(texture(scatterDistLUT, vec2(0.5, 0.5)).rgb, vec3(2.2));
-            float lutMin = max(min(min(lutD.r, lutD.g), lutD.b), 1e-4);
-            vec3 detailBlurRGB = clamp(1.5 * log2(max(lutD, vec3(1e-4)) / lutMin),
-                                       vec3(0.0), vec3(4.0));
-            vec3 dN_r = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, detailBlurRGB.r);
-            vec3 dN_g = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, detailBlurRGB.g);
-            vec3 dN_b = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, detailBlurRGB.b);
+        
+            // DIFFUSE: per-channel pre-blurred detail (R widest, B sharpest),
+            vec3 dN_r = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, blurRGB.r, intensity );
+            vec3 dN_g = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, blurRGB.g, intensity );
+            vec3 dN_b = modifyNormalTexLod(detailNormalTex, dUV, compressionDir, stretchDir, wrinkleFactor, smoothFactor, compressionScale, stretchScale, material.detailNormalStrength, blurRGB.b, intensity );
             dN_r.xy *= effDetailStrength; dN_r.z = max(dN_r.z, 0.01);
             dN_g.xy *= effDetailStrength; dN_g.z = max(dN_g.z, 0.01);
             dN_b.xy *= effDetailStrength; dN_b.z = max(dN_b.z, 0.01);
 
-            vec3 tN_r = normalize(vec3(baseTangentN.xy + dN_r.xy, baseTangentN.z * dN_r.z));
-            vec3 tN_g = normalize(vec3(baseTangentN.xy + dN_g.xy, baseTangentN.z * dN_g.z));
-            vec3 tN_b = normalize(vec3(baseTangentN.xy + dN_b.xy, baseTangentN.z * dN_b.z));
+            // Compose SOFT base + SOFT detail per channel (NOT the sharp base).
+            vec3 tN_r         = normalize(vec3(baseDiff_R.xy + dN_r.xy, baseDiff_R.z * dN_r.z));
+            vec3 tN_g         = normalize(vec3(baseDiff_G.xy + dN_g.xy, baseDiff_G.z * dN_g.z));
+            vec3 tN_b         = normalize(vec3(baseDiff_B.xy + dN_b.xy, baseDiff_B.z * dN_b.z));
             diffuseNormalWS_R = normalize(v_TBN * tN_r);
             diffuseNormalWS_G = normalize(v_TBN * tN_g);
             diffuseNormalWS_B = normalize(v_TBN * tN_b);
         } else {
-            vec3 baseWS       = normalize(v_TBN * baseTangentN);
-            diffuseNormalWS_R = baseWS;
-            diffuseNormalWS_G = baseWS;
-            diffuseNormalWS_B = baseWS;
+            // No detail map: the diffuse normals are the SOFT per-channel
+            // pore base directly (one per channel), NOT the sharp base.
+            diffuseNormalWS_R = normalize(v_TBN * baseDiff_R);
+            diffuseNormalWS_G = normalize(v_TBN * baseDiff_G);
+            diffuseNormalWS_B = normalize(v_TBN * baseDiff_B);
         }
 
         brdf.normal = normalize(v_TBN * detailTangentN);
@@ -749,7 +781,7 @@ void main() {
     // smoothness real skin shows. Cavity occlusion stays in the specular path
     // (cavitySpecOcclusion above) where the "no shiny pores" effect lives.
     outDiffuseIrr  = vec4(diffuseIrr, skinMask);
-    outBackIrr     = vec4(backIrr, 0.0);
+    outBackIrr     = vec4(backIrr, J);
     outLinearDepth = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);
 
 }

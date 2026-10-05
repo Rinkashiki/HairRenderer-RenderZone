@@ -677,6 +677,9 @@ void ObjectExplorerWidget::render() {
                 if (ImGui::DragFloat("Sharpen radius", &sr, 0.0005f, 0.0f, 0.15f, "%.4f"))
                     mat->set_wrinkle_sharpen_radius(sr);
 
+                float s = mat->get_wrinkle_strain_strength();
+                if (ImGui::DragFloat("Wrinkle/Strain strength", &s, 0.05f, 0.0f, 3.0f, "%.4f"))
+                    mat->set_wrinkle_strain_strength(s);
 
                 ImGui::Separator();
             }
