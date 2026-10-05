@@ -253,6 +253,9 @@ const float ambient = 0.05;
 // Blur weights
 const float w[5] = float[](0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
 
+// Area change factor of the deformation tensor.
+float J = 1.0;
+
 // Penner-style pre-integrated skin diffuse (analytical Brisebois-Hoffman variant).
 // curvature in [0,1]: 0 = flat surface (Lambert), 1 = highly curved (max wraparound).
 // Returns per-channel wrapped NdotL response; red wraps farthest (longest mean free
@@ -373,6 +376,9 @@ void setupBRDFProperties(){
     float Cxx = v_strain.x;
     float Cyy = v_strain.y;
     float Cxy = v_strain.z;
+
+    // Area change factor 
+    J = sqrt(max(0.0, Cxx * Cyy - Cxy * Cxy));
 
     float intensity = material.wrinkleStrainStrength.x;
 
@@ -775,7 +781,7 @@ void main() {
     // smoothness real skin shows. Cavity occlusion stays in the specular path
     // (cavitySpecOcclusion above) where the "no shiny pores" effect lives.
     outDiffuseIrr  = vec4(diffuseIrr, skinMask);
-    outBackIrr     = vec4(backIrr, 0.0);
+    outBackIrr     = vec4(backIrr, J);
     outLinearDepth = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);
 
 }

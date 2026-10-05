@@ -92,7 +92,9 @@ void main() {
     vec3  albedo  = albedoMask.rgb;
     vec4  hdr     = texture(hdrTex, v_uv);
     vec3  diffIrr = texture(diffuseIrrTex, v_uv).rgb;
-    vec3  backIrr = texture(backIrrTex, v_uv).rgb;
+    vec4  backData = texture(backIrrTex, v_uv);
+    vec3  backIrr  = backData.rgb;
+    float J        = backData.a;
     float depth   = texture(depthTex, v_uv).r;
     vec2  aoThick = texture(aoThickTex, v_uv).rg;
     float ao      = aoThick.r;
