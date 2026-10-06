@@ -1,0 +1,94 @@
+{
+  "name": "Plant Test",
+  "camera": {
+    "position": [
+      0.0,
+      2.5,
+      -10.0
+    ],
+    "near": 0.1,
+    "far": 100.0,
+    "fov": 40.0
+  },
+  "lights": [
+    {
+      "type": "point",
+      "name": "PointLight",
+      "position": [
+        7.0,
+        5.0,
+        -9.0
+      ],
+      "intensity": 10.0,
+      "shadow_fov": 120.0,
+      "shadow_bias": 0.0002,
+      "shadow_near": 1.0,
+      "area_of_effect": 30.0,
+      "dummy_mesh": "sphere.obj",
+      "dummy_visible": false
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Plant",
+      "type": "glb",
+      "file": "models/plant_test/plant_test.glb",
+      "glb_mesh_index": -1,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 50.0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "material": {
+        "type": "leaf",
+        "opacity_weight": 1.0,
+        "albedo_texture": "textures/plant_test/albedo.png",
+        "roughness": 0.7,
+        "spec_trans": 0.0,
+        "diff_trans": 1.0,
+        "transmittance": [1.0, 1.0, 1.0]
+      }
+    }
+  ],
+  "scene": {
+    "ambient_color": [
+      0.05,
+      0.05,
+      0.05
+    ],
+    "ambient_intensity": 1.0,
+    "skybox": {
+      "hdri": "textures/nature_demo.hdr",
+      "intensity": 1.0,
+      "rotation": 290.0
+    },
+    "use_ibl": true,
+    "fog": {
+      "enabled": false
+    }
+  },
+  "renderer": {
+    "clear_color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "sss_scatter_lut": "textures/scatterDistance/monk05.png",
+    "msaa": 8,
+    "dof": {
+      "enabled": true,
+      "focus_distance": 8.0,
+      "focus_range": 6.0,
+      "near_blur_scale": 1.0,
+      "far_blur_scale": 2.0,
+      "max_blur": 8.0
+    }
+  }
+}

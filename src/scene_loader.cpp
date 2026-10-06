@@ -299,8 +299,18 @@ static Core::IMaterial* build_pbr(const json&        jm,
     auto* mat = new Core::PhysicallyBasedMaterial();
     if (jm.contains("albedo"))           mat->set_albedo(to_vec3(jm["albedo"], Vec3(1.0f)));
     if (jm.contains("albedo_weight"))    mat->set_albedo_weight(jm["albedo_weight"].get<float>());
-    if (jm.contains("opacity"))          mat->set_opacity(jm["opacity"].get<float>());
-    if (jm.contains("opacity_weight"))   mat->set_opacity_weight(jm["opacity_weight"].get<float>());
+    if (jm.contains("opacity")) {
+        const float opacity = jm["opacity"].get<float>();
+        mat->set_opacity(opacity);
+        if (opacity < 1.0f)
+            mat->enable_alpha_test(true);
+    }
+    if (jm.contains("opacity_weight")) {
+        const float opacityWeight = jm["opacity_weight"].get<float>();
+        mat->set_opacity_weight(opacityWeight);
+        if (opacityWeight > 0.0f)
+            mat->enable_alpha_test(true);
+    }
     if (jm.contains("metalness"))        mat->set_metalness(jm["metalness"].get<float>());
     if (jm.contains("metalness_weight")) mat->set_metalness_weight(jm["metalness_weight"].get<float>());
     if (jm.contains("roughness"))        mat->set_roughness(jm["roughness"].get<float>());
@@ -432,6 +442,82 @@ static Core::IMaterial* build_pbr(const json&        jm,
          "dual_lobe_mix", "dual_lobe_roughness_soft",
          "sheen_color", "sheen_intensity", "culling"},
         "material(pbr)");
+
+    return mat;
+}
+
+static Core::IMaterial* build_leaf(const json&        jm,
+                                   const std::string& resourcesPath,
+                                   GLBTexCtx&         glbTextures) {
+    auto* mat = new Core::LeafMaterial();
+    if (jm.contains("albedo"))           mat->set_albedo(to_vec3(jm["albedo"], Vec3(1.0f)));
+    if (jm.contains("albedo_weight"))    mat->set_albedo_weight(jm["albedo_weight"].get<float>());
+    if (jm.contains("opacity")) {
+        const float opacity = jm["opacity"].get<float>();
+        mat->set_opacity(opacity);
+        if (opacity < 1.0f)
+            mat->enable_alpha_test(true);
+    }
+    if (jm.contains("opacity_weight")) {
+        const float opacityWeight = jm["opacity_weight"].get<float>();
+        mat->set_opacity_weight(opacityWeight);
+        if (opacityWeight > 0.0f)
+            mat->enable_alpha_test(true);
+    }
+    if (jm.contains("roughness"))        mat->set_roughness(jm["roughness"].get<float>());
+    if (jm.contains("roughness_weight")) mat->set_roughness_weight(jm["roughness_weight"].get<float>());
+    if (jm.contains("occlusion"))        mat->set_occlusion(jm["occlusion"].get<float>());
+    if (jm.contains("occlusion_weight")) mat->set_occlusion_weight(jm["occlusion_weight"].get<float>());
+    if (jm.contains("spec_trans"))       mat->set_spec_trans(jm["spec_trans"].get<float>());
+    if (jm.contains("diff_trans"))       mat->set_diff_trans(jm["diff_trans"].get<float>());
+    if (jm.contains("transmittance"))    mat->set_transmittance(to_vec3(jm["transmittance"], Vec3(1.0f)));
+
+    if (jm.contains("albedo_texture"))
+        mat->set_albedo_texture(resolve_texture(jm["albedo_texture"], resourcesPath, glbTextures,
+                                                TEXTURE_FORMAT_TYPE_COLOR));
+    if (jm.contains("normal_texture"))
+        mat->set_normal_texture(resolve_texture(jm["normal_texture"], resourcesPath, glbTextures,
+                                                TEXTURE_FORMAT_TYPE_NORMAL));
+    // Roughness / occlusion may each be one channel of a shared packed atlas (ORM).
+    int channel = 0;
+    if (jm.contains("roughness_texture"))
+    {
+        channel = 0;
+        mat->set_roughness_texture(resolve_texture(jm["roughness_texture"], resourcesPath, glbTextures,
+                                                   TEXTURE_FORMAT_TYPE_LINEAR, &channel));
+        mat->set_roughness_channel(channel);
+    }
+    if (jm.contains("occlusion_texture"))
+    {
+        channel = 0;
+        mat->set_occlusion_texture(resolve_texture(jm["occlusion_texture"], resourcesPath, glbTextures,
+                                                   TEXTURE_FORMAT_TYPE_LINEAR, &channel));
+        mat->set_occlusion_channel(channel);
+    }
+    if (jm.contains("culling")) {
+        const std::string c = jm["culling"].get<std::string>();
+        if (c == "none") {
+            mat->set_enable_culling(false);
+        } else if (c == "back") {
+            mat->set_enable_culling(true);
+            mat->set_culling_type(BACK_CULLING);
+        } else if (c == "front") {
+            mat->set_enable_culling(true);
+            mat->set_culling_type(FRONT_CULLING);
+        } else {
+            throw std::runtime_error("scene_loader: material 'culling' must be "
+                "'back', 'front', or 'none' (got '" + c + "')");
+        }
+    }
+
+    warn_unknown(jm,
+        {"type", "albedo", "albedo_weight", "albedo_texture",
+         "opacity", "opacity_weight",
+         "roughness", "roughness_weight", "roughness_texture",
+         "occlusion", "occlusion_weight", "occlusion_texture",
+         "normal_texture", "culling",
+         "spec_trans", "diff_trans", "transmittance"},
+        "material(leaf)");
 
     return mat;
 }
@@ -623,6 +709,7 @@ static Core::IMaterial* build_material_inline(const json&        jm,
     require(jm, "type", "material");
     const std::string type = jm.at("type").get<std::string>();
     if (type == "pbr")        return build_pbr(jm, resourcesPath, glbTextures);
+    if (type == "leaf")       return build_leaf(jm, resourcesPath, glbTextures);
     if (type == "haircard")   return build_haircard(jm, resourcesPath, glbTextures);
     if (type == "hairepic")   return build_hairepic(jm);
     if (type == "eyelash")    return build_hairepic(jm, /*eyelash*/ true);

@@ -165,6 +165,7 @@ Discriminated by `"type"`:
 | `type` | Class |
 |--------|-------|
 | `pbr` | `PhysicallyBasedMaterial` |
+| `leaf` | `LeafMaterial` (see §6.8) |
 | `haircard` | `HairCardMaterial` |
 | `hairepic` | `HairEpicMaterial` |
 | `eyelash` | `EyelashMaterial` (see §6.3) |
@@ -338,6 +339,33 @@ samples to spend: at `"msaa": 1` it degenerates to the baseline.
 |-------|------|---------|
 | `color` | vec4 | `[1,1,0.5,1]` (RGBA) |
 | `color_texture` | texref | (none) |
+
+### 6.8 `leaf`
+
+Standalone `LeafMaterial` for foliage, rendered by `forward/leaf.glsl` through the
+thin-surface BSDF (`scripts/BRDFs/thin_surface_BSDF.glsl`): Cook-Torrance reflection
+plus specular and diffuse transmission through the blade. Dielectric (F0 from IOR 1.5).
+Leaf assets are expected to be **thickened** (geometry on both sides) — the shader does
+no two-sided normal flipping. Every field is also editable in the HairViewer material panel.
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `albedo` | vec3 | `[0.5,0.5,0.5]` | |
+| `albedo_texture` | texref | (none) | |
+| `albedo_weight` | float | `1.0` | Weight between `albedo` and the texture. |
+| `opacity` | float | `1.0` | `< 1` enables alpha test. |
+| `opacity_weight` | float | `0.0` | Weight between `opacity` and the albedo texture's alpha. `> 0` enables alpha test. |
+| `roughness` | float | `0.5` | |
+| `roughness_texture` | texref | (none) | Accepts a packed-atlas channel suffix (`:g`). |
+| `roughness_weight` | float | `1.0` | |
+| `occlusion` | float | `1.0` | |
+| `occlusion_texture` | texref | (none) | Accepts a packed-atlas channel suffix (`:r`). |
+| `occlusion_weight` | float | `1.0` | |
+| `normal_texture` | texref | (none) | |
+| `spec_trans` | float | `0.0` | Specular (refractive) transmission, `[0, 1]`. Leaves scatter rather than refract, so normally `0`. |
+| `diff_trans` | float | `1.0` | Diffuse transmission, `[0, 2]`. `1` = half the diffuse light is reflected, half transmitted through the blade. |
+| `transmittance` | vec3 | `[1, 1, 1]` | Through-blade absorption tint. The diffuse-transmission lobe is already tinted by albedo, so white leaves it unchanged. |
+| `culling` | `"back"` \| `"front"` \| `"none"` | `"none"` | Same as `pbr`. |
 
 ### 6.7 Texture references (`texref`)
 

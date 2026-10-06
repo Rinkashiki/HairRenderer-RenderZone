@@ -308,6 +308,17 @@ void ForwardPass::setup_shader_passes() {
     PBRPass->graphicSettings.samples          = samples;
     m_shaderPasses[IMaterial::Type::PBR_TYPE] = PBRPass;
 
+    // Leaves / thin foliage, lit through the thin-surface BSDF.
+    GraphicShaderPass* leafPass =
+        new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/leaf.glsl");
+    leafPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, true}};
+    leafPass->graphicSettings.attributes      = {
+        {POSITION_ATTRIBUTE, true}, {NORMAL_ATTRIBUTE, true}, {UV_ATTRIBUTE, true}, {TANGENT_ATTRIBUTE, true}, {COLOR_ATTRIBUTE, false}};
+    leafPass->graphicSettings.blendAttachments = blendAttachments;
+    leafPass->graphicSettings.dynamicStates    = dynamicStates;
+    leafPass->graphicSettings.samples          = samples;
+    m_shaderPasses[IMaterial::Type::LEAF_TYPE] = leafPass;
+
     GraphicShaderPass* hairStrandPass =
         new GraphicShaderPass(m_device->get_handle(), m_renderpass, m_imageExtent, get_engine_resources_path() + "shaders/forward/hair_strand.glsl");
     hairStrandPass->settings.descriptorSetLayoutIDs = {{GLOBAL_LAYOUT, true}, {OBJECT_LAYOUT, true}, {OBJECT_TEXTURE_LAYOUT, false}};

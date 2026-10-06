@@ -468,6 +468,35 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Leaf material + thin-surface BSDF shader (2026-10-06)
+
+New standalone `LeafMaterial` (`leaf.h/cpp`, `LEAF_TYPE`, scene JSON `"leaf"`) for
+foliage, rendered by `forward/leaf.glsl` through `thin_surface_BSDF.glsl`.
+- Its own `IMaterial` (like phong / hair_card), **not** a PBR subclass: compact texture
+  set (albedo, normal, roughness, AO; ORM channel suffixes supported) and its own UBO
+  layout (slots 1–7), plus per-material `spec_trans` / `diff_trans` / `transmittance`.
+  Settable in JSON (`build_leaf` in `scene_loader.cpp`) and in the material panel
+  (its own block in `widgets.cpp`). Own forward pipeline (no strain attribute).
+- `leaf.glsl` was a copy of the skin PBR shader; all skin code was stripped (strain,
+  scatter LUT, sheen, bent normal, SSS outputs, eye/clothes masks, detail maps,
+  emission, metalness, mask presets). Writes zero SSS gates like the hair/phong shaders.
+- No two-sided handling: the leaf assets are thickened (real geometry on both sides),
+  so normals, shadow bias and ambient are the plain front-face versions.
+- Diffuse reflection **and** diffuse transmission use the Disney (Burley 2012)
+  Hanrahan-Krueger approximation (`hanrahanKruegerDiffuse` in `thin_surface_BSDF.glsl`);
+  transmission evaluates it with the light mirrored onto the viewer's side. Albedo is
+  factored in as `albedo/PI · ss`, matching Disney. Fixed in the HK block: roughness was
+  squared (Disney uses perceptual roughness) and unclamped `NoL`/`NoV` gave
+  `1/(NoL+NoV) = inf → inf·0 = NaN` on back-lit fragments.
+- First iteration subclassed `PhysicallyBasedMaterial`; replaced at the user's request
+  by the standalone material (PBR files untouched).
+
+**Issues found / fixed:** `thin_surface_BSDF.glsl` did not compile (`vec3` used as
+`NoL`, `float` Fresnel, a stray `:`); fixed without touching the maths. It defines the
+same GGX helpers as `schlick_smith_BRDF.glsl`, so the two cannot be included together.
+The old leaf shader also sampled a non-existent `tex` for the normal map (now
+`normalTex`). Validation trace on `plant_test.json` shows only pre-existing messages.
+
 ### Orbit camera vertical jump on first drag (2026-09-28)
 
 As soon as the camera was dragged with the mouse it jumped vertically.

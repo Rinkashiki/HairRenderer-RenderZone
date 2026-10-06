@@ -668,6 +668,102 @@ void ObjectExplorerWidget::render() {
 
                 ImGui::Separator();
             }
+            if (model->get_material(i)->get_type() == IMaterial::Type::LEAF_TYPE)
+            {
+                LeafMaterial* mat    = static_cast<LeafMaterial*>(model->get_material(i));
+                Vec3          albedo = mat->get_albedo();
+                if (ImGui::ColorEdit3("Albedo", (float*)&albedo))
+                {
+                    mat->set_albedo(albedo);
+                };
+                if (mat->get_albedo_texture())
+                {
+                    float albedoWeight = mat->get_albedo_weight();
+                    if (ImGui::DragFloat("Albedo Text Weight", &albedoWeight, 0.05f, 0.0f, 1.0f))
+                    {
+                        mat->set_albedo_weight(albedoWeight);
+                    }
+                    ImGui::Image(get_image(mat->get_albedo_texture())->GUIReadHandle, texSize);
+                }
+                float opacity = mat->get_opacity();
+                if (ImGui::DragFloat("Opacity", &opacity, 0.05f, 0.0f, 1.0f))
+                {
+                    mat->set_opacity(opacity);
+                }
+                if (mat->get_albedo_texture())
+                {
+                    float weight = mat->get_opacity_weight();
+                    if (ImGui::DragFloat("Op. Text Weight", &weight, 0.05f, 0.0f, 1.0f))
+                    {
+                        mat->set_opacity_weight(weight);
+                    }
+                }
+                ImGui::Spacing();
+                if (mat->get_normal_texture())
+                {
+                    ImGui::Image(get_image(mat->get_normal_texture())->GUIReadHandle, texSize);
+                }
+                ImGui::Spacing();
+
+                float roughness = mat->get_roughness();
+                if (ImGui::DragFloat("Roughness", &roughness, 0.05f, 0.0f, 1.0f))
+                {
+                    mat->set_roughness(roughness);
+                }
+                if (mat->get_roughness_texture())
+                {
+                    float weight = mat->get_roughness_weight();
+                    if (ImGui::DragFloat("Rough. Text Weight", &weight, 0.05f, 0.0f, 1.0f))
+                    {
+                        mat->set_roughness_weight(weight);
+                    }
+                    ImGui::Image(get_image(mat->get_roughness_texture())->GUIReadHandle, texSize);
+                }
+                float ao = mat->get_occlusion();
+                if (ImGui::DragFloat("Occlusion", &ao, 0.05f, 0.0f, 1.0f))
+                {
+                    mat->set_occlusion(ao);
+                }
+                if (mat->get_occlusion_texture())
+                {
+                    float weight = mat->get_occlusion_weight();
+                    if (ImGui::DragFloat("AO Text Weight", &weight, 0.05f, 0.0f, 1.0f))
+                    {
+                        mat->set_occlusion_weight(weight);
+                    }
+                    ImGui::Image(get_image(mat->get_occlusion_texture())->GUIReadHandle, texSize);
+                }
+
+                ImGui::SeparatorText("Transmission");
+                float specTrans = mat->get_spec_trans();
+                if (ImGui::DragFloat("Specular Trans.", &specTrans, 0.01f, 0.0f, 1.0f))
+                {
+                    mat->set_spec_trans(specTrans);
+                }
+                float diffTrans = mat->get_diff_trans();
+                if (ImGui::DragFloat("Diffuse Trans.", &diffTrans, 0.01f, 0.0f, 2.0f))
+                {
+                    mat->set_diff_trans(diffTrans);
+                }
+                Vec3 transmittance = mat->get_transmittance();
+                if (ImGui::ColorEdit3("Transmittance", (float*)&transmittance))
+                {
+                    mat->set_transmittance(transmittance);
+                }
+
+                ImGui::Separator();
+                float tile_u = mat->get_tile().x;
+                float tile_v = mat->get_tile().y;
+                if (ImGui::DragFloat("Tile U", &tile_u, 0.5f, -100.0f, 100.0f))
+                {
+                    mat->set_tile({tile_u, mat->get_tile().y});
+                }
+                if (ImGui::DragFloat("Tile V", &tile_v, 0.5f, -100.0f, 100.0f))
+                {
+                    mat->set_tile({mat->get_tile().x, tile_v});
+                }
+                ImGui::Separator();
+            }
 #pragma region EPIC
             if (IMaterial::is_epic_hair_family(model->get_material(i)->get_type()))
             {

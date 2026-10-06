@@ -52,6 +52,8 @@ class IMaterial
         // reflective and more transmissive than scalp hair. Behaves like epic hair
         // in every other subsystem — use is_epic_hair_family() at those sites.
         HAIR_STR_EYELASH_TYPE = 7,
+        // Leaves / thin foliage, lit through the thin-surface BSDF (leaf.glsl).
+        LEAF_TYPE = 8,
     };
 
     // Epic strand hair + its eyelash variant share geometry, uniforms, voxelization,
