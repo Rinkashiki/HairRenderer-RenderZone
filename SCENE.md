@@ -365,6 +365,7 @@ no two-sided normal flipping. Every field is also editable in the HairViewer mat
 | `spec_trans` | float | `0.0` | Specular (refractive) transmission, `[0, 1]`. Leaves scatter rather than refract, so normally `0`. |
 | `diff_trans` | float | `1.0` | Diffuse transmission, `[0, 2]`. `1` = half the diffuse light is reflected, half transmitted through the blade. |
 | `transmittance` | vec3 | `[1, 1, 1]` | Through-blade absorption tint. The diffuse-transmission lobe is already tinted by albedo, so white leaves it unchanged. |
+| `scatter_distance` | float | `0.0` | Disney diffusion scatter distance `d`, in **world units**. When a fragment is back-lit, its shadow is averaged over the leaf plane with Disney's normalized diffusion profile (16 importance-sampled taps reaching ~8.7·`d`), softening shadows cast by other leaves on the transmitted side. `0` = off (plain PCF). For `plant_test` (~8 units across) useful values are ~0.01–0.3. |
 | `culling` | `"back"` \| `"front"` \| `"none"` | `"none"` | Same as `pbr`. |
 
 ### 6.7 Texture references (`texref`)

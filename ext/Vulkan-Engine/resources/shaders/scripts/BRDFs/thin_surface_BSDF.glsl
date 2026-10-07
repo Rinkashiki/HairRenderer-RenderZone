@@ -32,7 +32,7 @@ struct                  ThinSurfaceBSDF{
     vec3                F0;             // Reflectance at normal incidence (dielectric: ~0.04)
     vec3                F;              // Unused, kept for parity with other BRDF structs
     float               specTrans;      // [0,1]  Fraction of light transmitted specularly (refraction)
-    float               diffTrans;      // [0,2]  Diffuse transmission (1 = half reflected, half transmitted)
+    float               diffTrans;      // [0,2]  Diffuse transmission (0 = all diffuse reflection, 1 = half reflected, half transmitted, 2 = all diffuse transmission)
     vec3                transmittance;  // Tint applied to light crossing the surface (absorption)
 };
 
@@ -77,9 +77,7 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 // Disney (Burley 2012) Hanrahan-Krueger subsurface approximation.
 // A diffuse lobe that flattens at grazing angles, mimicking light that scatters
 // only a short distance below the surface.
-//   NoL, NoV : cosines of the light / view directions with the normal. NOT
-//              clamped here — the caller must pass values with NoL + NoV > 0,
-//              otherwise 1/(NoL+NoV) is infinite.
+//   NoL, NoV : cosines of the light / view directions with the normal. 
 //   LoH      : cosine between the light direction and the half vector.
 //   roughness: perceptual roughness (not squared), as in Disney.
 // Returns the BRDF value (albedo/PI · ss); the cosine factor is applied by the caller.
@@ -90,7 +88,7 @@ vec3 hanrahanKruegerDiffuse(float NoL, float NoV, float LoH, vec3 albedo, float 
     float Fss   = mix(1.0, Fss90, pow(1.0 - NoL, 5.0)) * mix(1.0, Fss90, pow(1.0 - NoV, 5.0));
     // Hanrahan-Krueger shape: 1/(NoL+NoV) comes from single scattering in a
     // semi-infinite medium; 1.25 rescales it to preserve albedo.
-    float ss    = 1.25 * (Fss * (1.0 / (NoL + NoV) - 0.5) + 0.5);
+    float ss    = 1.25 * (Fss * (1.0 / max(NoL + NoV, EPSILON) - 0.5) + 0.5);
     return albedo / PI * ss;
 }
 
@@ -122,15 +120,15 @@ vec3 evalThinSurfaceBSDF(
 
     vec3 rNumerator          = rNDF * rG * rF;
     float rDenominator       = 4.0 * max(dot(bsdf.normal, wo), 0.0) * max(dot(bsdf.normal, wi), 0.0) + 0.0001;
+    vec3 rSpecular           = rNumerator / rDenominator;
+
     // Diffuse-reflection weight: energy not reflected specularly (1 - F), not
     // transmitted specularly (1 - specTrans), and not transmitted diffusely
     // (1 - diffTrans/2).
     vec3 weightDR = (vec3(1.0) - rF) * vec3(1.0 - bsdf.specTrans) * vec3(1.0 - bsdf.diffTrans / 2.0);
 
-    vec3 rSpecular           = rNumerator / rDenominator;
-
     //Hanrahan Krueger diffuse
-    float rLoH = dot(wi, rH) + EPSILON;
+    float rLoH = dot(wi, rH);
     vec3 rDiffuse = hanrahanKruegerDiffuse(NoL, NoV, rLoH, bsdf.albedo, bsdf.roughness);
 
     // max(NoL, 0) zeroes the reflection when the light is behind the surface
@@ -158,7 +156,7 @@ vec3 evalThinSurfaceBSDF(
     float tDenominator       = 4.0 * max(dot(bsdf.normal, wo), 0.0) * max(dot(bsdf.normal, wi), 0.0) + 0.0001;
     vec3 tSpecular           = tNumerator / tDenominator;
 
-    float tLoH = dot(wi, tH) + EPSILON;
+    float tLoH = dot(wi, tH);
 
     // Hanrahan Krueger diffuse, evaluated with the light mirrored onto the viewer's side
     // (abs(NoL) is the cosine of the mirrored light direction)
@@ -174,5 +172,4 @@ vec3 evalThinSurfaceBSDF(
     vec3 transmission =(weightDT * tDiffuse + weightST * tSpecular) * radiance * max(-NoL, 0.0);
 
     return reflection + transmission;
-
 }

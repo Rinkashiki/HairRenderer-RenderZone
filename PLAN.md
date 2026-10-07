@@ -468,6 +468,29 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### Leaf back-lit shadows — Disney diffusion kernel (2026-10-07)
+
+When a leaf fragment is back-lit, its shadow visibility is now averaged with Disney's
+normalized diffusion profile, so shadows cast by *other* leaves soften on the transmitted
+side (light entering the lit side diffuses sideways through the blade). Per-material scalar
+`scatter_distance` (`d`, world units; 0 = off → plain PCF, the previous look).
+- `computeShadowDiffused` in `shadow_mapping.glsl`: 16 taps importance-sampled from the
+  profile's radial CDF F(r) = 1 − ¼e^(−r/d) − ¾e^(−r/3d) (truncated at 0.99, equal weights,
+  golden-angle azimuths), precomputed in units of `d`. Taps are placed on the world-space
+  tangent plane and each projected through `light.viewProj`, so tilted leaves and the
+  perspective texel footprint are handled. Scale is `max(d, PCF footprint)` to avoid aliasing.
+- The 6-arg `computeShadow`'s receiver-bias maths was extracted into `biasShadowReceiver`
+  (behaviour-preserving) and is shared by both.
+- `leaf.glsl` switches on the same normal-mapped NoL as the BSDF: seam-free, because the BSDF
+  weights reflection/transmission by `max(±NoL, 0)`, both 0 at the switch.
+- `scatter_distance` in `LeafMaterial` (`dataSlot7.y`), JSON, and the material panel.
+- Scope decisions (user): scalar `d` only (a per-channel vec3 would duplicate
+  `transmittance`); no thickness term (the receiver bias already prevents self-shadowing).
+
+**Verified:** every forward shader including `shadow_mapping.glsl` compiles;
+`ZoneRenderer --frames 10` on `plant_test.json` with `d = 0` and `d = 0.05` shows only the
+pre-existing validation messages.
+
 ### Leaf material + thin-surface BSDF shader (2026-10-06)
 
 New standalone `LeafMaterial` (`leaf.h/cpp`, `LEAF_TYPE`, scene JSON `"leaf"`) for

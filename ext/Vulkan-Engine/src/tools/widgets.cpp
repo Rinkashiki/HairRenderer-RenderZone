@@ -750,6 +750,11 @@ void ObjectExplorerWidget::render() {
                 {
                     mat->set_transmittance(transmittance);
                 }
+                float scatterDistance = mat->get_scatter_distance();
+                if (ImGui::DragFloat("Scatter Distance", &scatterDistance, 0.0005f, 0.0f, 1.0f, "%.4f"))
+                {
+                    mat->set_scatter_distance(scatterDistance);
+                }
 
                 ImGui::Separator();
                 float tile_u = mat->get_tile().x;

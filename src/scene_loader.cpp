@@ -471,6 +471,7 @@ static Core::IMaterial* build_leaf(const json&        jm,
     if (jm.contains("spec_trans"))       mat->set_spec_trans(jm["spec_trans"].get<float>());
     if (jm.contains("diff_trans"))       mat->set_diff_trans(jm["diff_trans"].get<float>());
     if (jm.contains("transmittance"))    mat->set_transmittance(to_vec3(jm["transmittance"], Vec3(1.0f)));
+    if (jm.contains("scatter_distance")) mat->set_scatter_distance(jm["scatter_distance"].get<float>());
 
     if (jm.contains("albedo_texture"))
         mat->set_albedo_texture(resolve_texture(jm["albedo_texture"], resourcesPath, glbTextures,
@@ -516,7 +517,7 @@ static Core::IMaterial* build_leaf(const json&        jm,
          "roughness", "roughness_weight", "roughness_texture",
          "occlusion", "occlusion_weight", "occlusion_texture",
          "normal_texture", "culling",
-         "spec_trans", "diff_trans", "transmittance"},
+         "spec_trans", "diff_trans", "transmittance", "scatter_distance"},
         "material(leaf)");
 
     return mat;

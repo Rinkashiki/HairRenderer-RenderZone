@@ -43,6 +43,9 @@ class LeafMaterial : public IMaterial
     // Through-blade absorption tint. The diffuse-transmission lobe is already
     // tinted by albedo, so white leaves it unchanged.
     Vec3 m_transmittance = {1.0f, 1.0f, 1.0f};
+    // Disney diffusion scatter distance d (world units). Back-lit shadows are
+    // averaged with the diffusion profile over this radius. 0 = off (plain PCF).
+    float m_scatterDistance = 0.0f;
 
     bool m_hasAlbedoTexture    = false;
     bool m_hasNormalTexture    = false;
@@ -172,6 +175,14 @@ class LeafMaterial : public IMaterial
     inline void set_transmittance(Vec3 t) {
         m_transmittance = t;
         m_isDirty       = true;
+    }
+
+    inline float get_scatter_distance() const {
+        return m_scatterDistance;
+    }
+    inline void set_scatter_distance(float d) {
+        m_scatterDistance = d;
+        m_isDirty         = true;
     }
 
     inline ITexture* get_albedo_texture() {

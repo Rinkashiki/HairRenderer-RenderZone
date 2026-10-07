@@ -41,6 +41,7 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     vec3    transmittance;
     float   specTrans;
     float   diffTrans;
+    float   scatterDistance;      // Disney diffusion d (world units) for back-lit shadows, 0 = off
 } material;
 
 void main() {
@@ -130,6 +131,7 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     vec3    transmittance;
     float   specTrans;
     float   diffTrans;
+    float   scatterDistance;      // Disney diffusion d (world units) for back-lit shadows, 0 = off
 } material;
 layout(set = 2, binding = 0) uniform sampler2D albedoTex;
 layout(set = 2, binding = 1) uniform sampler2D normalTex;
@@ -182,6 +184,10 @@ void main() {
 
     vec3 V = normalize(-v_pos);
 
+    // Per-fragment random rotation of the back-lit shadow kernel (avoids banding).
+    // Hashed from the pixel position, so it is stable from frame to frame.
+    float kernelRotation = 2.0 * PI * whiteNoiseSample(vec3(gl_FragCoord.xy, 0.0)).x;
+
     //Compute all lights ___________________________________________________________________
     vec3 color = vec3(0.0);
     for(int i = 0; i < scene.numLights; i++) {
@@ -197,7 +203,13 @@ void main() {
                     vec3 Lw = scene.lights[i].type != DIRECTIONAL_LIGHT
                             ? normalize((camera.invView * vec4(scene.lights[i].position.xyz, 1.0)).xyz - v_modelPos)
                             : normalize(mat3(camera.invView) * scene.lights[i].position.xyz);
-                    shadowFactor = computeShadow(shadowMap, scene.lights[i], i, v_modelPos, normalize(v_modelNormal), Lw);
+                    // Back-lit: the transmitted light has diffused sideways through the
+                    // blade, so soften the visibility with the diffusion kernel. 
+                    // MAYBE IT WOULD BE BETTER TO NOT USE BRANCHING HERE AND INSTEAD MULTIPLY BY MAX(NOL, 0)
+                    if(dot(bsdf.normal, wi) < 0.0 && material.scatterDistance > 0.0)
+                        shadowFactor = computeShadowDiffused(shadowMap, scene.lights[i], i, v_modelPos, normalize(v_modelNormal), Lw, material.scatterDistance, kernelRotation);
+                    else
+                        shadowFactor = computeShadow(shadowMap, scene.lights[i], i, v_modelPos, normalize(v_modelNormal), Lw);
                 }
                 if(scene.lights[i].shadowType == 1) //VSM
                     shadowFactor = computeVarianceShadow(shadowMap, scene.lights[i], i, v_modelPos);
