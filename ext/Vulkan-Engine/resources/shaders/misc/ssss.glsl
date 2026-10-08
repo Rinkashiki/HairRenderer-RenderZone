@@ -50,6 +50,7 @@ layout(location = 1) out vec4 outBright; // pass-through to Bloom
 // ----------------------------------------------------------------------------
 const float PI  = 3.14159265358979323846;
 const float EPS = 1e-6;
+const float SSS_STRAIN_STRENGTH = 1.0; // scale for strain-based SSS thickness modulation
 
 // Sample one of the 5 LUT pixels (sRGB → linear)
 vec3 sampleProfile(int i) {
@@ -123,8 +124,11 @@ void main() {
         return;
     }
 
+    float rawThickness = 1.0 / max(J, EPS);
+    float thicknessFactor = clamp(mix(1.0, rawThickness, SSS_STRAIN_STRENGTH), 0.25, 4.0);
+
     vec3 blendedScatterDist = scatterDistanceBlend(thick);
-    vec3 scatterDist = blendedScatterDist * sss.maxScatter;
+    vec3 scatterDist = blendedScatterDist * sss.maxScatter * thicknessFactor;
 	float maxRadius = max(scatterDist.r, max(scatterDist.g, scatterDist.b));
 
     // -------------------------------------------------------------------------
@@ -234,7 +238,7 @@ void main() {
     // (converts the 0–1 `thick` proxy into path-length units); spectral shape
     // comes from σ_t = 1 / d_rgb.
     vec3 sigmaT       = 1.0 / max(blendedScatterDist, vec3(EPS));
-    vec3 transmittance = exp(-thick * sss.extinctionCoeff * sigmaT);
+    vec3 transmittance = exp(-thick * sss.extinctionCoeff * sigmaT * thicknessFactor);
 
     vec3 singleScatter = fresnelTransmission * phase * transmittance * backIrr;
 

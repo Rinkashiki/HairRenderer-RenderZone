@@ -250,6 +250,10 @@ const float backRadiancePower = 5.0;
 const float backRadianceScale = 2.0;
 const float ambient = 0.05;
 
+// Wrinkle / Stretch factors.
+float compressionScale = 1.0;
+float stretchScale     = 1.0;
+
 // Blur weights
 const float w[5] = float[](0.06136, 0.24477, 0.38774, 0.24477, 0.06136);
 
@@ -397,8 +401,8 @@ void setupBRDFProperties(){
     float wrinkleFactor = clamp(compression * gain, 0.0, 1.0);
     float smoothFactor  = clamp(stretch * gain, 0.0, 1.0);
 
-    float compressionScale = 1.0 + wrinkleFactor;
-    float stretchScale     = 1.0 - 0.5 * smoothFactor;
+    compressionScale = 1.0 + wrinkleFactor;
+    stretchScale     = 1.0 - 0.5 * smoothFactor;
 
     // Normal: if neither a base normal map nor a detail normal map is bound,
     // fall back to the vertex normal directly. Going through v_TBN when the
@@ -781,6 +785,13 @@ void main() {
     // at the bottom of a pore, and over-weighting cavities broke the spectral
     // smoothness real skin shows. Cavity occlusion stays in the specular path
     // (cavitySpecOcclusion above) where the "no shiny pores" effect lives.
+
+    // Diffuse irradiance based on strain (blood accumulation under compression, blanching under stretch)
+    float strength = material.wrinkleStrainStrength.x;
+    diffuseIrr     = mix(diffuseIrr, diffuseIrr * vec3(1.10, 0.90, 0.88), clamp(compressionScale, 0.0, 1.0) * strength);
+    float lum      = dot(diffuseIrr, vec3(0.2126, 0.7152, 0.0722));
+    diffuseIrr     = mix(diffuseIrr, vec3(lum), 0.25 * clamp(stretchScale, 0.0, 1.0) * strength);
+
     outDiffuseIrr  = vec4(diffuseIrr, skinMask);
     outBackIrr     = vec4(backIrr, J);
     outLinearDepth = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);
