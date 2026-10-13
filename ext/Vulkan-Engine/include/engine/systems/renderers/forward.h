@@ -43,6 +43,8 @@ class ForwardRenderer : public BaseRenderer
     ShadowResolution m_shadowQuality      = ShadowResolution::MEDIUM;
     bool             m_updateShadows      = false;
     std::string      m_pendingScatterLut;  // deferred until renderer is initialized
+    Vec3             m_pendingScatterDistance{0.0f}; // deferred SSS scatter distance
+    bool             m_hasPendingScatterDistance = false;
 
     // Deferred DoF config — scene JSON is parsed before passes exist, so the
     // requested settings are stashed and flushed in on_before_render().
@@ -117,6 +119,22 @@ class ForwardRenderer : public BaseRenderer
     }
     inline void set_sss_max_scatter(float s) {
         if (m_passes[SSS_PASS]) static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->set_max_scatter(s);
+    }
+    // Global per-channel Burley scatter distance d (view-space / world units) that
+    // the leaf ssss.glsl blurs with.
+    inline Vec3 get_sss_scatter_distance() const {
+        if (m_hasPendingScatterDistance) return m_pendingScatterDistance;
+        if (m_passes.size() > SSS_PASS && m_passes[SSS_PASS])
+            return static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->get_scatter_distance();
+        return Vec3(0.0f);
+    }
+    inline void set_sss_scatter_distance(Vec3 d) {
+        if (!m_initialized || m_passes.size() <= SSS_PASS || !m_passes[SSS_PASS]) {
+            m_pendingScatterDistance    = d; // defer until passes are created
+            m_hasPendingScatterDistance = true;
+            return;
+        }
+        static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->set_scatter_distance(d);
     }
     inline void load_sss_scatter_lut(const std::string& path) {
         if (!m_initialized || m_passes.size() <= SSS_PASS) {

@@ -468,10 +468,12 @@ static Core::IMaterial* build_leaf(const json&        jm,
     if (jm.contains("roughness_weight")) mat->set_roughness_weight(jm["roughness_weight"].get<float>());
     if (jm.contains("occlusion"))        mat->set_occlusion(jm["occlusion"].get<float>());
     if (jm.contains("occlusion_weight")) mat->set_occlusion_weight(jm["occlusion_weight"].get<float>());
-    if (jm.contains("spec_trans"))       mat->set_spec_trans(jm["spec_trans"].get<float>());
+    if (jm.contains("spec_trans")) {
+        // vec3 per channel, or a single number applied to all three
+        const json& st = jm["spec_trans"];
+        mat->set_spec_trans(st.is_number() ? Vec3(st.get<float>()) : to_vec3(st, Vec3(1.0f)));
+    }
     if (jm.contains("diff_trans"))       mat->set_diff_trans(jm["diff_trans"].get<float>());
-    if (jm.contains("transmittance"))    mat->set_transmittance(to_vec3(jm["transmittance"], Vec3(1.0f)));
-    if (jm.contains("scatter_distance")) mat->set_scatter_distance(jm["scatter_distance"].get<float>());
 
     if (jm.contains("albedo_texture"))
         mat->set_albedo_texture(resolve_texture(jm["albedo_texture"], resourcesPath, glbTextures,
@@ -517,7 +519,7 @@ static Core::IMaterial* build_leaf(const json&        jm,
          "roughness", "roughness_weight", "roughness_texture",
          "occlusion", "occlusion_weight", "occlusion_texture",
          "normal_texture", "culling",
-         "spec_trans", "diff_trans", "transmittance", "scatter_distance"},
+         "spec_trans", "diff_trans"},
         "material(leaf)");
 
     return mat;
@@ -1250,6 +1252,13 @@ LoadResult load_scene_json(const std::string&     scenePath,
             result.clearColor = to_vec4(jr["clear_color"], result.clearColor);
         if (jr.contains("sss_scatter_lut"))
             result.sssScatterLut = resourcesPath + jr["sss_scatter_lut"].get<std::string>();
+        // Global per-channel Burley scatter distance for the screen-space SSS blur
+        // (ssss.glsl): [r, g, b], or a single number for all three channels.
+        if (jr.contains("sss_scatter_distance")) {
+            const json& jd                = jr["sss_scatter_distance"];
+            result.hasSssScatterDistance  = true;
+            result.sssScatterDistance     = jd.is_number() ? Vec3(jd.get<float>()) : to_vec3(jd, Vec3(0.05f));
+        }
         // Depth of Field — artistic focus model (see DepthOfFieldPass).
         if (jr.contains("dof")) {
             const auto& jd    = jr["dof"];
@@ -1271,13 +1280,15 @@ LoadResult load_scene_json(const std::string&     scenePath,
         if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(renderer)) {
             if (!result.sssScatterLut.empty())
                 fwd->load_sss_scatter_lut(result.sssScatterLut);
+            if (result.hasSssScatterDistance)
+                fwd->set_sss_scatter_distance(result.sssScatterDistance);
             if (result.dof.set)
                 fwd->configure_dof(result.dof.enabled, result.dof.focusDistance, result.dof.focusRange,
                                    result.dof.nearBlurScale, result.dof.farBlurScale, result.dof.maxCoC);
         }
         // 'msaa' is read separately by peek_msaa() before the renderer exists;
         // tolerate it here so warn_unknown doesn't flag a legitimate field.
-        warn_unknown(jr, {"clear_color", "sss_scatter_lut", "msaa", "dof"}, "renderer");
+        warn_unknown(jr, {"clear_color", "sss_scatter_lut", "sss_scatter_distance", "msaa", "dof"}, "renderer");
     }
 
     warn_unknown(root, {"name", "camera", "lights", "materials", "meshes", "scene", "renderer"}, "root");

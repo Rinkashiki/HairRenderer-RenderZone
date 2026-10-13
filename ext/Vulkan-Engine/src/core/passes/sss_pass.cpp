@@ -139,6 +139,7 @@ void SSSPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
         data.samples[i] = m_samples[i];
     data.sampleCount     = m_sampleCount;
     data.maxScatter      = m_maxScatter;
+    data.scatterDistance = Vec4(m_scatterDistance, 0.0f);
     data.extinctionCoeff = m_extinctionCoeff;
     data.Fdr             = m_Fdr;
     m_ubo.upload_data(&data, sizeof(SSSUniforms));
@@ -182,6 +183,7 @@ void SSSPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint32_t
     // sampleCount == 0 signals passthrough to the shader when SSS is disabled
     data.sampleCount     = (m_sssEnabled != 0) ? m_sampleCount : 0;
     data.maxScatter      = m_maxScatter;
+    data.scatterDistance = Vec4(m_scatterDistance, 0.0f);
     data.extinctionCoeff = m_extinctionCoeff;
     data.Fdr             = m_Fdr;
     data.screenSize      = Vec2(static_cast<float>(m_imageExtent.width),

@@ -38,10 +38,8 @@ layout(set = 1, binding = 1) uniform MaterialUniforms {
     bool    hasNormalTexture;
     bool    hasRoughnessTexture;
     bool    hasAOTexture;
-    vec3    transmittance;
-    float   specTrans;
+    vec3    specTrans;            // fraction of back-face light passing through (per channel)
     float   diffTrans;
-    float   scatterDistance;      // Disney diffusion d (world units) for back-lit shadows, 0 = off
 } material;
 
 void main() {
@@ -128,10 +126,8 @@ layout(set = 1, binding = 1)    uniform MaterialUniforms {
     bool    hasNormalTexture;
     bool    hasRoughnessTexture;
     bool    hasAOTexture;
-    vec3    transmittance;
-    float   specTrans;
+    vec3    specTrans;            // fraction of back-face light passing through (per channel)
     float   diffTrans;
-    float   scatterDistance;      // Disney diffusion d (world units) for back-lit shadows, 0 = off
 } material;
 layout(set = 2, binding = 0) uniform sampler2D albedoTex;
 layout(set = 2, binding = 1) uniform sampler2D normalTex;
@@ -169,7 +165,6 @@ void setupBSDFProperties(){
 
     bsdf.specTrans      = material.specTrans;
     bsdf.diffTrans      = material.diffTrans;
-    bsdf.transmittance  = material.transmittance;
 }
 
 
@@ -184,12 +179,13 @@ void main() {
 
     vec3 V = normalize(-v_pos);
 
-    // Per-fragment random rotation of the back-lit shadow kernel (avoids banding).
-    // Hashed from the pixel position, so it is stable from frame to frame.
-    float kernelRotation = 2.0 * PI * whiteNoiseSample(vec3(gl_FragCoord.xy, 0.0)).x;
-
     //Compute all lights ___________________________________________________________________
     vec3 color = vec3(0.0);
+    // Reflected Lambert irradiance for the SSS pass, accumulated by evalThinSurfaceBSDF
+    // (per light) and the ambient below
+    vec3 diffuseIrr = vec3(0.0);
+    // Transmitted Lambert irradiance, blurred separately (wider) by the SSS pass
+    vec3 backIrr    = vec3(0.0);
     for(int i = 0; i < scene.numLights; i++) {
         //If inside light area influence
         if(isInAreaOfInfluence(scene.lights[i], v_pos)){
@@ -203,13 +199,7 @@ void main() {
                     vec3 Lw = scene.lights[i].type != DIRECTIONAL_LIGHT
                             ? normalize((camera.invView * vec4(scene.lights[i].position.xyz, 1.0)).xyz - v_modelPos)
                             : normalize(mat3(camera.invView) * scene.lights[i].position.xyz);
-                    // Back-lit: the transmitted light has diffused sideways through the
-                    // blade, so soften the visibility with the diffusion kernel. 
-                    // MAYBE IT WOULD BE BETTER TO NOT USE BRANCHING HERE AND INSTEAD MULTIPLY BY MAX(NOL, 0)
-                    if(dot(bsdf.normal, wi) < 0.0 && material.scatterDistance > 0.0)
-                        shadowFactor = computeShadowDiffused(shadowMap, scene.lights[i], i, v_modelPos, normalize(v_modelNormal), Lw, material.scatterDistance, kernelRotation);
-                    else
-                        shadowFactor = computeShadow(shadowMap, scene.lights[i], i, v_modelPos, normalize(v_modelNormal), Lw);
+                    shadowFactor = computeShadow(shadowMap, scene.lights[i], i, v_modelPos, normalize(v_modelNormal), Lw);
                 }
                 if(scene.lights[i].shadowType == 1) //VSM
                     shadowFactor = computeVarianceShadow(shadowMap, scene.lights[i], i, v_modelPos);
@@ -224,25 +214,39 @@ void main() {
                         0);
             }
 
-            color += evalThinSurfaceBSDF(wi, V, radiance * shadowFactor, bsdf);
+            color += evalThinSurfaceBSDF(wi, V, radiance * shadowFactor, bsdf, diffuseIrr, backIrr);
         }
     }
 
     //Ambient component ___________________________________________________________________
+    // The ambient diffuse also goes into diffuseIrr so the SSS pass blurs it:
+    // the stored irradiance is kD * irradiance (no albedo) scaled by PI, so that
+    // (albedo / PI) * diffuseIrr == ambient * ao exactly.
     vec3 ambient;
     if(scene.useIBL){
+        vec3 camDir = normalize(camera.position.xyz-v_modelPos);
         ambient = computeAmbient(
             irradianceMap,
             scene.envRotation,
             v_modelNormal,
-            normalize(camera.position.xyz-v_modelPos),
+            camDir,
             bsdf.albedo,
             bsdf.F0,
             0.0,
             bsdf.roughness,
             scene.ambientIntensity);
+        diffuseIrr += PI * computeAmbientKdIrradiance(
+            irradianceMap,
+            scene.envRotation,
+            v_modelNormal,
+            camDir,
+            bsdf.F0,
+            0.0,
+            bsdf.roughness,
+            scene.ambientIntensity) * bsdf.ao;
     }else{
         ambient = (scene.ambientIntensity * scene.ambientColor) * bsdf.albedo;
+        diffuseIrr += PI * (scene.ambientIntensity * scene.ambientColor) * bsdf.ao;
     }
     //Ambient occlusion ___________________________________________________________________
     color += ambient * bsdf.ao;
@@ -265,10 +269,12 @@ void main() {
 
     outNormals     = vec4(bsdf.normal, 0.0);
 
-    // Not skin: SSS pass-through (zero gates in the alpha channels).
-    outAlbedoMask  = vec4(0.0);
-    outDiffuseIrr  = vec4(0.0);
-    outBackIrr     = vec4(0.0);
+    // Screen-space SSS inputs: every leaf pixel scatters (mask = 1). The SSS pass
+    // replaces (albedo / PI) * (diffuseIrr + backIrr) in outColor with the blurred
+    // versions of the two: reflected diffuse, and transmitted diffuse (wider kernel).
+    outAlbedoMask  = vec4(bsdf.albedo, 1.0);
+    outDiffuseIrr  = vec4(diffuseIrr, 1.0);
+    outBackIrr     = vec4(backIrr, 1.0);
     outLinearDepth = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);
 
 }

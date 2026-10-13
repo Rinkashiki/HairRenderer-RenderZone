@@ -468,6 +468,94 @@ Remaining steps once the bundling is fixed:
 
 ## Done
 
+### SSS scatter distance edited as colour + scalar in the UI (2026-10-13)
+
+The renderer panel's SSS section now shows **Scatter Color** (picker) and **Scatter Distance**
+(scalar) and sends `normalize(color) · distance` through the unchanged
+`ForwardRenderer::set_sss_scatter_distance(Vec3)`. The split is **UI-only**: `SSSPass`, the API,
+the scene JSON (`renderer.sss_scatter_distance` vec3) and the shader are as before.
+`ForwardRendererWidget` keeps the colour/scalar as members and re-derives them (colour = d/|d|,
+distance = |d|) whenever the pass value changes from outside the panel (scene load, code).
+A first version moved the split into `SSSPass`/JSON; reverted at the user's request.
+**Verified:** builds; `ZoneRenderer --frames 10` on `plant_test.json` clean (known messages only).
+
+### Leaf SSS: transmitted irradiance blurred wider (scatter factor) (2026-10-13)
+
+To mimic light that crossed the blade travelling further inside it, the transmitted diffuse is
+blurred with a wider kernel than the reflected one.
+- `evalThinSurfaceBSDF(…, inout vec3 diffuseIrr, inout vec3 backIrr)`: reflected Lambert
+  irradiance → `diffuseIrr`, transmitted → `backIrr`. `leaf.glsl` writes them to
+  `outDiffuseIrr` / `outBackIrr` (ambient stays in `diffuseIrr`).
+- `ssss.glsl`: the tap loop is now `blurIrradiance(tex, d, …)`, called for `diffuseIrrTex` with `d`
+  and for `backIrrTex` (binding 3, re-declared; already bound by `SSSPass`) with
+  `d · SCATTER_FACTOR` (shader constant, 2.0). Results are added; the remainder subtracts
+  `(albedo/π)·(diffIrr + backIrr)`. Cost: two tap loops per pixel.
+- No C++ changes.
+
+**Verified:** `leaf.glsl`, `ssss.glsl`, `ssss_humans.glsl` compile; `ZoneRenderer --frames 10` on
+`plant_test.json` shows only the pre-existing validation messages.
+
+### Leaf screen-space SSS: simplified `ssss.glsl` (2026-10-09)
+
+Scope (user): render as if the scene holds only leaves.
+- `misc/ssss.glsl` rewritten for leaves: multiple scattering only, one **global per-channel (vec3)**
+  scatter distance (`renderer.sss_scatter_distance`, `[r,g,b]` or a number →
+  `ForwardRenderer::set_sss_scatter_distance`, deferred like the LUT → `SSSPass::m_scatterDistance` →
+  `vec4 scatterDistance` appended at the end of the UBO). The renderer panel's SSS section now shows
+  "Scatter Distance" as a colour picker (the old Extinction / Max Scatter only drive `ssss_humans.glsl`). Per-channel
+  weighting as in the skin shader (taps sampled for the widest channel). Removed: single scattering (the BSDF's
+  transmission covers it), thickness and the scatter LUT (only used to index by thickness).
+  Kernel unchanged (64 Burley-importance-sampled taps, IGN jitter, 3D-distance reweighting).
+- Skin version kept verbatim as `misc/ssss_humans.glsl`. The C++ pass layout is unchanged
+  (shader-only, user choice), so it remains a drop-in swap.
+- `thin_surface_BSDF.glsl`: `evalThinSurfaceBSDF` takes an `inout vec3 diffuseIrr` it
+  accumulates per light for both Lambert lobes (a local in `leaf.glsl`, not a struct field). `leaf.glsl` adds the ambient diffuse
+  (IBL `π·kdIrr·ao` / flat `π·ambient·ao`) and writes `outAlbedoMask = (albedo, 1)`,
+  `outDiffuseIrr = (diffuseIrr, 1)`, so `(albedo/π)·diffIrr` reconstructs the diffuse in `outColor` exactly.
+- `plant_test.json`: `sss_scatter_distance: [0.05, 0.05, 0.05]`.
+
+**Side effects (accepted):** skin pixels use the leaf SSS too; leaves now get SSAO; fog breaks the
+reconstruction (off in `plant_test`).
+
+**Verified:** `ssss.glsl`, `ssss_humans.glsl`, `leaf.glsl` compile; ZoneRenderer builds;
+`--frames 10` on `plant_test.json` shows only the pre-existing validation messages, no unknown keys.
+Not done: a numeric check that `sss_scatter_distance ≈ 0` reproduces the pre-SSS image.
+
+### Thin-surface BSDF simplified; experiments parked (2026-10-09)
+
+User-directed rewrite of `thin_surface_BSDF.glsl`:
+- Transmission is controlled by **`specTrans` alone, now a vec3** (`radiance *= specTrans`),
+  replacing the `colorTrans · (1 − macroRF)` Fresnel-loss + tint. The transmission lobe keeps
+  its structure (GGX + diffuse around the mirrored light); `diffTrans` now splits the
+  transmitted light (`diffTrans/2` diffuse, `1 − diffTrans/2` specular). Reflection is
+  independent of `specTrans` (`(1 − F)(1 − diffTrans/2)` diffuse + GGX).
+- Diffuse (both lobes) is plain **Lambert** (`albedo/π`); Hanrahan-Krueger is gone. Wrap
+  lighting is gone (`max(±NoL, 0)`).
+- Removed from `LeafMaterial`/UBO/JSON/GUI: `color_trans`, `scatter_distance`. `leaf.glsl`
+  uses plain PCF for every fragment (no diffused back-lit shadow, no kernel rotation).
+  UBO: slot 6 = (specTrans.rgb, diffTrans); slot 7 unused. `spec_trans` accepts a vec3 or a
+  number; default `[1,1,1]`. `plant_test.json` → `spec_trans: [1,1,1]`.
+- **Parked, unused:** the previous BSDF as `scripts/BRDFs/thin_surface_BSDF_experimental.glsl`
+  (verbatim snapshot, incl. its debug overrides), and `computeShadowDiffused` + kernel in
+  `shadow_mapping.glsl`. Files under `scripts/` are never compiled standalone, so the
+  snapshot costs nothing.
+
+**Verified:** `leaf.glsl` compiles; ZoneRenderer builds; `--frames 10` on `plant_test.json`
+exits cleanly with only the pre-existing validation messages.
+
+### Leaf back-lit shadow kernel rotation (2026-10-08)
+
+Back-lit diffusion kernel is rotated per pixel to turn banding into fine noise: angle
+`2π · whiteNoiseSample(gl_FragCoord)` → `(cos, sin)` passed to `computeShadowDiffused`
+(uniform angles; stable across frames). Blue noise was tried first; the user preferred
+white noise.
+
+**Tried and reverted (user):** wrap lighting on the transmission term
+(`max((−NoL + w)/(1 + w), 0)`, w = 0.25) to remove the dark line where NoL crosses 0, with
+two shadow visibilities (reflection = PCF, transmission = diffused kernel). The BSDF is back
+to `max(±NoL, 0)` and `leaf.glsl` to a single shadow factor switched on NoL. The terminator
+line is still an open issue.
+
 ### Leaf back-lit shadows — Disney diffusion kernel (2026-10-07)
 
 When a leaf fragment is back-lit, its shadow visibility is now averaged with Disney's

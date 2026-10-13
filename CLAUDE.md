@@ -62,6 +62,40 @@ Hair rendering uses the forward path because hair fibers benefit from hardware M
 
 **Hair shadowing (deliberate setup, see `hair_strand_epic.glsl` + `variance_shadow_pass.cpp`):** the hair is **not** rendered into the variance shadow map, and its **voxel cone-trace self-shadow is disabled**. Both produced dark, light-dependent streaks/wedges on the hair (hair-as-lines self-shadow acne in the VSM; coarse-256³ path-integral wedges in the voxel cone trace). The hair now takes occlusion from the smooth VSM `solidOcclusion` **only** — so the head/body still shadow the hair, but hair-on-hair self-shadow is off. Trade-offs / how to restore: hair no longer casts a shadow-map shadow onto the face/body (re-add via VSM receiver-bias tuning), and hair-on-hair self-shadow needs a higher-resolution hair voxel volume (e.g. 512³) before the voxel path can be re-enabled cleanly. `computeHairShadow`/`hairShadow`/`computeHairShadowCone` remain defined but uncalled.
 
+### Screen-space SSS (leaf version)
+
+`SSS_PASS` runs `shaders/misc/ssss.glsl`, which is currently written for **leaves only**:
+multiple scattering only — the forward pass's diffuse-irradiance MRT is blurred with Burley's
+normalized diffusion profile (64 taps importance-sampled for d = 1 in `SSSPass::generate_samples`,
+IGN-jittered, laid out in the view-space XY plane and reweighted by the real 3D distance) using one
+**global per-channel** scatter distance (vec3; `renderer.sss_scatter_distance` →
+`ForwardRenderer::set_sss_scatter_distance` → `SSSPass::m_scatterDistance` → the UBO's `vec4
+scatterDistance`, **appended after `invProjection`** so the skin shader's layout is untouched; meant to
+be optimised by inverse rendering). The renderer panel (UI only) edits it as Scatter Color (picker,
+normalized) × Scatter Distance (scalar) and sends `normalize(color) · distance`; it re-derives the two
+from the vec3 whenever that is changed elsewhere (`ForwardRendererWidget::m_lastScatterVector`). Taps are importance-sampled
+for the widest channel and each channel is reweighted and normalised separately, as in the skin shader.
+The reflected (`outDiffuseIrr`) and transmitted (`outBackIrr`) Lambert irradiances are blurred
+**separately** by `blurIrradiance()`, the transmitted one with the kernel radius × `SCATTER_FACTOR`
+(shader constant in `ssss.glsl`, > 0, default 2.0: light that crossed the blade travelled further
+inside it); the two results are added (2 × `sampleCount` taps per pixel).
+No single-scattering term (the thin-surface BSDF's transmission covers light through the blade)
+and no thickness / scatter LUT. The skin version (thickness-indexed LUT + single scattering from
+`outBackIrr`) is parked as `misc/ssss_humans.glsl`; `SSSPass`'s bindings/UBO were left unchanged
+so it is a drop-in swap of the path in `SSSPass::setup_shader_passes`. Physically-based (skin)
+pixels also go through the leaf shader now.
+
+**Exact-reconstruction rule.** The pass computes `remainder = hdr − (albedo/π)·diffIrr` and swaps
+the local diffuse for the blurred one, so a material that sets `outAlbedoMask.a > 0` must write an
+`outDiffuseIrr` and `outBackIrr` with `(albedo/π)·(diffIrr + backIrr)` == exactly the diffuse it summed
+into `outColor` (the pass computes `remainder = hdr − (albedo/π)·(diffIrr + backIrr)`). For leaves
+`evalThinSurfaceBSDF(…, bsdf, inout vec3 diffuseIrr, inout vec3 backIrr)` accumulates per light the
+reflected `weightDR·radiance·max(NoL,0)` into `diffuseIrr` and the transmitted
+`weightDT·radiance·specTrans·max(−NoL,0)` into `backIrr` (shadow included); `leaf.glsl` adds the
+ambient to `diffuseIrr` (`π·kdIrr·ao`, or `π·ambientColor·intensity·ao`).
+Leaf pixels write mask 1, so they now also receive SSAO (the pass multiplies its output by AO).
+Fog applied after shading breaks the rule.
+
 ### Adding a New Post-Process Pass
 
 1. **Create the pass class**: Inherit from `PostProcessPass` (or `BasePass` for full control). See `postprocess_pass.h/cpp` for the simplest template — it takes a shader path, binds one input image, and draws a fullscreen quad (`m_vignette`).
@@ -107,7 +141,7 @@ Resources flow between passes through the dependency table + `link_previous_imag
   on the `VkClearValue` *union*, so every **colour** attachment built with it clears to **R = 1**
   (G/B/A from the argument). Harmless for passes that overwrite every pixel; a mask/accumulation
   target must reset `clearValue.color` after construction (see `OutlineMaskPass`).
-- **`LeafMaterial`** (`leaf.h/cpp`, standalone `IMaterial`, type `LEAF_TYPE`, scene JSON type `"leaf"`): foliage material rendered by `shaders/forward/leaf.glsl`, which lights through `scripts/BRDFs/thin_surface_BSDF.glsl` (reflection + specular/diffuse transmission). Own compact texture set (albedo, normal, roughness, AO at bindings 0–3) and own UBO layout (slots 1–7, documented in `LeafMaterial::get_uniforms`); per-material `spec_trans` / `diff_trans` / `transmittance` / `scatter_distance`. **Back-lit shadows** (`NoL < 0`, classic PCF lights only) go through `computeShadowDiffused` (`shadow_mapping.glsl`): 16 taps importance-sampled from Disney's normalized diffusion profile, laid out on the world-space tangent plane and projected individually, scaled by `scatter_distance` (never narrower than the PCF footprint). Switching on NoL is seam-free because the BSDF weights both lobes by `max(±NoL, 0)`. Self-shadowing by the leaf's own lit face is left to the receiver bias (no thickness term). Leaves are assumed **thickened** (geometry on both sides), so the shader does no two-sided normal flipping. `thin_surface_BSDF.glsl` and `schlick_smith_BRDF.glsl` define the same GGX helpers — never include both.
+- **`LeafMaterial`** (`leaf.h/cpp`, standalone `IMaterial`, type `LEAF_TYPE`, scene JSON type `"leaf"`): foliage material rendered by `shaders/forward/leaf.glsl`, which lights through `scripts/BRDFs/thin_surface_BSDF.glsl`: GGX + Lambert reflection, and GGX + Lambert transmission of the light mirrored through the blade. Own compact texture set (albedo, normal, roughness, AO at bindings 0–3) and own UBO layout (slots 1–6, documented in `LeafMaterial::get_uniforms`). Per-material **`spec_trans`** (vec3: the only control on how much back-face light passes through; reflection is independent of it) and **`diff_trans`** (diffuse/specular split of the transmitted light). Shadows are plain PCF on both faces. Leaves are assumed **thickened** (geometry on both sides), so the shader does no two-sided normal flipping. `thin_surface_BSDF.glsl` and `schlick_smith_BRDF.glsl` define the same GGX helpers — never include both. **Parked experiments (unused, kept to revisit):** `thin_surface_BSDF_experimental.glsl` (Fresnel loss + `colorTrans` tint, Hanrahan-Krueger diffuse, wrap lighting) and `computeShadowDiffused` in `shadow_mapping.glsl` (back-lit shadows blurred with Disney's diffusion profile, 16 importance-sampled taps on the tangent plane, per-pixel rotation; was driven by `scatter_distance`).
 - **RHI** (`Graphics/` folder): Low-level Vulkan abstraction (device, swapchain, command buffers, images, descriptors). Should generally remain untouched.
 - Uses classic `VkRenderPass` objects, **not** `VK_KHR_dynamic_rendering`.
 

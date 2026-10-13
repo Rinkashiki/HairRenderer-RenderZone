@@ -18,6 +18,12 @@ void ForwardRenderer::on_before_render(Core::Scene* const scene) {
         load_sss_scatter_lut(path);
     }
 
+    // Flush deferred SSS scatter distance (set from the scene JSON before passes existed).
+    if (m_hasPendingScatterDistance) {
+        m_hasPendingScatterDistance = false; // clear first; passes now exist so apply directly
+        set_sss_scatter_distance(m_pendingScatterDistance);
+    }
+
     // Flush deferred DoF config (queued from the scene JSON before passes existed).
     if (m_pendingDoF.set) {
         const PendingDoF p = m_pendingDoF;

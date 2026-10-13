@@ -108,12 +108,12 @@ const vec2 DIFFUSION_KERNEL[DIFFUSION_TAPS] = vec2[](
 
 //   N: geometric world-space normal.  L: world-space direction TO the light.
 //   scatterDistance: Disney's d, in world units.
-//   rotation: per-fragment random angle (radians) applied to the whole kernel, so
-//             neighbouring pixels use different tap directions — trades the fixed
-//             pattern's banding for fine noise.
+//   rotation: per-fragment random rotation (cos, sin) — must be unit length —
+//             applied to the whole kernel, so neighbouring pixels use different tap
+//             directions; trades the fixed pattern's banding for fine noise.
 // Returns visibility (1 = lit), like computeShadow.
 float computeShadowDiffused(sampler2DArray shadowMap, LightUniform light, int lightId, vec3 fragModelPos,
-                            vec3 N, vec3 L, float scatterDistance, float rotation) {
+                            vec3 N, vec3 L, float scatterDistance, vec2 rotation) {
     float texelWorld, reach;
     vec3 biasedPos = biasShadowReceiver(shadowMap, light, fragModelPos, N, L, texelWorld, reach);
 
@@ -127,8 +127,7 @@ float computeShadowDiffused(sampler2DArray shadowMap, LightUniform light, int li
 
     // Rotating every offset by the same angle keeps the radial distribution (and so
     // the profile weighting) intact; only the azimuths change.
-    float c = cos(rotation), s = sin(rotation);
-    mat2  kernelRotation = mat2(c, s, -s, c);
+    mat2 kernelRotation = mat2(rotation.x, rotation.y, -rotation.y, rotation.x);
 
     float occlusion = 0.0;
     for(int i = 0; i < DIFFUSION_TAPS; ++i) {

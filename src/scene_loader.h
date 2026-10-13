@@ -46,6 +46,8 @@ struct LoadResult {
     // is being initialised or rendering. Also applied directly when a
     // `renderer` is passed to load_scene_json (ZoneExporter's synchronous path).
     std::string sssScatterLut; // absolute path, empty if not declared
+    bool        hasSssScatterDistance = false; // renderer.sss_scatter_distance declared
+    Vec3        sssScatterDistance{0.0f};      // per-channel d (a number is broadcast)
     DoFSettings dof;
 };
 

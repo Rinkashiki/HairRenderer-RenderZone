@@ -64,6 +64,12 @@ class ForwardRendererWidget : public Widget
   protected:
     Systems::ForwardRenderer* m_renderer;
     bool*                     m_animateLight{nullptr};
+    // UI-only split of the SSS scatter distance: the pass gets
+    // normalize(m_scatterColor) * m_scatterDistance. Re-derived from the pass's
+    // value whenever it changes from outside the panel (scene load, code).
+    Vec3                      m_scatterColor{1.0f};
+    float                     m_scatterDistance{0.0f};
+    Vec3                      m_lastScatterVector{-1.0f};
     virtual void              render();
 
   public:

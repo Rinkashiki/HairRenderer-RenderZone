@@ -735,8 +735,8 @@ void ObjectExplorerWidget::render() {
                 }
 
                 ImGui::SeparatorText("Transmission");
-                float specTrans = mat->get_spec_trans();
-                if (ImGui::DragFloat("Specular Trans.", &specTrans, 0.01f, 0.0f, 1.0f))
+                Vec3 specTrans = mat->get_spec_trans();
+                if (ImGui::ColorEdit3("Specular Trans.", (float*)&specTrans))
                 {
                     mat->set_spec_trans(specTrans);
                 }
@@ -744,16 +744,6 @@ void ObjectExplorerWidget::render() {
                 if (ImGui::DragFloat("Diffuse Trans.", &diffTrans, 0.01f, 0.0f, 2.0f))
                 {
                     mat->set_diff_trans(diffTrans);
-                }
-                Vec3 transmittance = mat->get_transmittance();
-                if (ImGui::ColorEdit3("Transmittance", (float*)&transmittance))
-                {
-                    mat->set_transmittance(transmittance);
-                }
-                float scatterDistance = mat->get_scatter_distance();
-                if (ImGui::DragFloat("Scatter Distance", &scatterDistance, 0.0005f, 0.0f, 1.0f, "%.4f"))
-                {
-                    mat->set_scatter_distance(scatterDistance);
                 }
 
                 ImGui::Separator();

@@ -152,6 +152,8 @@ void ZoneRenderer::setup() {
     if (auto* fwd = dynamic_cast<Systems::ForwardRenderer*>(m_renderer)) {
         if (!result.sssScatterLut.empty())
             fwd->load_sss_scatter_lut(result.sssScatterLut);
+        if (result.hasSssScatterDistance)
+            fwd->set_sss_scatter_distance(result.sssScatterDistance);
         if (result.dof.set)
             fwd->configure_dof(result.dof.enabled, result.dof.focusDistance, result.dof.focusRange,
                                result.dof.nearBlurScale, result.dof.farBlurScale, result.dof.maxCoC);

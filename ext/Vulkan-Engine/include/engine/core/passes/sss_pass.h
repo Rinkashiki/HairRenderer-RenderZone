@@ -59,6 +59,8 @@ class SSSPass : public BasePass
         Vec2  _pad0;                // align projection to 16-byte boundary at offset 1056
         Mat4  projection;
         Mat4  invProjection;
+        Vec4  scatterDistance;      // xyz = per-channel Burley scatter distance d (leaf ssss.glsl).
+                                    // Appended last so ssss_humans.glsl's layout is unchanged.
     };
 
     Mesh*                   m_vignette;
@@ -86,7 +88,8 @@ class SSSPass : public BasePass
 
     // Parameters
     int   m_sampleCount     = static_cast<int>(MAX_SAMPLES);
-    float m_maxScatter      = 0.05f;
+    float m_maxScatter      = 0.05f;  // ssss_humans.glsl only (scales the thickness LUT)
+    Vec3  m_scatterDistance = Vec3(0.05f); // per-channel d for the leaf ssss.glsl
     float m_extinctionCoeff = 5.0f;
     float m_Fdr             = 0.028f;
     int   m_sssEnabled      = 1; // separate from m_enabled; controls UBO flag
@@ -109,6 +112,8 @@ class SSSPass : public BasePass
     inline void  set_sample_count(int n) { m_sampleCount = glm::clamp(n, 1, static_cast<int>(MAX_SAMPLES)); }
     inline float get_max_scatter() const { return m_maxScatter; }
     inline void  set_max_scatter(float s) { m_maxScatter = s; }
+    inline Vec3  get_scatter_distance() const { return m_scatterDistance; }
+    inline void  set_scatter_distance(Vec3 d) { m_scatterDistance = d; }
     inline float get_extinction_coeff() const { return m_extinctionCoeff; }
     inline void  set_extinction_coeff(float e) { m_extinctionCoeff = e; }
     inline float get_Fdr() const { return m_Fdr; }

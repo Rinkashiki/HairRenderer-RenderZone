@@ -50,10 +50,8 @@
         "opacity_weight": 1.0,
         "albedo_texture": "textures/plant_test/albedo.png",
         "roughness": 0.7,
-        "spec_trans": 0.0,
-        "diff_trans": 1.0,
-        "transmittance": [1.0, 1.0, 1.0],
-        "scatter_distance": 0.0
+        "spec_trans": [1.0, 1.0, 1.0],
+        "diff_trans": 1.0
       }
     }
   ],
@@ -82,6 +80,7 @@
       1.0
     ],
     "sss_scatter_lut": "textures/scatterDistance/monk05.png",
+    "sss_scatter_distance": [0.05, 0.05, 0.05],
     "msaa": 8,
     "dof": {
       "enabled": true,

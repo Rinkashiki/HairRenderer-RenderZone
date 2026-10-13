@@ -130,12 +130,28 @@ void Tools::ForwardRendererWidget::render() {
         m_renderer->set_sss_active(sssEnabled);
     if (sssEnabled)
     {
-        float extinction = m_renderer->get_sss_extinction_coeff();
-        if (ImGui::DragFloat("Extinction", &extinction, 0.01f, 0.0f, 10.0f))
-            m_renderer->set_sss_extinction_coeff(extinction);
-        float maxScatter = m_renderer->get_sss_max_scatter();
-        if (ImGui::DragFloat("Max Scatter", &maxScatter, 0.01f, 0.0f, 5.0f))
-            m_renderer->set_sss_max_scatter(maxScatter);
+        // Per-channel Burley scatter distance for the leaf ssss.glsl, authored as a
+        // colour (ratio between channels) and a scalar (size). The pass receives
+        // normalize(Scatter Color) * Scatter Distance.
+        // (Extinction / Max Scatter only drive the parked ssss_humans.glsl.)
+        const Vec3 current = m_renderer->get_sss_scatter_distance();
+        if (current != m_lastScatterVector) {
+            // Set from outside the panel: split it back into colour + scalar
+            m_scatterDistance = glm::length(current);
+            if (m_scatterDistance > 1e-6f)
+                m_scatterColor = current / m_scatterDistance;
+            m_lastScatterVector = current;
+        }
+        bool scatterChanged = ImGui::ColorEdit3("Scatter Color", (float*)&m_scatterColor);
+        scatterChanged |= ImGui::DragFloat("Scatter Distance", &m_scatterDistance, 0.001f, 0.0f, 10.0f, "%.4f");
+        if (scatterChanged) {
+            // Epsilon on every channel before normalizing, so a channel at 0 (or a
+            // black colour) never produces a zero scatter distance / zero vector
+            constexpr float SCATTER_COLOR_EPS = 1e-3f;
+            const Vec3 color    = m_scatterColor + Vec3(SCATTER_COLOR_EPS);
+            m_lastScatterVector = glm::normalize(color) * m_scatterDistance;
+            m_renderer->set_sss_scatter_distance(m_lastScatterVector);
+        }
     }
 
     ImGui::Separator();

@@ -3,16 +3,19 @@
 //
 // Models a surface with no thickness that both reflects and transmits light,
 // following the thin-surface mode of the Disney BSDF (Burley 2015):
-//   - Reflection:   Cook-Torrance GGX specular + Hanrahan-Krueger diffuse.
-//   - Transmission: light arriving from the back face, mirrored to the viewer's
-//                   side and evaluated with the same lobes (GGX "specular
-//                   transmission" + Hanrahan-Krueger "diffuse transmission").
+//   - Reflection:   Cook-Torrance GGX specular + Lambert diffuse.
+//   - Transmission: light arriving from the back face, scaled by specTrans,
+//                   mirrored to the viewer's side and evaluated with the same
+//                   lobes (GGX "specular transmission" + Lambert "diffuse
+//                   transmission"), split between the two by diffTrans.
 //
 // All vectors are expected in the same space (view space in leaf.glsl), and
 // `normal` must point to the viewer's side of the surface.
 //
 // Requires fresnel.glsl (fresnelSchlick) to be included first. Defines the same
 // GGX helpers as schlick_smith_BRDF.glsl, so never include both in one shader.
+// The previous, more elaborate version (Fresnel loss + tint, Hanrahan-Krueger
+// diffuse, wrap lighting) is kept in thin_surface_BSDF_experimental.glsl.
 // =============================================================================
 
 #ifndef PI
@@ -31,9 +34,9 @@ struct                  ThinSurfaceBSDF{
     float               ao;             // Ambient occlusion, applied by the caller to ambient light
     vec3                F0;             // Reflectance at normal incidence (dielectric: ~0.04)
     vec3                F;              // Unused, kept for parity with other BRDF structs
-    float               specTrans;      // [0,1]  Fraction of light transmitted specularly (refraction)
-    float               diffTrans;      // [0,2]  Diffuse transmission (0 = all diffuse reflection, 1 = half reflected, half transmitted, 2 = all diffuse transmission)
-    vec3                transmittance;  // Tint applied to light crossing the surface (absorption)
+    vec3                specTrans;      // Per-channel fraction of back-face light that passes through the surface
+    float               diffTrans;      // [0,2]  Diffuse share of the transmitted light, and the diffuse
+                                        //        reflection it takes away (1 = half diffuse, half specular)
 };
 
 // Normal distribution function — Trowbridge-Reitz GGX.
@@ -74,40 +77,33 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
     return ggx1 * ggx2;
 }
 
-// Disney (Burley 2012) Hanrahan-Krueger subsurface approximation.
-// A diffuse lobe that flattens at grazing angles, mimicking light that scatters
-// only a short distance below the surface.
-//   NoL, NoV : cosines of the light / view directions with the normal. 
-//   LoH      : cosine between the light direction and the half vector.
-//   roughness: perceptual roughness (not squared), as in Disney.
-// Returns the BRDF value (albedo/PI · ss); the cosine factor is applied by the caller.
-vec3 hanrahanKruegerDiffuse(float NoL, float NoV, float LoH, vec3 albedo, float roughness) {
-    // Retro-reflection response at grazing angles
-    float Fss90 = LoH * LoH * roughness; // perceptual roughness, as in Disney
-    // Schlick-style blend from 1 (normal incidence) to Fss90 (grazing), for light and view
-    float Fss   = mix(1.0, Fss90, pow(1.0 - NoL, 5.0)) * mix(1.0, Fss90, pow(1.0 - NoV, 5.0));
-    // Hanrahan-Krueger shape: 1/(NoL+NoV) comes from single scattering in a
-    // semi-infinite medium; 1.25 rescales it to preserve albedo.
-    float ss    = 1.25 * (Fss * (1.0 / max(NoL + NoV, EPSILON) - 0.5) + 0.5);
-    return albedo / PI * ss;
-}
-
 // Evaluates the thin-surface BSDF for one light.
 //   wi       : unit direction from the surface to the light
 //   wo       : unit direction from the surface to the viewer
 //   radiance : incoming radiance from the light (color · intensity · attenuation · shadow)
+//   bsdf     : surface description
+//   diffuseIrr : accumulated irradiance of the REFLECTED Lambert lobe (kD baked in, without
+//                albedo/PI): (albedo/PI) * diffuseIrr == the reflected diffuse in the result.
+//   backIrr    : accumulated irradiance of the TRANSMITTED Lambert lobe, same convention:
+//                (albedo/PI) * backIrr == the transmitted diffuse in the result.
+//   Both are read by the screen-space SSS pass, which blurs them separately (the
+//   transmitted one wider); the caller zeroes them before the light loop.
 // Returns the outgoing radiance towards wo (reflected + transmitted), with the
 // cosine factor already applied.
 vec3 evalThinSurfaceBSDF(
     vec3 wi,
     vec3 wo,
     vec3 radiance,
-    ThinSurfaceBSDF bsdf)
+    ThinSurfaceBSDF bsdf,
+    inout vec3 diffuseIrr,
+    inout vec3 backIrr)
     {
     // NoL keeps its sign: > 0 means the light is on the front (reflection),
     // < 0 means it is behind the surface (transmission).
     float NoL = dot(bsdf.normal, wi);
-    float NoV = max(dot(bsdf.normal, wo), 0.0);
+
+    // Lambert diffuse, shared by reflection and transmission
+    vec3 diffuse = bsdf.albedo / PI;
 
     // ---------------------------------------------------------------------
     // Reflection (only contributes when NoL >= 0)
@@ -122,26 +118,21 @@ vec3 evalThinSurfaceBSDF(
     float rDenominator       = 4.0 * max(dot(bsdf.normal, wo), 0.0) * max(dot(bsdf.normal, wi), 0.0) + 0.0001;
     vec3 rSpecular           = rNumerator / rDenominator;
 
-    // Diffuse-reflection weight: energy not reflected specularly (1 - F), not
-    // transmitted specularly (1 - specTrans), and not transmitted diffusely
-    // (1 - diffTrans/2).
-    vec3 weightDR = (vec3(1.0) - rF) * vec3(1.0 - bsdf.specTrans) * vec3(1.0 - bsdf.diffTrans / 2.0);
-
-    //Hanrahan Krueger diffuse
-    float rLoH = dot(wi, rH);
-    vec3 rDiffuse = hanrahanKruegerDiffuse(NoL, NoV, rLoH, bsdf.albedo, bsdf.roughness);
+    // Diffuse-reflection weight: energy not reflected specularly (1 - F) and not
+    // transmitted diffusely (1 - diffTrans/2). Independent of specTrans.
+    vec3 weightDR = (vec3(1.0) - rF) * vec3(1.0 - bsdf.diffTrans / 2.0);
 
     // max(NoL, 0) zeroes the reflection when the light is behind the surface
-    vec3 reflection =(weightDR * rDiffuse + rSpecular) * radiance * max(NoL, 0.0);
+    vec3 reflection = (weightDR * diffuse + rSpecular) * radiance * max(NoL, 0.0);
+
+    // Diffuse irradiance of the reflected Lambert lobe, for the SSS pass
+    diffuseIrr += weightDR * radiance * max(NoL, 0.0);
 
     // ---------------------------------------------------------------------
     // Transmission (only contributes when NoL < 0)
     // ---------------------------------------------------------------------
-    // Approximate energy transmitted from front to back face: light loses the
-    // Fresnel-reflected part when entering the back face, and is tinted by
-    // the surface's transmittance while crossing it.
-    vec3 macroRF = fresnelSchlick(max(dot(wi, -bsdf.normal), 0.0), bsdf.F0);
-    radiance *= bsdf.transmittance * (vec3(1.0) - macroRF);
+    // specTrans alone decides how much light from the front face gets to the backface
+    radiance *= bsdf.specTrans;
 
     // Mirror the light through the surface onto the viewer's side, so the
     // transmitted light can be evaluated with the same reflection-style lobes.
@@ -156,20 +147,17 @@ vec3 evalThinSurfaceBSDF(
     float tDenominator       = 4.0 * max(dot(bsdf.normal, wo), 0.0) * max(dot(bsdf.normal, wi), 0.0) + 0.0001;
     vec3 tSpecular           = tNumerator / tDenominator;
 
-    float tLoH = dot(wi, tH);
-
-    // Hanrahan Krueger diffuse, evaluated with the light mirrored onto the viewer's side
-    // (abs(NoL) is the cosine of the mirrored light direction)
-    vec3 tDiffuse = hanrahanKruegerDiffuse(abs(NoL), NoV, tLoH, bsdf.albedo, bsdf.roughness);
-
-    // Specular-transmission weight
-    vec3 weightST = vec3(bsdf.specTrans);
-
-    // Diffuse-transmission weight: complement of weightDR's transmission factors
-    vec3 weightDT = vec3(1.0 - bsdf.specTrans) * vec3(bsdf.diffTrans / 2.0);
+    // diffTrans splits the transmitted light between the diffuse and specular lobes
+    vec3 weightDT = vec3(bsdf.diffTrans / 2.0);
+    vec3 weightST = vec3(1.0 - bsdf.diffTrans / 2.0);
 
     // max(-NoL, 0) zeroes the transmission when the light is in front of the surface
-    vec3 transmission =(weightDT * tDiffuse + weightST * tSpecular) * radiance * max(-NoL, 0.0);
+    vec3 transmission = (weightDT * diffuse + weightST * tSpecular) * radiance * max(-NoL, 0.0);
+
+    // Irradiance of the transmitted Lambert lobe (radiance already scaled by
+    // specTrans), for the SSS pass, kept apart from the reflected one so it can be
+    // blurred with a wider kernel. NoL makes only one of the two non-zero.
+    backIrr += weightDT * radiance * max(-NoL, 0.0);
 
     return reflection + transmission;
 }

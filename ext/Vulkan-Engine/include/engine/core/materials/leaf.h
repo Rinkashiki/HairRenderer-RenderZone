@@ -34,18 +34,13 @@ class LeafMaterial : public IMaterial
     float m_occlusion       = 1.0f;
     float m_occlusionWeight = 1.0f; // Weight between parameter and occlusion texture
 
-    // Fraction of light transmitted specularly (clear refraction). Leaves
-    // scatter rather than refract, so this is normally 0.
-    float m_specTrans = 0.0f;
-    // Diffuse transmission, [0,2]. 1 = half the diffuse light is reflected,
-    // half transmitted through the blade.
+    // Per-channel fraction of the light hitting the back face that passes
+    // through the surface. It alone controls how much light is transmitted.
+    Vec3 m_specTrans = {1.0f, 1.0f, 1.0f};
+    // [0,2] Diffuse share of the transmitted light (the rest goes to the
+    // specular transmission lobe), and the diffuse reflection it takes away.
+    // 1 = half diffuse, half specular.
     float m_diffTrans = 1.0f;
-    // Through-blade absorption tint. The diffuse-transmission lobe is already
-    // tinted by albedo, so white leaves it unchanged.
-    Vec3 m_transmittance = {1.0f, 1.0f, 1.0f};
-    // Disney diffusion scatter distance d (world units). Back-lit shadows are
-    // averaged with the diffusion profile over this radius. 0 = off (plain PCF).
-    float m_scatterDistance = 0.0f;
 
     bool m_hasAlbedoTexture    = false;
     bool m_hasNormalTexture    = false;
@@ -153,10 +148,10 @@ class LeafMaterial : public IMaterial
         m_isDirty         = true;
     }
 
-    inline float get_spec_trans() const {
+    inline Vec3 get_spec_trans() const {
         return m_specTrans;
     }
-    inline void set_spec_trans(float t) {
+    inline void set_spec_trans(Vec3 t) {
         m_specTrans = t;
         m_isDirty   = true;
     }
@@ -167,22 +162,6 @@ class LeafMaterial : public IMaterial
     inline void set_diff_trans(float t) {
         m_diffTrans = t;
         m_isDirty   = true;
-    }
-
-    inline Vec3 get_transmittance() const {
-        return m_transmittance;
-    }
-    inline void set_transmittance(Vec3 t) {
-        m_transmittance = t;
-        m_isDirty       = true;
-    }
-
-    inline float get_scatter_distance() const {
-        return m_scatterDistance;
-    }
-    inline void set_scatter_distance(float d) {
-        m_scatterDistance = d;
-        m_isDirty         = true;
     }
 
     inline ITexture* get_albedo_texture() {

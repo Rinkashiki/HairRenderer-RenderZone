@@ -343,8 +343,8 @@ samples to spend: at `"msaa": 1` it degenerates to the baseline.
 ### 6.8 `leaf`
 
 Standalone `LeafMaterial` for foliage, rendered by `forward/leaf.glsl` through the
-thin-surface BSDF (`scripts/BRDFs/thin_surface_BSDF.glsl`): Cook-Torrance reflection
-plus specular and diffuse transmission through the blade. Dielectric (F0 from IOR 1.5).
+thin-surface BSDF (`scripts/BRDFs/thin_surface_BSDF.glsl`): GGX + Lambert reflection plus
+GGX + Lambert transmission through the blade. Dielectric (F0 from IOR 1.5).
 Leaf assets are expected to be **thickened** (geometry on both sides) — the shader does
 no two-sided normal flipping. Every field is also editable in the HairViewer material panel.
 
@@ -362,10 +362,8 @@ no two-sided normal flipping. Every field is also editable in the HairViewer mat
 | `occlusion_texture` | texref | (none) | Accepts a packed-atlas channel suffix (`:r`). |
 | `occlusion_weight` | float | `1.0` | |
 | `normal_texture` | texref | (none) | |
-| `spec_trans` | float | `0.0` | Specular (refractive) transmission, `[0, 1]`. Leaves scatter rather than refract, so normally `0`. |
-| `diff_trans` | float | `1.0` | Diffuse transmission, `[0, 2]`. `1` = half the diffuse light is reflected, half transmitted through the blade. |
-| `transmittance` | vec3 | `[1, 1, 1]` | Through-blade absorption tint. The diffuse-transmission lobe is already tinted by albedo, so white leaves it unchanged. |
-| `scatter_distance` | float | `0.0` | Disney diffusion scatter distance `d`, in **world units**. When a fragment is back-lit, its shadow is averaged over the leaf plane with Disney's normalized diffusion profile (16 importance-sampled taps reaching ~8.7·`d`), softening shadows cast by other leaves on the transmitted side. `0` = off (plain PCF). For `plant_test` (~8 units across) useful values are ~0.01–0.3. |
+| `spec_trans` | vec3 or number | `[1, 1, 1]` | Per-channel fraction of the light hitting the back face that passes through the blade. It alone controls how much light is transmitted (`0` = none). A number applies to all three channels. |
+| `diff_trans` | float | `1.0` | `[0, 2]`. Diffuse share of the transmitted light (the rest goes to the specular-transmission lobe), and how much diffuse reflection it takes away. `1` = half diffuse, half specular. |
 | `culling` | `"back"` \| `"front"` \| `"none"` | `"none"` | Same as `pbr`. |
 
 ### 6.7 Texture references (`texref`)
@@ -418,6 +416,7 @@ Setting a skybox implicitly enables IBL.
 "renderer": {
   "clear_color":     [0.0, 0.0, 0.0, 1.0],
   "sss_scatter_lut": "textures/scatterDistance.png",
+  "sss_scatter_distance": [0.05, 0.05, 0.05],
   "msaa":            8
 }
 ```
@@ -425,7 +424,8 @@ Setting a skybox implicitly enables IBL.
 | Field | Notes |
 |-------|-------|
 | `clear_color` | Returned in `LoadResult.clearColor`; the application is responsible for applying it during renderer construction (ZoneRenderer sets it in `init()` before `setup()`; ZoneExporter does the same). |
-| `sss_scatter_lut` | Path applied to `ForwardRenderer::load_sss_scatter_lut` if `renderer` is non-null. Deferred internally if the renderer hasn't initialized yet. |
+| `sss_scatter_lut` | Path applied to `ForwardRenderer::load_sss_scatter_lut` if `renderer` is non-null. Deferred internally if the renderer hasn't initialized yet. Since the leaf SSS rewrite the SSS pass no longer samples it; only `physically_based.glsl` uses it (forward binding 14: d'Eon detail-normal blur, sheen tint). |
+| `sss_scatter_distance` | Global **per-channel** Burley scatter distance `d` (`[r, g, b]`, or one number for all three; view-space = world units) for the screen-space SSS blur (`ssss.glsl`). Applied through `ForwardRenderer::set_sss_scatter_distance` (deferred if the passes don't exist yet). In the renderer panel it is edited as **Scatter Color** (picker, normalized) × **Scatter Distance** (scalar); the panel sends `normalize(color) · distance` and splits the current value back into those two when it is set elsewhere. Default `[0.05, 0.05, 0.05]`. |
 | `msaa` | Hardware MSAA sample count baked into the renderpasses. Valid values: `1` (off), `4`, `8`. (Higher counts exist in the engine enum but the forward HDR target is `R32G32B32A32_SFLOAT`, which caps at 8× on most GPUs — values >8 are rejected with a warning.) Read via `scene_loader::peek_msaa()` *before* the renderer is constructed (it can't be changed live since MSAA is baked into renderpass attachment descriptions and pipelines). ZoneRenderer honors it automatically; ZoneExporter keeps `--msaa` from the CLI authoritative. The GUI shows the active value read-only in the Forward Renderer panel. |
 
 ---
