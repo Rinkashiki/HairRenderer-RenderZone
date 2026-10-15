@@ -56,7 +56,8 @@ class SSSPass : public BasePass
         float extinctionCoeff;      // Beer-Lambert extinction coefficient
         float Fdr;                  // internal Fresnel diffuse reflectance
         Vec2  screenSize;
-        Vec2  _pad0;                // align projection to 16-byte boundary at offset 1056
+        float blanchCompress;       // Compression redness degree 
+        float blanchStretch;        // Stretching paleness degree 
         Mat4  projection;
         Mat4  invProjection;
     };
@@ -91,6 +92,10 @@ class SSSPass : public BasePass
     float m_Fdr             = 0.028f;
     int   m_sssEnabled      = 1; // separate from m_enabled; controls UBO flag
 
+    // Blanching parameters
+    float m_blanchCompress  = 0.1f; 
+    float m_blanchStretch   = 0.005f;
+
     void        generate_samples();
     static float burley_cdf_inverse(float u);
 
@@ -113,6 +118,10 @@ class SSSPass : public BasePass
     inline void  set_extinction_coeff(float e) { m_extinctionCoeff = e; }
     inline float get_Fdr() const { return m_Fdr; }
     inline void  set_Fdr(float f) { m_Fdr = f; }
+    inline float get_blanch_compress() const { return m_blanchCompress; }
+    inline void  set_blanch_compress(float c) { m_blanchCompress = c; }
+    inline float get_blanch_stretch() const { return m_blanchStretch; }
+    inline void  set_blanch_stretch(float s) { m_blanchStretch = s; }
 
     void load_scatter_lut(const std::string& path);
 

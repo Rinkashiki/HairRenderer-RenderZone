@@ -141,6 +141,8 @@ void SSSPass::setup_uniforms(std::vector<Graphics::Frame>& frames) {
     data.maxScatter      = m_maxScatter;
     data.extinctionCoeff = m_extinctionCoeff;
     data.Fdr             = m_Fdr;
+    data.blanchCompress  = m_blanchCompress;
+    data.blanchStretch   = m_blanchStretch;
     m_ubo.upload_data(&data, sizeof(SSSUniforms));
 
     m_descriptorPool.set_descriptor_write(&m_ubo, sizeof(SSSUniforms), 0, &m_descriptorSet, UNIFORM_BUFFER, 6);
@@ -186,6 +188,8 @@ void SSSPass::render(Graphics::Frame& currentFrame, Scene* const scene, uint32_t
     data.Fdr             = m_Fdr;
     data.screenSize      = Vec2(static_cast<float>(m_imageExtent.width),
                                    static_cast<float>(m_imageExtent.height));
+    data.blanchCompress  = m_blanchCompress;
+    data.blanchStretch   = m_blanchStretch;
     data.projection    = cam->get_projection();
     data.invProjection = glm::inverse(cam->get_projection());
     m_ubo.upload_data(&data, sizeof(SSSUniforms));

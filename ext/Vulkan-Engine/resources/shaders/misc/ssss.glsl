@@ -36,8 +36,9 @@ layout(set = 0, binding = 6) uniform SSSBlock {
     float maxScatter;       // world-space scatter radius scale
     float extinctionCoeff;  // Beer-Lambert extinction coefficient
     float Fdr;              // internal Fresnel diffuse reflectance
-
     vec2  screenSize;
+    float blanchCompress; // Compression redness degree
+    float blanchStretch;  // Stretching paleness degree
 
     layout(offset = 1056) mat4 projection;
     mat4 invProjection;
@@ -50,7 +51,11 @@ layout(location = 1) out vec4 outBright; // pass-through to Bloom
 // ----------------------------------------------------------------------------
 const float PI  = 3.14159265358979323846;
 const float EPS = 1e-6;
-const float SSS_STRAIN_STRENGTH = 1.0; // scale for strain-based SSS thickness modulation
+const float SSS_STRAIN_STRENGTH = 3.0;   // scale for strain-based SSS thickness modulation
+const bool  SSS_STRAIN_DEBUG    = false; // DEBUG: J in fake color
+const float BLANCH_GAIN         = 2.0;   // Saturation threshold for blood displacement
+const vec3  HEMOGLOBIN_SRGB     = vec3(0.68, 0.08, 0.06); // sRGB color of hemoglobin (blood) for subsurface tinting
+
 
 // Sample one of the 5 LUT pixels (sRGB → linear)
 vec3 sampleProfile(int i) {
@@ -99,6 +104,7 @@ void main() {
     float depth   = texture(depthTex, v_uv).r;
     vec2  aoThick = texture(aoThickTex, v_uv).rg;
     float ao      = aoThick.r;
+    
 
     // 3x3 box blur on thickness only. The G channel from SSAO is low-frequency
     // and noticeably quantized — blurring it removes the chunked stepping in
@@ -266,7 +272,23 @@ void main() {
     // emission + back-scatter contributions) — no `max(...,0)` clamp needed, and
     // bright speculars on skin are no longer clipped at high ambient intensity.
     // -------------------------------------------------------------------------
-    vec3 specular = hdr.rgb - localDiff;
-    outColor  = vec4((modulatedDiff + modulatedSS + specular) * ao, hdr.a);
+    vec3  specular = hdr.rgb - localDiff;
+    vec3  skinDiffuse = modulatedDiff + modulatedSS;
+    vec3  hemoglobin  = pow(HEMOGLOBIN_SRGB, vec3(2.2)); // sRGB -> lineal
+    float meanHb      = (hemoglobin.r + hemoglobin.g + hemoglobin.b) / 3.0;
+    vec3  bloodDir    = hemoglobin / max(meanHb, EPS);
+    float bloodAmt    = clamp((1.0 - J) * BLANCH_GAIN, -1.0, 1.0);
+    float blanchStr   = (bloodAmt >= 0.0) ? sss.blanchCompress : sss.blanchStretch;
+    skinDiffuse       = mix(skinDiffuse, skinDiffuse * bloodDir, blanchStr * bloodAmt);
+
+    outColor  = vec4((skinDiffuse + specular) * ao, hdr.a);
     outBright = texture(brightTex, v_uv);
+
+    if (SSS_STRAIN_DEBUG)
+    {
+        const float DBG_SCALE = 6.0;
+        float       cDbg      = clamp((1.0 - J) * DBG_SCALE, 0.0, 1.0);
+        float       sDbg      = clamp((J - 1.0) * DBG_SCALE, 0.0, 1.0);
+        outColor              = vec4(cDbg, sDbg, 0.0, hdr.a);
+    }
 }

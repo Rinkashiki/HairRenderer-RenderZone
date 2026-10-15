@@ -143,6 +143,20 @@ class ForwardRenderer : public BaseRenderer
     inline void set_sss_extinction_coeff(float e) {
         if (m_passes[SSS_PASS]) static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->set_extinction_coeff(e);
     }
+    inline float get_sss_blanch_compress() const {
+        if (m_passes[SSS_PASS]) return static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->get_blanch_compress();
+        return 0.15f;
+    }
+    inline void set_sss_blanch_compress(float b) {
+        if (m_passes[SSS_PASS]) static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->set_blanch_compress(b);
+    }
+    inline float get_sss_blanch_stretch() const {
+        if (m_passes[SSS_PASS]) return static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->get_blanch_stretch();
+        return 0.005f;
+    }
+    inline void set_sss_blanch_stretch(float b) {
+        if (m_passes[SSS_PASS]) static_cast<Core::SSSPass*>(m_passes[SSS_PASS])->set_blanch_stretch(b);
+    }
 
     // Selection outline (drawn around every Object3D with is_selected() — see OutlineMaskPass)
     inline Core::OutlineCompositePass* outline_pass() const {

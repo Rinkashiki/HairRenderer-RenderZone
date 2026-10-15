@@ -136,6 +136,12 @@ void Tools::ForwardRendererWidget::render() {
         float maxScatter = m_renderer->get_sss_max_scatter();
         if (ImGui::DragFloat("Max Scatter", &maxScatter, 0.01f, 0.0f, 5.0f))
             m_renderer->set_sss_max_scatter(maxScatter);
+        float blanchCompress = m_renderer->get_sss_blanch_compress();
+        if (ImGui::DragFloat("Blanch Compress", &blanchCompress, 0.01f, 0.0f, 1.0f))
+            m_renderer->set_sss_blanch_compress(blanchCompress);
+        float blanchStretch = m_renderer->get_sss_blanch_stretch();
+        if (ImGui::DragFloat("Blanch Stretch", &blanchStretch, 0.001f, 0.0f, 0.5f))
+            m_renderer->set_sss_blanch_stretch(blanchStretch);
     }
 
     ImGui::Separator();
