@@ -1,0 +1,46 @@
+{
+  "name": "anger",
+  "fps": 30,
+  "loop": false,
+  "duration": 9.27,
+  "source": {
+    "video": "temp/facial-mocap-clip.mp4",
+    "clip": "Anger",
+    "start_s": 48.03,
+    "end_s": 57.3,
+    "note": "Hand-authored by eye from the reference video (no tracking). t = 0 is 0.2 s after the clip cut, past the transition flash."
+  },
+  "keys": [
+    {"t": 0.0,  "_": "lips parted over clenched teeth, brows down",
+                "jaw": 3, "stretch": 0.3, "upperLipRaise": 0.3, "lowerLipDown": 0.4,
+                "browLower": 0.7, "squint": 0.4, "blink": 0, "lipsPress": 0, "frown": 0,
+                "funnel": 0, "eyesYaw": 0, "squintR": 0},
+    {"t": 0.3,  "blink": 0.25},
+    {"t": 0.4,  "blink": 1.0},
+    {"t": 0.6,  "_": "presses the lips: a long glare", "blink": 0.25, "jaw": 0, "stretch": 0,
+                "upperLipRaise": 0, "lowerLipDown": 0, "lipsPress": 0.4},
+    {"t": 0.9,  "browLower": 0.9, "squint": 0.5, "lipsPress": 0.5, "frown": 0.3},
+    {"t": 1.9,  "eyesYaw": 0},
+    {"t": 2.2,  "eyesYaw": 6},
+    {"t": 3.0,  "eyesYaw": 6, "lipsPress": 0.5, "upperLipRaise": 0, "lowerLipDown": 0, "jaw": 0},
+    {"t": 3.25, "_": "a flash of teeth", "lipsPress": 0, "upperLipRaise": 0.6, "lowerLipDown": 0.5,
+                "jaw": 2, "eyesYaw": 0},
+    {"t": 3.6,  "lipsPress": 0.5, "upperLipRaise": 0, "lowerLipDown": 0, "jaw": 0},
+    {"t": 4.8,  "lipsPress": 0.5, "stretch": 0, "upperLipRaise": 0, "lowerLipDown": 0, "jaw": 0},
+
+    {"t": 5.0,  "_": "bares the teeth, then shouts", "lipsPress": 0, "stretch": 0.7,
+                "upperLipRaise": 1.2, "lowerLipDown": 1.1, "frown": 0},
+    {"t": 5.2,  "jaw": 8, "funnel": 0.2},
+    {"t": 5.4,  "jaw": 13},
+    {"t": 5.7,  "jaw": 16, "funnel": 0.1, "stretch": 0.5, "upperLipRaise": 0.6,
+                "lowerLipDown": 0.4, "browLower": 1.0, "squint": 0.6},
+    {"t": 7.6,  "jaw": 16, "funnel": 0.1},
+    {"t": 7.8,  "jaw": 12},
+    {"t": 8.0,  "jaw": 8, "funnel": 0},
+
+    {"t": 8.25, "_": "clenched snarl", "jaw": 1, "stretch": 0.9, "upperLipRaise": 1.6,
+                "lowerLipDown": 1.5, "squint": 0.8, "browLower": 1.0, "squintR": 0},
+    {"t": 8.8,  "squintR": 0.4},
+    {"t": 9.27, "jaw": 1, "upperLipRaise": 1.2, "lowerLipDown": 1.1, "squintR": 0.3}
+  ]
+}

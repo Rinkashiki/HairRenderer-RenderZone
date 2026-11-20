@@ -512,6 +512,29 @@ When no mesh declares `bind_to`, both viewers auto-discover the head (first morp
 
 The animations loaded are in json format. The specifics of this format and its structure are defined in detail in @ANIMATION.md
 
+### Hand-authored facial animation (`tools/face_anim_author.py`)
+
+Facial clips can be authored by hand (e.g. by eye from a reference video) without keying the 100
+unlabelled `Exp_*` PCA components directly. **Semantic controls** (`browRaise`, `browLower`, `eyeWide`,
+`blink`, `squint`, `smile`, `frown`, `stretch`, `funnel`, `pucker`, `upperLipRaise`, `lowerLipDown`,
+`lipsPress`, `cheekPuff`, `sneer`, plus `L`/`R` variants of the eye/brow/smile ones) are defined in the
+script as target displacements (mm) of face regions; each is solved once into a 100-D Exp vector by
+ridge least squares against the GLB's own morph deltas. A **keyframe sheet** (`tools/face_keys/<clip>.json`,
+the source of truth) keys controls plus `jaw` / `jawSide` / `eyesYaw` / `eyesPitch` (degrees); the script
+interpolates monotone-cubic and writes dense 30 fps `linear` tracks to `resources/animations/mocap/`.
+A sheet with `"sequence": [...]` chains clips with an ease through neutral (`gap`, default 0.6 s).
+```bash
+python tools/face_anim_author.py tools/face_keys/surprise_1.json   # -> resources/animations/mocap/surprise_1.json
+python tools/face_anim_author.py --list-controls                   # what each control achieves, in mm
+```
+- **The expression basis is identical in all four character GLBs** (bit-identical deltas), so a clip plays on any of them.
+- **Joint conventions (verified):** jaw/eye local frames are +X = character's left, +Y = forward, +Z = down, rest
+  rotation ≈ identity, and a rotation track *replaces* the local rotation. **+X opens the jaw** (+X on an eye looks
+  down); +Z turns toward the character's right. (`test_jaw_open.json` keys −X, i.e. it closes the jaw.)
+- Values in use stay within ~±6 per Exp component (FHT-tracked `face_anim.json` peaks ~±4).
+- **Rendering for review:** ZoneExporter finds `resources/` only from `build/` (single-config dev layout) or a
+  deployed tree; with the multi-config VS build, copy `build/Release/ZoneExporter.exe` to `build/` first.
+
 ### Scene format
 
 Scenes are defined in JSON and loaded at runtime by `src/scene_loader.{h,cpp}`. Schema, material types, light types, animation binding rules, and worked examples live in @SCENE.md. Known-good character scenes: `alex`, `javi`, `maria`, `nadia`, `neural_tono`, `bust_strands`. The default scene (used by ZoneExporter when `--scene` is omitted, and by ZoneRenderer) is `resources/scenes/maria.json`.

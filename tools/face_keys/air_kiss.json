@@ -1,0 +1,40 @@
+{
+  "name": "air_kiss",
+  "fps": 30,
+  "loop": false,
+  "duration": 5.43,
+  "source": {
+    "video": "temp/facial-mocap-clip.mp4",
+    "clip": "Air Kiss",
+    "start_s": 24.17,
+    "end_s": 29.6,
+    "note": "Hand-authored by eye from the reference video (no tracking). t = 0 is 0.2 s after the clip cut, past the transition flash."
+  },
+  "keys": [
+    {"t": 0.0,  "_": "relaxed half-lidded eyes, lips softly rounded",
+                "jaw": 4, "funnel": 0.4, "lowerLipDown": -0.2, "blink": 0.35,
+                "pucker": 0, "browRaise": 0, "blinkR": 0, "smile": 0, "squint": 0,
+                "upperLipRaise": 0},
+    {"t": 0.8,  "jaw": 4, "funnel": 0.4},
+    {"t": 1.0,  "jaw": 7, "funnel": 0.5},
+    {"t": 1.6,  "jaw": 7, "funnel": 0.55},
+    {"t": 2.0,  "jaw": 7, "funnel": 0.7, "lowerLipDown": -0.2},
+
+    {"t": 2.2,  "_": "lips close into the kiss", "jaw": 3, "funnel": 0.5, "pucker": 0.4},
+    {"t": 2.4,  "jaw": 1, "funnel": 0, "pucker": 0.9, "lowerLipDown": 0},
+    {"t": 2.6,  "pucker": 1.0, "browRaise": 0.6},
+    {"t": 2.7,  "_": "wink with the character's right eye", "blinkR": 0},
+    {"t": 2.8,  "blinkR": 0.9, "browRaise": 0.8},
+    {"t": 3.0,  "blinkR": 0},
+    {"t": 3.4,  "pucker": 1.0, "browRaise": 0.6},
+    {"t": 4.0,  "pucker": 0.8, "jaw": 1, "funnel": 0, "blink": 0.35},
+
+    {"t": 4.2,  "_": "release ('mwah') into a smile", "jaw": 6, "pucker": 0, "funnel": 0.4,
+                "browRaise": 0.3},
+    {"t": 4.5,  "jaw": 8, "funnel": 0, "smile": 0.8, "upperLipRaise": 0.5, "blink": 0.3},
+    {"t": 4.8,  "jaw": 7, "smile": 1.0, "browRaise": 0},
+    {"t": 5.0,  "jaw": 3, "smile": 1.6, "upperLipRaise": 0.8, "lowerLipDown": 0.5,
+                "blink": 0.9, "squint": 0.6},
+    {"t": 5.43, "jaw": 3, "smile": 1.6, "blink": 0.9, "squint": 0.6}
+  ]
+}

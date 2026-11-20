@@ -1,0 +1,30 @@
+{
+  "name": "wink_2",
+  "fps": 30,
+  "loop": false,
+  "duration": 4.0,
+  "source": {
+    "video": "temp/facial-mocap-clip.mp4",
+    "clip": "Wink 2",
+    "start_s": 472.63,
+    "end_s": 476.63,
+    "note": "Hand-authored by eye from the reference video (no tracking). t = 0 is 0.2 s after the clip cut; the wink itself is mostly hidden by the transition flash, only its release is visible."
+  },
+  "keys": [
+    {"t": 0.0,  "_": "end of a wink (character's right eye) with a closed smirk",
+                "blinkR": 0.8, "blink": 0.3, "smileR": 0.5, "smile": 0, "lipsPress": 0.2,
+                "jaw": 0, "squint": 0, "upperLipRaise": 0, "lowerLipDown": 0},
+    {"t": 0.2,  "blinkR": 0, "blink": 0.35, "smileR": 0.2, "smile": 0.5},
+    {"t": 0.6,  "smileR": 0, "smile": 0.6, "lipsPress": 0.2, "jaw": 0},
+
+    {"t": 0.8,  "_": "broad teeth smile", "smile": 1.6, "upperLipRaise": 0.9,
+                "lowerLipDown": 0.5, "jaw": 2, "lipsPress": 0},
+    {"t": 1.0,  "smile": 1.8, "squint": 0.5, "blink": 0.4},
+    {"t": 1.8,  "blink": 0.6},
+    {"t": 2.2,  "_": "eyes close happily", "blink": 0.9, "squint": 0.8},
+    {"t": 3.2,  "blink": 0.9},
+    {"t": 3.4,  "blink": 0.5},
+    {"t": 3.6,  "blink": 0.3, "squint": 0.5, "smile": 1.7},
+    {"t": 4.0,  "blink": 0.3, "smile": 1.7}
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "name": "amusement_1",
+  "fps": 30,
+  "loop": false,
+  "duration": 11.1,
+  "source": {
+    "video": "temp/facial-mocap-clip.mp4",
+    "clip": "Amusement 1",
+    "start_s": 29.8,
+    "end_s": 40.9,
+    "note": "Hand-authored by eye from the reference video (no tracking). t = 0 is 0.2 s after the clip cut, past the transition flash."
+  },
+  "keys": [
+    {"t": 0.0,  "_": "glancing up to the character's left, small 'o'",
+                "jaw": 4, "funnel": 0.4, "browRaise": 0.5, "eyeWide": 0.3,
+                "eyesYaw": 15, "eyesPitch": 8, "smile": 0, "stretch": 0, "blink": 0, "squint": 0, "blinkR": 0,
+                "upperLipRaise": 0, "lowerLipDown": 0},
+    {"t": 0.5,  "eyesYaw": 15, "eyesPitch": 8},
+    {"t": 0.8,  "eyesYaw": 0, "eyesPitch": 0, "jaw": 5},
+
+    {"t": 1.1,  "_": "growing 'O' of delight", "jaw": 8, "funnel": 0.5, "browRaise": 0.8, "eyeWide": 0.6},
+    {"t": 1.4,  "jaw": 12, "funnel": 0.4},
+    {"t": 2.0,  "jaw": 12, "funnel": 0.45},
+    {"t": 2.2,  "jaw": 8, "funnel": 0.6},
+    {"t": 2.5,  "jaw": 4, "funnel": 0.7},
+    {"t": 2.7,  "blink": 0},
+    {"t": 2.8,  "jaw": 8, "funnel": 0.5, "blink": 0.9},
+    {"t": 3.0,  "jaw": 12, "blink": 0},
+
+    {"t": 3.3,  "_": "bursts out laughing", "jaw": 14, "funnel": 0.3, "smile": 0.4},
+    {"t": 3.9,  "jaw": 18, "funnel": 0, "smile": 0.8, "stretch": 0.3, "browRaise": 1.0},
+    {"t": 4.2,  "jaw": 17, "smile": 0.9},
+    {"t": 4.5,  "jaw": 9, "smile": 1.4, "upperLipRaise": 0.7, "lowerLipDown": 0.4},
+    {"t": 4.7,  "jaw": 6, "squint": 0.4, "smile": 1.8, "upperLipRaise": 1.0, "lowerLipDown": 0.6, "browRaise": 0.7},
+    {"t": 5.5,  "jaw": 6, "smile": 1.8},
+    {"t": 5.9,  "jaw": 11, "smile": 1.5, "upperLipRaise": 0.8},
+    {"t": 6.4,  "blinkR": 0},
+    {"t": 6.75, "_": "squeezes one eye shut laughing", "blinkR": 0.7, "squint": 0.7},
+    {"t": 7.1,  "blinkR": 0, "squint": 0.4},
+    {"t": 7.5,  "jaw": 11, "smile": 1.5},
+    {"t": 7.9,  "jaw": 14, "smile": 1.0, "upperLipRaise": 0.5, "lowerLipDown": 0.4},
+
+    {"t": 8.2,  "_": "catches breath: mouth nearly closes", "jaw": 7, "smile": 0.3,
+                "funnel": 0.3, "upperLipRaise": 0, "lowerLipDown": 0, "stretch": 0, "squint": 0},
+    {"t": 8.4,  "jaw": 2, "funnel": 0.5, "smile": 0},
+    {"t": 8.6,  "jaw": 1, "funnel": 0.4},
+    {"t": 8.8,  "jaw": 5, "funnel": 0.4},
+    {"t": 9.1,  "jaw": 12, "funnel": 0.4, "smile": 0.2},
+    {"t": 10.0, "jaw": 12, "funnel": 0.4, "smile": 0.2},
+    {"t": 10.2, "jaw": 10, "funnel": 0.2, "smile": 0.5},
+    {"t": 10.5, "_": "settles into an open smile", "jaw": 5, "funnel": 0, "smile": 1.1,
+                "upperLipRaise": 0.6, "lowerLipDown": 0.4},
+    {"t": 11.1, "jaw": 5, "smile": 1.1, "browRaise": 0.6}
+  ]
+}

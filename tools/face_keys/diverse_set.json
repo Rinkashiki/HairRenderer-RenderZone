@@ -1,0 +1,15 @@
+{
+  "name": "diverse_set",
+  "fps": 30,
+  "loop": false,
+  "gap": 0.6,
+  "_": "The six pilot clips back to back, in the order they appear in the reference video.",
+  "sequence": [
+    "air_kiss.json",
+    "amusement_1.json",
+    "anger.json",
+    "disgust.json",
+    "surprise_1.json",
+    "wink_2.json"
+  ]
+}

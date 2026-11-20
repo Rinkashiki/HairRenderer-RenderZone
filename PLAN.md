@@ -6,6 +6,29 @@ Forward-looking work for this project. Completed features are tracked in git his
 
 ## Open
 
+### Facial animation hand-authored from a reference video (2026-11-20) — 6 clips, awaiting user validation
+
+Source: `temp/facial-mocap-clip.mp4` (not committed) — a 63-clip MetaHuman / ARKit facial-mocap
+showreel. User decision: **no tracking** — estimate the motion by eye and write it straight into our
+format. Done so far: the pilot (Surprise 1) and the "diverse set" — Air Kiss, Amusement 1, Anger,
+Disgust, Surprise 1, Wink 2 — plus `diverse_set.json`, all six back to back (0.6 s ease through neutral
+between clips, source order, 46.2 s).
+
+- **Tool:** `tools/face_anim_author.py` (numpy only). Semantic controls → Exp vectors (ridge LSQ on the
+  GLB's morph deltas), keyframe sheets → dense 30 fps `linear` tracks. Sheets in `tools/face_keys/`
+  (source of truth); output in `resources/animations/mocap/`. See CLAUDE.md "Hand-authored facial animation".
+- **Validation:** every clip rendered via ZoneExporter (close-up camera, maria) and compared to the source
+  frame by frame at key beats; timing and expression beats match.
+- **Issues found / fixed along the way:** one-sided controls leaked to the other side (a wink closed both
+  eyes) → mirrored regions now pinned to zero; the lower-lid-only `squint` barely read (Disgust/Anger
+  rendered wide-eyed) → squint now narrows from both lids.
+- **Known limitations (asset side, not the animation):** maria shows more lower teeth / fewer upper teeth
+  than the source in every open-mouth pose, and bared-teeth snarls (Anger end, Disgust) read weaker than
+  the source — the teeth sit behind thick lips. Strong smiles (`smile` ≳ 1.6) show a small dark blotch
+  beside the character's left mouth corner — likely the rigid mouth-interior meshes poking through the
+  morphed cheek. No head motion (user choice); no blinks except where the source clearly has one.
+- **Next:** user review; more clips on request (start/end times for all 63 were identified).
+
 ### Viewport selection, outline + gizmo overhaul + GUI theme (2026-09-28) — done, validated by the user
 
 Supersedes the 2026-07-27 deferred "viewport selection + outline" note. User decisions (2026-09-28):

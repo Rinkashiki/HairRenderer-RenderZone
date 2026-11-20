@@ -1,0 +1,51 @@
+{
+  "name": "disgust",
+  "fps": 30,
+  "loop": false,
+  "duration": 6.27,
+  "source": {
+    "video": "temp/facial-mocap-clip.mp4",
+    "clip": "Disgust",
+    "start_s": 177.07,
+    "end_s": 183.33,
+    "note": "Hand-authored by eye from the reference video (no tracking). t = 0 is 0.2 s after the clip cut, past the transition flash."
+  },
+  "keys": [
+    {"t": 0.0,  "_": "squinting 'eww' grimace",
+                "smile": 1.0, "upperLipRaise": 1.0, "sneer": 1.0, "squint": 1.0,
+                "browLower": 0.6, "jaw": 4, "lowerLipDown": 0.9, "stretch": 0.6, "blink": 0.4,
+                "frown": 0, "lipsPress": 0, "funnel": 0, "pucker": 0},
+    {"t": 0.2,  "smile": 0.3, "jaw": 3, "upperLipRaise": 1.0, "lowerLipDown": 0.7, "blink": 0.2},
+    {"t": 0.45, "_": "lips shut, corners down", "jaw": 0, "smile": 0, "upperLipRaise": 0.2,
+                "lowerLipDown": 0, "sneer": 0.5, "frown": 0.5, "squint": 0.6, "stretch": 0,
+                "lipsPress": 0.3, "blink": 0.15},
+    {"t": 1.0,  "sneer": 0.5, "frown": 0.5},
+    {"t": 1.2,  "sneer": 0.8, "upperLipRaise": 0.4},
+    {"t": 1.4,  "jaw": 3, "upperLipRaise": 0.7, "lipsPress": 0},
+
+    {"t": 1.65, "_": "full teeth-baring disgust", "jaw": 4, "upperLipRaise": 1.5,
+                "lowerLipDown": 1.2, "stretch": 0.7, "sneer": 1.0, "squint": 0.9, "blink": 0.25,
+                "browLower": 0.8, "frown": 0},
+    {"t": 2.0,  "jaw": 8},
+    {"t": 2.25, "jaw": 4},
+    {"t": 2.8,  "jaw": 4, "upperLipRaise": 1.5},
+    {"t": 3.1,  "jaw": 7, "upperLipRaise": 1.2},
+    {"t": 3.25, "jaw": 7},
+
+    {"t": 3.45, "_": "mouth draws in", "jaw": 4, "upperLipRaise": 0.3, "lowerLipDown": 0,
+                "stretch": 0, "funnel": 0.3, "sneer": 0.5},
+    {"t": 3.8,  "jaw": 4, "funnel": 0.3},
+    {"t": 4.05, "jaw": 0, "funnel": 0, "pucker": 0.3, "frown": 0.5, "upperLipRaise": 0},
+    {"t": 4.2,  "jaw": 0, "pucker": 0.3},
+    {"t": 4.4,  "jaw": 3, "pucker": 0, "upperLipRaise": 0.6, "lowerLipDown": 0.4, "frown": 0},
+    {"t": 4.65, "jaw": 4, "upperLipRaise": 1.4, "lowerLipDown": 1.0, "stretch": 0.6, "sneer": 0.9},
+    {"t": 5.0,  "jaw": 4},
+    {"t": 5.25, "jaw": 2, "stretch": 0.6, "smile": 0.4, "upperLipRaise": 0.5, "lowerLipDown": 0.4},
+    {"t": 5.4,  "jaw": 2, "smile": 0.4},
+
+    {"t": 5.65, "_": "lips pressed tight", "jaw": 0, "lipsPress": 0.6, "smile": 0, "stretch": 0.2,
+                "upperLipRaise": 0, "lowerLipDown": 0, "frown": 0.4, "squint": 0.9,
+                "browLower": 0.8, "sneer": 0.5},
+    {"t": 6.27, "lipsPress": 0.6, "frown": 0.4}
+  ]
+}

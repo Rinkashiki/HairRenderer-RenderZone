@@ -1,0 +1,58 @@
+{
+  "name": "surprise_1",
+  "fps": 30,
+  "loop": false,
+  "duration": 6.8,
+  "source": {
+    "video": "temp/facial-mocap-clip.mp4",
+    "clip": "Surprise 1",
+    "start_s": 445.57,
+    "end_s": 452.37,
+    "note": "Hand-authored by eye from the reference video (no tracking). t = 0 is 0.2 s after the clip cut, past the transition flash. Jaw/eye angles in degrees; controls are face_anim_author.py semantic controls."
+  },
+  "keys": [
+    {"t": 0.0,  "_": "already surprised: small O, brows up, eyes wide",
+                "jaw": 6, "funnel": 0.6, "browRaise": 0.8, "eyeWide": 0.8,
+                "smile": 0, "squint": 0, "stretch": 0, "upperLipRaise": 0,
+                "lowerLipDown": -0.4, "lipsPress": 0, "eyesYaw": 0},
+    {"t": 0.3,  "jaw": 6},
+    {"t": 0.45, "jaw": 4, "funnel": 0.9},
+    {"t": 0.7,  "jaw": 10, "funnel": 0.7},
+    {"t": 1.0,  "jaw": 12, "funnel": 0.65},
+
+    {"t": 1.3,  "_": "quick glance to the character's left", "eyesYaw": 0},
+    {"t": 1.4,  "eyesYaw": 8},
+    {"t": 1.55, "eyesYaw": 0},
+
+    {"t": 2.0,  "jaw": 12, "funnel": 0.6, "browRaise": 0.8, "eyeWide": 0.8,
+                "smile": 0, "squint": 0, "lowerLipDown": -0.4, "upperLipRaise": 0, "stretch": 0},
+    {"t": 2.15, "_": "breaks into an amazed grin", "smile": 0.7, "funnel": 0.0, "jaw": 9},
+    {"t": 2.35, "smile": 2.1, "stretch": 0.4, "upperLipRaise": 1.0, "lowerLipDown": 0.7,
+                "jaw": 5, "squint": 1.0, "eyeWide": 0, "browRaise": 0.3},
+    {"t": 2.6,  "smile": 2.0, "stretch": 0.4, "jaw": 6, "squint": 1.0},
+    {"t": 2.75, "smile": 0.9, "jaw": 10, "squint": 0.4, "eyeWide": 0.3},
+    {"t": 3.1,  "smile": 0.3, "stretch": 0.2, "jaw": 10, "upperLipRaise": 0.2,
+                "lowerLipDown": 0.2, "squint": 0},
+    {"t": 3.4,  "smile": 0, "stretch": 0, "funnel": 0.5, "jaw": 9, "browRaise": 0.6,
+                "upperLipRaise": 0, "lowerLipDown": -0.4},
+
+    {"t": 3.8,  "_": "closes the mouth", "jaw": 8, "funnel": 0.6},
+    {"t": 4.1,  "jaw": 2, "funnel": 0.7},
+    {"t": 4.25, "jaw": 0, "funnel": 0.4, "lipsPress": 0.4, "lowerLipDown": 0, "browRaise": 1.2, "eyeWide": 1.0},
+
+    {"t": 4.4,  "_": "big jaw-drop gasp", "jaw": 4, "funnel": 0.7, "lipsPress": 0},
+    {"t": 4.6,  "jaw": 13, "funnel": 0.7, "lowerLipDown": -0.3},
+    {"t": 4.85, "jaw": 24, "funnel": 0.5, "stretch": 0.2,
+                "browRaise": 1.4, "eyeWide": 1.1},
+    {"t": 5.45, "jaw": 23, "funnel": 0.5, "stretch": 0.2, "browRaise": 1.3, "eyeWide": 1.0,
+                "smile": 0, "squint": 0, "upperLipRaise": 0, "lowerLipDown": -0.3},
+
+    {"t": 5.6,  "_": "into a wide teeth grin", "jaw": 5, "funnel": 0, "stretch": 0.4,
+                "smile": 1.7, "upperLipRaise": 1.0, "lowerLipDown": 0.6, "squint": 0.6,
+                "browRaise": 0.6, "eyeWide": 0.2},
+    {"t": 5.8,  "jaw": 3, "smile": 2.0, "squint": 0.9, "browRaise": 0.4, "eyeWide": 0},
+    {"t": 6.3,  "jaw": 3, "smile": 2.0, "upperLipRaise": 1.0, "lowerLipDown": 0.6},
+    {"t": 6.55, "jaw": 9, "smile": 1.8, "squint": 0.6},
+    {"t": 6.8,  "jaw": 9, "smile": 1.8, "squint": 0.6, "browRaise": 0.4}
+  ]
+}
